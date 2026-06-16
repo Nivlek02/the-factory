@@ -1,0 +1,1 @@
+ALTER TYPE public.task_assigned_role ADD VALUE IF NOT EXISTS 'unassigned';

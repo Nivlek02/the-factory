@@ -1,0 +1,1 @@
+ALTER TABLE public.tasks ADD COLUMN folder_url TEXT DEFAULT NULL;

@@ -1,0 +1,336 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --background: 220 20% 98%;
+    --foreground: 224 47% 8%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 224 47% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 47% 8%;
+
+    --primary: 238 75% 58%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 250 90% 72%;
+
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 224 47% 8%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+
+    --accent: 238 75% 58%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 238 75% 58%;
+
+    --radius: 0.75rem;
+
+    /* THE FACTORY — operational tokens */
+    --factory: 238 75% 58%;
+    --factory-foreground: 0 0% 100%;
+    --factory-glow: 250 90% 72%;
+    --factory-soft: 238 75% 96%;
+
+    --surface: 0 0% 100%;
+    --surface-elevated: 220 20% 99%;
+    --surface-overlay: 224 47% 8%;
+
+    /* Operational states */
+    --state-planning: 220 9% 46%;
+    --state-planning-bg: 220 14% 96%;
+    --state-progress: 217 91% 60%;
+    --state-progress-bg: 217 91% 96%;
+    --state-review: 38 92% 50%;
+    --state-review-bg: 38 100% 95%;
+    --state-blocked: 0 84% 60%;
+    --state-blocked-bg: 0 84% 96%;
+    --state-done: 142 71% 45%;
+    --state-done-bg: 142 76% 95%;
+
+    /* Priorities */
+    --priority-p0: 0 84% 55%;
+    --priority-p1: 25 95% 53%;
+    --priority-p2: 38 92% 50%;
+    --priority-p3: 220 9% 60%;
+
+    /* Teams */
+    --team-design: 262 83% 58%;
+    --team-copy: 199 89% 48%;
+    --team-social: 340 82% 52%;
+    --team-seo: 160 84% 39%;
+    --team-production: 24 95% 53%;
+    --team-direction: 280 70% 55%;
+
+    /* Gradients */
+    --gradient-factory: linear-gradient(135deg, hsl(238 75% 58%), hsl(250 90% 72%));
+    --gradient-factory-soft: linear-gradient(135deg, hsl(238 75% 58% / 0.08), hsl(250 90% 72% / 0.04));
+    --gradient-surface: linear-gradient(180deg, hsl(0 0% 100%), hsl(220 20% 98%));
+
+    /* Elevated shadows */
+    --shadow-elevated: 0 8px 32px -8px hsl(224 47% 8% / 0.08), 0 2px 6px -2px hsl(224 47% 8% / 0.04);
+    --shadow-glow: 0 0 0 1px hsl(238 75% 58% / 0.1), 0 8px 24px -8px hsl(238 75% 58% / 0.25);
+
+    /* Custom status colors */
+    --status-pending: 220 9% 46%;
+    --status-pending-bg: 220 14% 96%;
+    --status-progress: 38 92% 50%;
+    --status-progress-bg: 38 100% 95%;
+    --status-completed: 142 71% 45%;
+    --status-completed-bg: 142 76% 95%;
+
+    /* Board colors */
+    --board-design: 262 83% 58%;
+    --board-copys: 199 89% 48%;
+    --board-social: 340 82% 52%;
+    --board-seo: 160 84% 39%;
+
+    /* Sidebar — Factory dark */
+    --sidebar-background: 224 47% 6%;
+    --sidebar-foreground: 220 14% 92%;
+    --sidebar-primary: 238 75% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 224 32% 12%;
+    --sidebar-accent-foreground: 220 14% 96%;
+    --sidebar-border: 224 32% 14%;
+    --sidebar-ring: 238 75% 58%;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(220 9% 46% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(220 9% 46% / 0.1), 0 2px 4px -2px hsl(220 9% 46% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(220 9% 46% / 0.1), 0 4px 6px -4px hsl(220 9% 46% / 0.1);
+    --shadow-card: 0 1px 3px 0 hsl(220 9% 46% / 0.1), 0 1px 2px -1px hsl(220 9% 46% / 0.1);
+    --shadow-card-hover: 0 4px 12px 0 hsl(220 9% 46% / 0.15), 0 2px 4px -2px hsl(220 9% 46% / 0.1);
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 220 14% 96%;
+
+    --card: 217 32% 17%;
+    --card-foreground: 220 14% 96%;
+
+    --popover: 217 32% 17%;
+    --popover-foreground: 220 14% 96%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 32% 17%;
+    --secondary-foreground: 220 14% 96%;
+
+    --muted: 217 32% 17%;
+    --muted-foreground: 220 9% 64%;
+
+    --accent: 217 32% 17%;
+    --accent-foreground: 220 14% 96%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 220 14% 96%;
+
+    --border: 217 32% 17%;
+    --input: 217 32% 17%;
+    --ring: 212 26% 83%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 3px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
+/* Drag and drop styles */
+.task-card-dragging {
+  opacity: 0.5;
+  transform: rotate(3deg);
+}
+
+.column-drag-over {
+  background: hsl(var(--primary) / 0.05);
+  border: 2px dashed hsl(var(--primary) / 0.3);
+}
+
+/* Rich Text Editor - Lists */
+.ProseMirror ul:not([data-type="taskList"]) {
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.ProseMirror ul:not([data-type="taskList"]) li {
+  margin: 0.25rem 0;
+}
+
+/* Bullet list styles via data attribute */
+.ProseMirror ul.list-disc {
+  list-style-type: disc;
+}
+
+.ProseMirror ul.list-circle {
+  list-style-type: circle;
+}
+
+.ProseMirror ul.list-square {
+  list-style-type: square;
+}
+
+.ProseMirror ul.list-dash {
+  list-style-type: none;
+}
+
+.ProseMirror ul.list-dash li::before {
+  content: "– ";
+}
+
+.ProseMirror ul.list-arrow {
+  list-style-type: none;
+}
+
+.ProseMirror ul.list-arrow li::before {
+  content: "→ ";
+}
+
+/* Ordered Lists */
+.ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.ProseMirror ol li {
+  margin: 0.25rem 0;
+}
+
+/* Rich Text Editor - Task List Styles */
+.ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+
+.ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.25rem 0;
+}
+
+.ProseMirror ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  margin-top: 0.25rem;
+}
+
+.ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+  accent-color: hsl(var(--primary));
+}
+
+.ProseMirror ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+
+.ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Rich Text Editor - Text Alignment */
+.ProseMirror p[style*="text-align: left"],
+.ProseMirror h1[style*="text-align: left"],
+.ProseMirror h2[style*="text-align: left"] {
+  text-align: left;
+}
+
+.ProseMirror p[style*="text-align: center"],
+.ProseMirror h1[style*="text-align: center"],
+.ProseMirror h2[style*="text-align: center"] {
+  text-align: center;
+}
+
+.ProseMirror p[style*="text-align: right"],
+.ProseMirror h1[style*="text-align: right"],
+.ProseMirror h2[style*="text-align: right"] {
+  text-align: right;
+}
+
+.ProseMirror p[style*="text-align: justify"],
+.ProseMirror h1[style*="text-align: justify"],
+.ProseMirror h2[style*="text-align: justify"] {
+  text-align: justify;
+}
+
+/* Font sizes should be rendered via inline styles */
+.ProseMirror [style*="font-size"] {
+  line-height: 1.4;
+}
+
+/* Reading view list styles */
+.prose ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+}
+
+.prose ol {
+  list-style-type: decimal;
+  padding-left: 1.25rem;
+}
+
+.prose li {
+  margin: 0.125rem 0;
+}
+
+/* Link wrapping for long URLs */
+.ProseMirror a,
+.prose a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
