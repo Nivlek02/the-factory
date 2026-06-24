@@ -8,10 +8,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useFactoryStore } from '@/store/factoryStore';
+import { useFactoryStore, type FabricaBriefItem } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
 import { useAuthStore, AppRole } from '@/store/authStore';
-import { Plus, X, ChevronLeft, ChevronRight, FolderKanban, Users, CheckSquare, Check, Info, Target, GitBranch } from 'lucide-react';
+import { Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Users, CheckSquare, Check, Info, Target, GitBranch } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -38,6 +38,7 @@ const STEPS = [
   { key: 'data', label: 'Datos', icon: FolderKanban },
   { key: 'audience', label: 'Audiencia y Narrativa', icon: Target },
   { key: 'canales', label: 'Canales y Comportamiento', icon: GitBranch },
+  { key: 'fabrica', label: 'Fábrica', icon: Cog },
   { key: 'team', label: 'Equipo', icon: Users },
   { key: 'tasks', label: 'Tareas', icon: CheckSquare },
 ] as const;
@@ -88,6 +89,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const [canalesRows, setCanalesRows] = useState<{ id: string; canal: string; dia: string; copy: string; segmento: string }[]>([]);
   const [loopsRows, setLoopsRows] = useState<{ id: string; disparador: string; reaccion: string; responsable: string }[]>([]);
+  const [fabricaBriefs, setFabricaBriefs] = useState<FabricaBriefItem[]>([]);
 
   const addCanalRow = () => {
     setCanalesRows((prev) => [...prev, { id: uid(), canal: 'Correo', dia: '', copy: '', segmento: '' }]);
@@ -103,6 +105,42 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   const updateLoopRow = (id: string, field: string, value: string) =>
     setLoopsRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
 
+  // ─── Auto-populate Fábrica briefs from canales ───
+  const buildFabricaBriefs = (canales: typeof canalesRows): FabricaBriefItem[] => {
+    const items: FabricaBriefItem[] = [];
+    const addItem = (roleId: string, roleLabel: string, tarea: string) => {
+      items.push({ id: uid(), roleId, roleLabel, tarea, checked: false });
+    };
+    // Standard items always present
+    addItem('produccion', 'Canales directos', 'Landing page');
+    addItem('diseno', 'Diseñador', 'Diseño de piezas gráficas');
+    addItem('copy', 'Copy', 'Copies / redacción de contenido');
+    // Conditional items from canales
+    const canalesSet = new Set(canales.map(r => r.canal));
+    if (canalesSet.has('Correo') || canalesSet.has('WhatsApp') || canalesSet.has('SMS') || canalesSet.has('Call Center')) {
+      addItem('produccion', 'Canales directos', 'Configurar canales de comunicación directa');
+    }
+    if (canalesSet.has('Meta Ads')) {
+      addItem('social', 'Traficker', 'Configurar campaña en Meta Ads');
+    }
+    if (canalesSet.has('RRSS')) {
+      addItem('social', 'Social', 'Plan de contenido para redes sociales');
+    }
+    return items;
+  };
+
+  // Rebuild when canalesRows change, but only when there are rows
+  useEffect(() => {
+    if (canalesRows.length > 0) {
+      setFabricaBriefs(buildFabricaBriefs(canalesRows));
+    } else {
+      setFabricaBriefs([]);
+    }
+  }, [canalesRows]);
+
+  const toggleFabricaBrief = (id: string) =>
+    setFabricaBriefs((prev) => prev.map((b) => (b.id === id ? { ...b, checked: !b.checked } : b)));
+
   const reset = () => {
     setStep(0);
     setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '', strategistName: '' });
@@ -111,6 +149,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
     setAudiencia({ segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' });
     setCanalesRows([]);
     setLoopsRows([]);
+    setFabricaBriefs([]);
   };
 
   const close = () => { onOpenChange(false); setTimeout(reset, 300); };
@@ -166,6 +205,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
       },
       canales: canalesRows,
       loops: loopsRows,
+      fabricaBriefs: fabricaBriefs,
     });
     roleDrafts.forEach((r) => {
       addRoleGroup(id, r.roleId, r.roleLabel);
@@ -525,8 +565,67 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
             </div>
           )}
 
-          {/* STEP 4 — TEAM */}
+          {/* STEP 4 — FÁBRICA */}
           {step === 3 && (
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
+                  Brief por rol <span className="text-xs font-normal normal-case text-muted-foreground">— revisa y confirma las activaciones</span>
+                </Label>
+                {fabricaBriefs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic text-center py-6">
+                    Completa la sección de canales primero para generar los briefs automáticos.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {(() => {
+                      const grouped = fabricaBriefs.reduce<Record<string, FabricaBriefItem[]>>((acc, item) => {
+                        const key = item.roleLabel;
+                        if (!acc[key]) acc[key] = [];
+                        acc[key].push(item);
+                        return acc;
+                      }, {});
+                      return Object.entries(grouped).map(([roleLabel, items]) => (
+                        <div key={roleLabel} className="rounded-lg border border-border/60 bg-card p-3">
+                          <h4 className="text-xs font-semibold uppercase tracking-wider text-factory mb-2">
+                            {roleLabel}
+                          </h4>
+                          <div className="space-y-1.5">
+                            {items.map((item) => (
+                              <label
+                                key={item.id}
+                                className="flex items-start gap-2.5 p-1.5 rounded-md hover:bg-muted/40 cursor-pointer transition-colors"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={item.checked}
+                                  onChange={() => toggleFabricaBrief(item.id)}
+                                  className="mt-0.5 h-4 w-4 rounded border-muted-foreground text-factory focus:ring-factory"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <span className={`text-sm ${item.checked ? 'line-through text-muted-foreground' : ''}`}>
+                                    {item.tarea}
+                                  </span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
+              <div className="border-t pt-3 flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {fabricaBriefs.filter((b) => b.checked).length} de {fabricaBriefs.length} activaciones confirmadas
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 5 — TEAM */}
+          {step === 4 && (
             <div className="space-y-4">
               <div className="flex gap-2">
                 <Select value={pickRole} onValueChange={setPickRole}>
@@ -564,8 +663,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
             </div>
           )}
 
-          {/* STEP 5 — TASKS */}
-          {step === 4 && (
+          {/* STEP 6 — TASKS */}
+          {step === 5 && (
             <div className="space-y-4">
               <div className="rounded-lg border border-border/60 p-3 space-y-2 bg-muted/30">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nueva tarea inicial</p>

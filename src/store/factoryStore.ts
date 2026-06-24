@@ -26,6 +26,14 @@ export interface LoopRow {
   responsable: string;
 }
 
+export interface FabricaBriefItem {
+  id: string;
+  roleId: string;
+  roleLabel: string;
+  tarea: string;
+  checked: boolean;
+}
+
 export type ProjectPriority = 'P0' | 'P1' | 'P2';
 export type ProjectTaskStatus = 'pending' | 'in_progress' | 'in_review' | 'completed';
 
@@ -100,6 +108,7 @@ export interface FactoryProject {
   audienciaNarrativa: AudienciaNarrativaData;
   canales: CanalRow[];
   loops: LoopRow[];
+  fabricaBriefs: FabricaBriefItem[];
 }
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -111,7 +120,7 @@ interface FactoryStore {
 
   hydrate: () => Promise<void>;
 
-  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops'>) => string;
+  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs'>) => string;
   updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'dueDate'>>) => void;
   deleteProject: (id: string) => void;
 
@@ -168,6 +177,7 @@ const rowToProject = (row: any): FactoryProject => {
     audienciaNarrativa: data.audienciaNarrativa ?? { segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' },
     canales: data.canales ?? [],
     loops: data.loops ?? [],
+    fabricaBriefs: data.fabricaBriefs ?? [],
   };
 };
 
@@ -188,6 +198,7 @@ const projectToRow = (p: FactoryProject) => ({
       audienciaNarrativa: p.audienciaNarrativa,
       canales: p.canales,
       loops: p.loops,
+      fabricaBriefs: p.fabricaBriefs,
     },
 });
 
@@ -252,6 +263,7 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       audienciaNarrativa: data.audienciaNarrativa ?? { segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' },
       canales: data.canales ?? [],
       loops: data.loops ?? [],
+      fabricaBriefs: data.fabricaBriefs ?? [],
       id,
       createdAt: new Date().toISOString(),
       roleGroups: [],
