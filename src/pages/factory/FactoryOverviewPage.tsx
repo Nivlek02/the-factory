@@ -114,7 +114,7 @@ const projects = [
     name: 'SEO Portal Institucional',
     client: 'Portal LATAM',
     progress: 23,
-    state: 'planning',
+    state: 'planeacion',
     teams: ['team-seo', 'team-copy'],
     due: '15 Feb',
     priority: 'P2',
@@ -122,7 +122,7 @@ const projects = [
 ];
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
-  planning: { label: 'Planning', cls: 'bg-state-planning-bg text-state-planning' },
+  planning: { label: 'Planeacion', cls: 'bg-state-planning-bg text-state-planning' },
   in_progress: { label: 'En proceso', cls: 'bg-state-progress-bg text-state-progress' },
   review: { label: 'En revisión', cls: 'bg-state-review-bg text-state-review' },
   blocked: { label: 'Bloqueado', cls: 'bg-state-blocked-bg text-state-blocked' },
