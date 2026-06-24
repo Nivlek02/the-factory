@@ -13,6 +13,7 @@ const DEFAULT_ROLES: CustomRole[] = [
   { id: 'social',     label: 'Social Media',  isDefault: true },
   { id: 'seo',        label: 'SEO',           isDefault: true },
   { id: 'produccion', label: 'Producción',    isDefault: true },
+  { id: 'estratega',  label: 'Estratega',     isDefault: true },
 ];
 
 interface RolesStore {

@@ -66,6 +66,7 @@ export interface FactoryProject {
   client: string;
   state: ProjectState;
   priority: ProjectPriority;
+  startDate: string | null;
   dueDate: string | null;
   createdAt: string;
   roleGroups: ProjectRoleGroup[];
@@ -82,7 +83,7 @@ interface FactoryStore {
 
   hydrate: () => Promise<void>;
 
-  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'dueDate'>) => string;
+  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate'>) => string;
   updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'dueDate'>>) => void;
   deleteProject: (id: string) => void;
 
@@ -129,6 +130,7 @@ const rowToProject = (row: any): FactoryProject => {
     client: row.client ?? '',
     state: row.state as ProjectState,
     priority: row.priority as ProjectPriority,
+    startDate: data.startDate ?? null,
     dueDate: row.due_date,
     createdAt: row.created_at,
     roleGroups: data.roleGroups ?? [],
@@ -140,16 +142,17 @@ const rowToProject = (row: any): FactoryProject => {
 const projectToRow = (p: FactoryProject) => ({
   id: p.id,
   name: p.name,
-  description: p.description,
-  client: p.client,
-  state: p.state,
-  priority: p.priority,
-  due_date: p.dueDate,
-  data: {
-    roleGroups: p.roleGroups,
-    tasks: p.tasks,
-    strategyNodes: p.strategyNodes,
-  },
+    description: p.description,
+    client: p.client,
+    state: p.state,
+    priority: p.priority,
+    due_date: p.dueDate,
+    data: {
+      roleGroups: p.roleGroups,
+      tasks: p.tasks,
+      strategyNodes: p.strategyNodes,
+      startDate: p.startDate,
+    },
 });
 
 const pendingSync = new Map<string, ReturnType<typeof setTimeout>>();
@@ -207,6 +210,8 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
     const id = `proj-${uid()}`;
     const project: FactoryProject = {
       ...data,
+      startDate: data.startDate ?? null,
+      dueDate: data.dueDate ?? null,
       id,
       createdAt: new Date().toISOString(),
       roleGroups: [],

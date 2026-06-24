@@ -48,6 +48,7 @@ const ROLE_ID_TO_APP_ROLE: Record<string, AppRole | undefined> = {
   seo: 'seo',
   produccion: 'manager',
   social: undefined, // no direct app_role -> fallback to mercadeo/manager pool
+  estratega: 'mercadeo',
 };
 
 // The role that is allowed to remain unassigned in the team step.
@@ -63,9 +64,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   useEffect(() => { if (open && users.length === 0) loadUsers(); }, [open, users.length, loadUsers]);
 
   const [step, setStep] = useState(0);
+  const today = () => new Date().toISOString().split('T')[0];
   const [data, setData] = useState({
     name: '', description: '', client: '',
     state: 'planning' as const, priority: 'P1' as 'P0'|'P1'|'P2',
+    startDate: today(),
     dueDate: '',
   });
   const [roleDrafts, setRoleDrafts] = useState<RoleDraft[]>([]);
@@ -73,7 +76,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
 
   const reset = () => {
     setStep(0);
-    setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', dueDate: '' });
+    setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '' });
     setRoleDrafts([]);
     setTasks([]);
   };
@@ -119,6 +122,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
       client: data.client.trim(),
       state: data.state,
       priority: data.priority,
+      startDate: data.startDate || null,
       dueDate: data.dueDate || null,
     });
     roleDrafts.forEach((r) => {
@@ -180,7 +184,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
           {step === 0 && (
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Nombre del proyecto *</Label>
+                <Label>Nombre de producto o campaña *</Label>
                 <Input
                   placeholder="Ej. Evento Internacional 2025"
                   value={data.name}
@@ -197,7 +201,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                   onChange={(e) => setData((d) => ({ ...d, description: e.target.value }))}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <Label>Cliente / Área</Label>
                   <Input
@@ -207,7 +211,15 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Fecha límite</Label>
+                  <Label>Fecha de inicio</Label>
+                  <Input
+                    type="date"
+                    value={data.startDate}
+                    onChange={(e) => setData((d) => ({ ...d, startDate: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Fecha de finalización</Label>
                   <Input
                     type="date"
                     value={data.dueDate}
