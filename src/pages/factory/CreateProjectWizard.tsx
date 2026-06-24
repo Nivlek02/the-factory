@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { useFactoryStore } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
 import { useAuthStore, AppRole } from '@/store/authStore';
-import { Plus, X, ChevronLeft, ChevronRight, FolderKanban, Users, CheckSquare, Check, Info, Target } from 'lucide-react';
+import { Plus, X, ChevronLeft, ChevronRight, FolderKanban, Users, CheckSquare, Check, Info, Target, GitBranch } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -37,6 +37,7 @@ type TaskDraft = {
 const STEPS = [
   { key: 'data', label: 'Datos', icon: FolderKanban },
   { key: 'audience', label: 'Audiencia y Narrativa', icon: Target },
+  { key: 'canales', label: 'Canales y Comportamiento', icon: GitBranch },
   { key: 'team', label: 'Equipo', icon: Users },
   { key: 'tasks', label: 'Tareas', icon: CheckSquare },
 ] as const;
@@ -84,12 +85,32 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
     bigIdea: '',
   });
 
+  const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const [canalesRows, setCanalesRows] = useState<{ id: string; canal: string; dia: string; copy: string; segmento: string }[]>([]);
+  const [loopsRows, setLoopsRows] = useState<{ id: string; disparador: string; reaccion: string; responsable: string }[]>([]);
+
+  const addCanalRow = () => {
+    setCanalesRows((prev) => [...prev, { id: uid(), canal: 'Correo', dia: '', copy: '', segmento: '' }]);
+  };
+  const removeCanalRow = (id: string) => setCanalesRows((prev) => prev.filter((r) => r.id !== id));
+  const updateCanalRow = (id: string, field: string, value: string) =>
+    setCanalesRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+
+  const addLoopRow = () => {
+    setLoopsRows((prev) => [...prev, { id: uid(), disparador: '', reaccion: '', responsable: '' }]);
+  };
+  const removeLoopRow = (id: string) => setLoopsRows((prev) => prev.filter((r) => r.id !== id));
+  const updateLoopRow = (id: string, field: string, value: string) =>
+    setLoopsRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+
   const reset = () => {
     setStep(0);
     setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '', strategistName: '' });
     setRoleDrafts([]);
     setTasks([]);
     setAudiencia({ segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' });
+    setCanalesRows([]);
+    setLoopsRows([]);
   };
 
   const close = () => { onOpenChange(false); setTimeout(reset, 300); };
@@ -143,6 +164,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
         promesa: audiencia.promesa.trim(),
         bigIdea: audiencia.bigIdea.trim(),
       },
+      canales: canalesRows,
+      loops: loopsRows,
     });
     roleDrafts.forEach((r) => {
       addRoleGroup(id, r.roleId, r.roleLabel);
@@ -372,8 +395,138 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
             </div>
           )}
 
-          {/* STEP 3 — TEAM */}
+          {/* STEP 3 — CANALES Y COMPORTAMIENTO */}
           {step === 2 && (
+            <div className="space-y-4">
+              {/* ─── Plan de canales ─── */}
+              <div>
+                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
+                  Plan de canales
+                </Label>
+                <div className="space-y-2">
+                  {/* Header */}
+                  <div className="grid grid-cols-[100px_70px_1fr_100px] gap-2 px-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Canal</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Día</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Copy / Ángulo del toque</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-right">Segmento</span>
+                  </div>
+                  {canalesRows.map((row) => (
+                    <div key={row.id} className="grid grid-cols-[100px_70px_1fr_100px_24px] gap-2 items-center rounded-lg border border-border/60 bg-card p-2">
+                      <select
+                        value={row.canal}
+                        onChange={(e) => updateCanalRow(row.id, 'canal', e.target.value)}
+                        className="text-xs bg-transparent border-none outline-none cursor-pointer font-medium"
+                      >
+                        <option value="Correo">Correo</option>
+                        <option value="WhatsApp">WhatsApp</option>
+                        <option value="SMS">SMS</option>
+                        <option value="Meta Ads">Meta Ads</option>
+                        <option value="RRSS">RRSS</option>
+                        <option value="Call Center">Call Center</option>
+                      </select>
+                      <input
+                        placeholder="Ej: D-14"
+                        value={row.dia}
+                        onChange={(e) => updateCanalRow(row.id, 'dia', e.target.value)}
+                        className="text-xs bg-transparent border-none outline-none w-full"
+                      />
+                      <input
+                        placeholder="Ángulo del toque…"
+                        value={row.copy}
+                        onChange={(e) => updateCanalRow(row.id, 'copy', e.target.value)}
+                        className="text-xs bg-transparent border-none outline-none w-full"
+                      />
+                      <input
+                        placeholder="Segmento"
+                        value={row.segmento}
+                        onChange={(e) => updateCanalRow(row.id, 'segmento', e.target.value)}
+                        className="text-xs bg-transparent border-none outline-none w-full text-right"
+                      />
+                      <button
+                        onClick={() => removeCanalRow(row.id)}
+                        className="text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={addCanalRow}
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Agregar toque
+                  </button>
+                </div>
+              </div>
+
+              {/* ─── Loops de comportamiento ─── */}
+              <div className="border-t pt-4">
+                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
+                  Loops de comportamiento (estrategia de canales)
+                </Label>
+                <p className="text-xs text-muted-foreground mb-3 italic">
+                  Qué sucede después de los toques programados — cada acción del cliente dispara una reacción diseñada.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-muted text-left">
+                        <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2 rounded-l">Disparador</th>
+                        <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2">Reacción diseñada</th>
+                        <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2 rounded-r">Responsable</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loopsRows.map((row) => (
+                        <tr key={row.id} className="border-b border-border/60">
+                          <td className="p-1.5">
+                            <input
+                              placeholder="Ej: Abrió correo pero no hizo clic"
+                              value={row.disparador}
+                              onChange={(e) => updateLoopRow(row.id, 'disparador', e.target.value)}
+                              className="w-full bg-transparent border-none outline-none text-xs py-1"
+                            />
+                          </td>
+                          <td className="p-1.5">
+                            <input
+                              placeholder="Reacción diseñada…"
+                              value={row.reaccion}
+                              onChange={(e) => updateLoopRow(row.id, 'reaccion', e.target.value)}
+                              className="w-full bg-transparent border-none outline-none text-xs py-1"
+                            />
+                          </td>
+                          <td className="p-1.5 flex items-center gap-1">
+                            <input
+                              placeholder="Responsable"
+                              value={row.responsable}
+                              onChange={(e) => updateLoopRow(row.id, 'responsable', e.target.value)}
+                              className="flex-1 bg-transparent border-none outline-none text-xs py-1"
+                            />
+                            <button
+                              onClick={() => removeLoopRow(row.id)}
+                              className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  onClick={addLoopRow}
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-2"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Agregar disparador
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4 — TEAM */}
+          {step === 3 && (
             <div className="space-y-4">
               <div className="flex gap-2">
                 <Select value={pickRole} onValueChange={setPickRole}>
@@ -411,8 +564,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
             </div>
           )}
 
-          {/* STEP 4 — TASKS */}
-          {step === 3 && (
+          {/* STEP 5 — TASKS */}
+          {step === 4 && (
             <div className="space-y-4">
               <div className="rounded-lg border border-border/60 p-3 space-y-2 bg-muted/30">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nueva tarea inicial</p>
