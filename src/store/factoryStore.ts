@@ -32,6 +32,11 @@ export interface FabricaBriefItem {
   roleLabel: string;
   tarea: string;
   checked: boolean;
+  /** Estrategia de loop — qué medir para saber si la activación está funcionando */
+  metrica?: string;
+  lineaBase?: string;
+  objetivo?: string;
+  mejora?: string;
 }
 
 export type ProjectPriority = 'P0' | 'P1' | 'P2';

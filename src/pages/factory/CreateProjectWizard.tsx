@@ -1,17 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { useFactoryStore, type FabricaBriefItem } from '@/store/factoryStore';
-import { useRolesStore } from '@/store/rolesStore';
-import { useAuthStore, AppRole } from '@/store/authStore';
-import { Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Users, CheckSquare, Check, Info, Target, GitBranch } from 'lucide-react';
+import { Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Check, Target, GitBranch } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -19,52 +13,15 @@ interface Props {
   onCreated: (projectId: string) => void;
 }
 
-type RoleDraft = {
-  roleId: string;
-  roleLabel: string;
-  members: string[];
-};
-
-type TaskDraft = {
-  id: string;
-  title: string;
-  description: string;
-  roleId: string;
-  memberName: string;
-  priority: '' | 'high' | 'medium';
-};
-
 const STEPS = [
   { key: 'data', label: 'Datos', icon: FolderKanban },
   { key: 'audience', label: 'Audiencia y Narrativa', icon: Target },
   { key: 'canales', label: 'Canales y Comportamiento', icon: GitBranch },
   { key: 'fabrica', label: 'Fábrica', icon: Cog },
-  { key: 'team', label: 'Equipo', icon: Users },
-  { key: 'tasks', label: 'Tareas', icon: CheckSquare },
 ] as const;
 
-// Maps the local "role" (rolesStore id) to the global AppRole used by the
-// authentication system, so we can pull real users for each role.
-const ROLE_ID_TO_APP_ROLE: Record<string, AppRole | undefined> = {
-  copy: 'copy',
-  diseno: 'disenador',
-  seo: 'seo',
-  produccion: 'manager',
-  social: undefined, // no direct app_role -> fallback to mercadeo/manager pool
-  estratega: 'mercadeo',
-};
-
-// The role that is allowed to remain unassigned in the team step.
-const UNASSIGNED_ALLOWED_ROLE_IDS = new Set(['diseno']);
-
 const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
-  const { roles } = useRolesStore();
-  const { users, loadUsers } = useAuthStore();
-  const {
-    addProject, addRoleGroup, addMemberToRole, addTask,
-  } = useFactoryStore();
-
-  useEffect(() => { if (open && users.length === 0) loadUsers(); }, [open, users.length, loadUsers]);
+  const { addProject } = useFactoryStore();
 
   const [step, setStep] = useState(0);
   const today = () => new Date().toISOString().split('T')[0];
@@ -75,8 +32,6 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
     dueDate: '',
     strategistName: '',
   });
-  const [roleDrafts, setRoleDrafts] = useState<RoleDraft[]>([]);
-  const [tasks, setTasks] = useState<TaskDraft[]>([]);
 
   const [audiencia, setAudiencia] = useState({
     segmentos: [] as string[],
@@ -141,11 +96,12 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   const toggleFabricaBrief = (id: string) =>
     setFabricaBriefs((prev) => prev.map((b) => (b.id === id ? { ...b, checked: !b.checked } : b)));
 
+  const updateFabricaLoop = (id: string, field: string, value: string) =>
+    setFabricaBriefs((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)));
+
   const reset = () => {
     setStep(0);
     setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '', strategistName: '' });
-    setRoleDrafts([]);
-    setTasks([]);
     setAudiencia({ segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' });
     setCanalesRows([]);
     setLoopsRows([]);
@@ -153,35 +109,6 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   };
 
   const close = () => { onOpenChange(false); setTimeout(reset, 300); };
-
-  const availableRoles = roles.filter((r) => !roleDrafts.some((d) => d.roleId === r.id));
-  const [pickRole, setPickRole] = useState('');
-  const addRole = () => {
-    const r = roles.find((x) => x.id === pickRole);
-    if (!r) return;
-    setRoleDrafts((d) => [...d, { roleId: r.id, roleLabel: r.label, members: [] }]);
-    setPickRole('');
-  };
-  const removeRole = (id: string) => setRoleDrafts((d) => d.filter((x) => x.roleId !== id));
-  const addMember = (roleId: string, name: string) => {
-    const n = name.trim(); if (!n) return;
-    setRoleDrafts((d) => d.map((r) =>
-      r.roleId === roleId && !r.members.includes(n)
-        ? { ...r, members: [...r.members, n] }
-        : r
-    ));
-  };
-  const removeMember = (roleId: string, idx: number) =>
-    setRoleDrafts((d) => d.map((r) => r.roleId === roleId ? { ...r, members: r.members.filter((_, i) => i !== idx) } : r));
-
-  // ─── Step Tasks helpers
-  const [taskDraft, setTaskDraft] = useState<TaskDraft>({ id: '', title: '', description: '', roleId: '', memberName: '', priority: '' });
-  const addTaskDraft = () => {
-    if (!taskDraft.title.trim() || !taskDraft.roleId) return;
-    setTasks((ts) => [...ts, { ...taskDraft, id: `${Date.now()}-${Math.random()}` }]);
-    setTaskDraft({ id: '', title: '', description: '', roleId: '', memberName: '', priority: '' });
-  };
-  const removeTask = (id: string) => setTasks((ts) => ts.filter((t) => t.id !== id));
 
   const canNext = step === 0 ? data.name.trim().length > 0 : true;
   const isLast = step === STEPS.length - 1;
@@ -206,23 +133,6 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
       canales: canalesRows,
       loops: loopsRows,
       fabricaBriefs: fabricaBriefs,
-    });
-    roleDrafts.forEach((r) => {
-      addRoleGroup(id, r.roleId, r.roleLabel);
-      r.members.forEach((m) => addMemberToRole(id, r.roleId, m));
-    });
-    tasks.forEach((t) => {
-      const role = roleDrafts.find((r) => r.roleId === t.roleId);
-      addTask(id, {
-        title: t.title.trim(),
-        description: t.description.trim(),
-        assignedMemberId: null,
-        assignedMemberName: t.memberName || null,
-        assignedRoleLabel: role?.roleLabel || null,
-        status: 'pending',
-        priority: t.priority || null,
-        dueDate: null,
-      });
     });
     onCreated(id);
     close();
@@ -570,7 +480,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
             <div className="space-y-4">
               <div>
                 <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
-                  Brief por rol <span className="text-xs font-normal normal-case text-muted-foreground">— revisa y confirma las activaciones</span>
+                  Brief por rol <span className="text-xs font-normal normal-case text-muted-foreground">— activa y define la estrategia de mejora continua</span>
                 </Label>
                 {fabricaBriefs.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic text-center py-6">
@@ -590,24 +500,70 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                           <h4 className="text-xs font-semibold uppercase tracking-wider text-factory mb-2">
                             {roleLabel}
                           </h4>
-                          <div className="space-y-1.5">
+                          <div className="space-y-2">
                             {items.map((item) => (
-                              <label
-                                key={item.id}
-                                className="flex items-start gap-2.5 p-1.5 rounded-md hover:bg-muted/40 cursor-pointer transition-colors"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={item.checked}
-                                  onChange={() => toggleFabricaBrief(item.id)}
-                                  className="mt-0.5 h-4 w-4 rounded border-muted-foreground text-factory focus:ring-factory"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <span className={`text-sm ${item.checked ? 'line-through text-muted-foreground' : ''}`}>
-                                    {item.tarea}
-                                  </span>
-                                </div>
-                              </label>
+                              <div key={item.id}>
+                                <label className="flex items-start gap-2.5 p-1.5 rounded-md hover:bg-muted/40 cursor-pointer transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.checked}
+                                    onChange={() => toggleFabricaBrief(item.id)}
+                                    className="mt-0.5 h-4 w-4 rounded border-muted-foreground text-factory focus:ring-factory"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <span className={`text-sm ${item.checked ? 'line-through text-muted-foreground' : ''}`}>
+                                      {item.tarea}
+                                    </span>
+                                  </div>
+                                </label>
+
+                                {/* ─── Loop strategy form (visible when activated) ─── */}
+                                {item.checked && (
+                                  <div className="ml-7 mt-1 mb-2 p-3 rounded-md bg-muted/30 border border-border/40 space-y-2">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                      Estrategia de mejora continua
+                                    </p>
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <div className="space-y-0.5">
+                                        <Label className="text-[10px] text-muted-foreground">Métrica / KPI</Label>
+                                        <Input
+                                          placeholder="Ej: Tasa de apertura"
+                                          value={item.metrica ?? ''}
+                                          onChange={(e) => updateFabricaLoop(item.id, 'metrica', e.target.value)}
+                                          className="h-7 text-xs"
+                                        />
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        <Label className="text-[10px] text-muted-foreground">Línea base</Label>
+                                        <Input
+                                          placeholder="Ej: 15%"
+                                          value={item.lineaBase ?? ''}
+                                          onChange={(e) => updateFabricaLoop(item.id, 'lineaBase', e.target.value)}
+                                          className="h-7 text-xs"
+                                        />
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        <Label className="text-[10px] text-muted-foreground">Objetivo</Label>
+                                        <Input
+                                          placeholder="Ej: 25%"
+                                          value={item.objetivo ?? ''}
+                                          onChange={(e) => updateFabricaLoop(item.id, 'objetivo', e.target.value)}
+                                          className="h-7 text-xs"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <Label className="text-[10px] text-muted-foreground">Estrategia de mejora</Label>
+                                      <Input
+                                        placeholder="¿Qué vamos a hacer para mejorar este indicador?"
+                                        value={item.mejora ?? ''}
+                                        onChange={(e) => updateFabricaLoop(item.id, 'mejora', e.target.value)}
+                                        className="h-7 text-xs"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             ))}
                           </div>
                         </div>
@@ -621,112 +577,6 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                   {fabricaBriefs.filter((b) => b.checked).length} de {fabricaBriefs.length} activaciones confirmadas
                 </span>
               </div>
-            </div>
-          )}
-
-          {/* STEP 5 — TEAM */}
-          {step === 4 && (
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <Select value={pickRole} onValueChange={setPickRole}>
-                  <SelectTrigger><SelectValue placeholder="Selecciona un rol…" /></SelectTrigger>
-                  <SelectContent>
-                    {availableRoles.length === 0
-                      ? <SelectItem value="__none__" disabled>No quedan roles disponibles</SelectItem>
-                      : availableRoles.map((r) => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)
-                    }
-                  </SelectContent>
-                </Select>
-                <Button variant="outline" onClick={addRole} disabled={!pickRole}>
-                  <Plus className="h-4 w-4" /> Agregar rol
-                </Button>
-              </div>
-
-              {roleDrafts.length === 0 && (
-                <p className="text-sm text-muted-foreground italic text-center py-6">
-                  Aún no has agregado roles. Selecciona uno arriba para empezar.
-                </p>
-              )}
-
-              <div className="space-y-3">
-                {roleDrafts.map((r) => (
-                  <RoleMemberRow
-                    key={r.roleId}
-                    role={r}
-                    users={users}
-                    onAddMember={(name) => addMember(r.roleId, name)}
-                    onRemoveMember={(i) => removeMember(r.roleId, i)}
-                    onRemoveRole={() => removeRole(r.roleId)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 6 — TASKS */}
-          {step === 5 && (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-border/60 p-3 space-y-2 bg-muted/30">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nueva tarea inicial</p>
-                <Input
-                  placeholder="Título de la tarea"
-                  value={taskDraft.title}
-                  onChange={(e) => setTaskDraft((t) => ({ ...t, title: e.target.value }))}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <Select value={taskDraft.roleId} onValueChange={(v) => setTaskDraft((t) => ({ ...t, roleId: v, memberName: '' }))}>
-                    <SelectTrigger><SelectValue placeholder="Asignar a rol…" /></SelectTrigger>
-                    <SelectContent>
-                      {roleDrafts.length === 0
-                        ? <SelectItem value="__n__" disabled>Agrega roles primero</SelectItem>
-                        : roleDrafts.map((r) => <SelectItem key={r.roleId} value={r.roleId}>{r.roleLabel}</SelectItem>)
-                      }
-                    </SelectContent>
-                  </Select>
-                  <Select value={taskDraft.memberName} onValueChange={(v) => setTaskDraft((t) => ({ ...t, memberName: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Persona (opcional)" /></SelectTrigger>
-                    <SelectContent>
-                      {(roleDrafts.find((r) => r.roleId === taskDraft.roleId)?.members ?? []).length === 0
-                        ? <SelectItem value="__n__" disabled>Sin personas en el rol</SelectItem>
-                        : roleDrafts.find((r) => r.roleId === taskDraft.roleId)!.members.map((m) =>
-                            <SelectItem key={m} value={m}>{m}</SelectItem>
-                          )
-                      }
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex justify-end">
-                  <Button size="sm" onClick={addTaskDraft} disabled={!taskDraft.title.trim() || !taskDraft.roleId}>
-                    <Plus className="h-4 w-4" /> Agregar tarea
-                  </Button>
-                </div>
-              </div>
-
-              {tasks.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic text-center py-4">
-                  Las tareas iniciales son opcionales. Podrás agregar más después en el mapa.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {tasks.map((t) => {
-                    const role = roleDrafts.find((r) => r.roleId === t.roleId);
-                    return (
-                      <div key={t.id} className="flex items-center gap-2 p-2 rounded-md bg-card border border-border/60">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{t.title}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {role?.roleLabel}{t.memberName && ` · ${t.memberName}`}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className="text-[10px]">{role?.roleLabel}</Badge>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeTask(t.id)}>
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -747,92 +597,6 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-};
-
-// ─── Inline sub-components ────────────────────────────────────────────────────
-
-const RoleMemberRow = ({ role, users, onAddMember, onRemoveMember, onRemoveRole }: {
-  role: RoleDraft;
-  users: ReturnType<typeof useAuthStore.getState>['users'];
-  onAddMember: (name: string) => void;
-  onRemoveMember: (i: number) => void;
-  onRemoveRole: () => void;
-}) => {
-  const isDesign = UNASSIGNED_ALLOWED_ROLE_IDS.has(role.roleId);
-  const appRole = ROLE_ID_TO_APP_ROLE[role.roleId];
-
-  // Pool of project-wide people that match this role
-  const pool = useMemo(() => {
-    if (!appRole) return users;
-    return users.filter((u) => u.role === appRole);
-  }, [users, appRole]);
-
-  const available = pool.filter((u) => !role.members.includes(u.fullName));
-  const [pick, setPick] = useState('');
-
-  return (
-    <div className="rounded-lg border border-border/60 p-3 bg-card">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold">{role.roleLabel}</span>
-          {isDesign && (
-            <Badge variant="outline" className="text-[9px] gap-1 h-5">
-              <Info className="h-2.5 w-2.5" /> Puede quedar sin asignar
-            </Badge>
-          )}
-        </div>
-        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={onRemoveRole}>
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {role.members.map((m, i) => (
-          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-xs">
-            {m}
-            <button onClick={() => onRemoveMember(i)} className="text-muted-foreground hover:text-destructive">
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-        {role.members.length === 0 && (
-          <span className="text-xs text-muted-foreground italic">
-            {isDesign ? 'Sin asignar (se asignará después)' : 'Sin personas en este rol'}
-          </span>
-        )}
-      </div>
-
-      {pool.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground italic">
-          {isDesign
-            ? 'No hay diseñadores creados. Puedes dejarlo así y asignar luego.'
-            : 'No hay personas creadas con este rol. Crea usuarios en Configuración.'}
-        </p>
-      ) : (
-        <div className="flex gap-1">
-          <Select value={pick} onValueChange={setPick}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder={available.length === 0 ? 'Todas agregadas' : 'Agregar persona…'} />
-            </SelectTrigger>
-            <SelectContent>
-              {available.length === 0
-                ? <SelectItem value="__n__" disabled>Todas las personas ya están agregadas</SelectItem>
-                : available.map((u) => (
-                    <SelectItem key={u.id} value={u.fullName}>{u.fullName}</SelectItem>
-                  ))}
-            </SelectContent>
-          </Select>
-          <Button
-            size="icon" variant="outline" className="h-8 w-8"
-            disabled={!pick}
-            onClick={() => { if (pick) { onAddMember(pick); setPick(''); } }}
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )}
-    </div>
   );
 };
 
