@@ -2,6 +2,14 @@ import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 
 export type ProjectState = 'planning' | 'in_progress' | 'review' | 'blocked' | 'done';
+
+export interface AudienciaNarrativaData {
+  segmentos: string[];
+  metaInscripciones: string;
+  dolor: string;
+  promesa: string;
+  bigIdea: string;
+}
 export type ProjectPriority = 'P0' | 'P1' | 'P2';
 export type ProjectTaskStatus = 'pending' | 'in_progress' | 'in_review' | 'completed';
 
@@ -72,6 +80,8 @@ export interface FactoryProject {
   roleGroups: ProjectRoleGroup[];
   tasks: ProjectTask[];
   strategyNodes: StrategyNode[];
+  strategistName: string;
+  audienciaNarrativa: AudienciaNarrativaData;
 }
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -83,7 +93,7 @@ interface FactoryStore {
 
   hydrate: () => Promise<void>;
 
-  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate'>) => string;
+  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa'>) => string;
   updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'dueDate'>>) => void;
   deleteProject: (id: string) => void;
 
@@ -136,6 +146,8 @@ const rowToProject = (row: any): FactoryProject => {
     roleGroups: data.roleGroups ?? [],
     tasks: data.tasks ?? [],
     strategyNodes: data.strategyNodes ?? [],
+    strategistName: data.strategistName ?? '',
+    audienciaNarrativa: data.audienciaNarrativa ?? { segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' },
   };
 };
 
@@ -152,6 +164,8 @@ const projectToRow = (p: FactoryProject) => ({
       tasks: p.tasks,
       strategyNodes: p.strategyNodes,
       startDate: p.startDate,
+      strategistName: p.strategistName,
+      audienciaNarrativa: p.audienciaNarrativa,
     },
 });
 
@@ -212,6 +226,8 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       ...data,
       startDate: data.startDate ?? null,
       dueDate: data.dueDate ?? null,
+      strategistName: data.strategistName ?? '',
+      audienciaNarrativa: data.audienciaNarrativa ?? { segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' },
       id,
       createdAt: new Date().toISOString(),
       roleGroups: [],

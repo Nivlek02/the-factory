@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { useFactoryStore } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
 import { useAuthStore, AppRole } from '@/store/authStore';
-import { Plus, X, ChevronLeft, ChevronRight, FolderKanban, Users, CheckSquare, Check, Info } from 'lucide-react';
+import { Plus, X, ChevronLeft, ChevronRight, FolderKanban, Users, CheckSquare, Check, Info, Target } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -36,6 +36,7 @@ type TaskDraft = {
 
 const STEPS = [
   { key: 'data', label: 'Datos', icon: FolderKanban },
+  { key: 'audience', label: 'Audiencia y Narrativa', icon: Target },
   { key: 'team', label: 'Equipo', icon: Users },
   { key: 'tasks', label: 'Tareas', icon: CheckSquare },
 ] as const;
@@ -70,15 +71,25 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
     state: 'planning' as const, priority: 'P1' as 'P0'|'P1'|'P2',
     startDate: today(),
     dueDate: '',
+    strategistName: '',
   });
   const [roleDrafts, setRoleDrafts] = useState<RoleDraft[]>([]);
   const [tasks, setTasks] = useState<TaskDraft[]>([]);
 
+  const [audiencia, setAudiencia] = useState({
+    segmentos: [] as string[],
+    metaInscripciones: '',
+    dolor: '',
+    promesa: '',
+    bigIdea: '',
+  });
+
   const reset = () => {
     setStep(0);
-    setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '' });
+    setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '', strategistName: '' });
     setRoleDrafts([]);
     setTasks([]);
+    setAudiencia({ segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' });
   };
 
   const close = () => { onOpenChange(false); setTimeout(reset, 300); };
@@ -124,6 +135,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
       priority: data.priority,
       startDate: data.startDate || null,
       dueDate: data.dueDate || null,
+      strategistName: data.strategistName.trim(),
+      audienciaNarrativa: {
+        segmentos: audiencia.segmentos,
+        metaInscripciones: audiencia.metaInscripciones.trim(),
+        dolor: audiencia.dolor.trim(),
+        promesa: audiencia.promesa.trim(),
+        bigIdea: audiencia.bigIdea.trim(),
+      },
     });
     roleDrafts.forEach((r) => {
       addRoleGroup(id, r.roleId, r.roleLabel);
@@ -227,13 +246,21 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Estratega</Label>
+                  <Input
+                    placeholder="Nombre del estratega"
+                    value={data.strategistName}
+                    onChange={(e) => setData((d) => ({ ...d, strategistName: e.target.value }))}
+                  />
+                </div>
                 <div className="space-y-1.5">
                   <Label>Estado inicial</Label>
                   <Select value={data.state} onValueChange={(v) => setData((d) => ({ ...d, state: v as any }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="planning">Planning</SelectItem>
+                      <SelectItem value="planning">En planeación</SelectItem>
                       <SelectItem value="in_progress">En proceso</SelectItem>
                       <SelectItem value="review">En revisión</SelectItem>
                       <SelectItem value="blocked">Bloqueado</SelectItem>
@@ -256,8 +283,97 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
             </div>
           )}
 
-          {/* STEP 2 — TEAM */}
+          {/* STEP 2 — AUDIENCIA Y NARRATIVA */}
           {step === 1 && (
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
+                  Segmentos de audiencia
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: 'afiliado', label: 'Afiliado activo' },
+                    { id: 'matriculado', label: 'Matriculado' },
+                    { id: 'potencial', label: 'Potencial' },
+                    { id: 'no_renovado', label: 'No renovado' },
+                    { id: 'vip', label: 'VIP / Alta dirección' },
+                    { id: 'cluster', label: 'Cluster sectorial' },
+                    { id: 'mercado_medio', label: 'Mercado medio' },
+                  ].map((seg) => {
+                    const active = audiencia.segmentos.includes(seg.id);
+                    return (
+                      <button
+                        key={seg.id}
+                        type="button"
+                        onClick={() =>
+                          setAudiencia((a) => ({
+                            ...a,
+                            segmentos: active
+                              ? a.segmentos.filter((s) => s !== seg.id)
+                              : [...a.segmentos, seg.id],
+                          }))
+                        }
+                        className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                          active
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                        }`}
+                      >
+                        {seg.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Meta de inscripciones</Label>
+                <Input
+                  type="number"
+                  placeholder="# de inscripciones esperadas"
+                  value={audiencia.metaInscripciones}
+                  onChange={(e) => setAudiencia((a) => ({ ...a, metaInscripciones: e.target.value }))}
+                />
+              </div>
+
+              <div className="border-t pt-4">
+                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
+                  Núcleo narrativo
+                </Label>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>Dolor concreto que resuelve</Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="El problema real del cliente, en sus propias palabras…"
+                      value={audiencia.dolor}
+                      onChange={(e) => setAudiencia((a) => ({ ...a, dolor: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Promesa concreta del producto</Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="Qué resultado específico obtendrá…"
+                      value={audiencia.promesa}
+                      onChange={(e) => setAudiencia((a) => ({ ...a, promesa: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Mensaje madre (Big Idea)</Label>
+                    <Input
+                      placeholder="La idea central que unifica la campaña — 1 sola frase"
+                      value={audiencia.bigIdea}
+                      onChange={(e) => setAudiencia((a) => ({ ...a, bigIdea: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3 — TEAM */}
+          {step === 2 && (
             <div className="space-y-4">
               <div className="flex gap-2">
                 <Select value={pickRole} onValueChange={setPickRole}>
@@ -295,8 +411,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
             </div>
           )}
 
-          {/* STEP 3 — TASKS */}
-          {step === 2 && (
+          {/* STEP 4 — TASKS */}
+          {step === 3 && (
             <div className="space-y-4">
               <div className="rounded-lg border border-border/60 p-3 space-y-2 bg-muted/30">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nueva tarea inicial</p>
