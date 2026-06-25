@@ -101,9 +101,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
       items.push({ id: uid(), roleId, roleLabel, tarea, checked: false });
     };
 
-    // Standard items always present
-    addItem('produccion', 'Producción', 'Landing page');
-    addItem('diseno', 'Diseño', 'Diseño de piezas gráficas');
+    // ─── Tareas configuradas desde Ajustes ───
+    //   Producción y Diseño siempre participan
+    for (const role of roles) {
+      if (role.tareas.length === 0) continue;
+      if (role.id === 'produccion' || role.id === 'diseno') {
+        for (const t of role.tareas) addItem(role.id, role.label, t);
+      }
+    }
 
     // ─── Responsabilidad por canal ───
     for (const row of canales) {
@@ -114,26 +119,54 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
       switch (row.canal) {
         case 'Correo':
         case 'WhatsApp':
-        case 'SMS':
+        case 'SMS': {
+          const gestor = roles.find((r) => r.id === 'gestor_canales');
+          if (gestor) {
+            for (const t of gestor.tareas) addItem(gestor.id, gestor.label, t);
+          }
           addItem('gestor_canales', 'Gestor de canales',
             `Configurar envío por ${row.canal}${ref ? ` — ${ref}` : ''}`);
           addItem('copy', 'Copy',
             `Redactar copy para ${row.canal}${row.copy ? ` — ${row.copy}` : ''}`);
+          const copyRole = roles.find((r) => r.id === 'copy');
+          if (copyRole) {
+            for (const t of copyRole.tareas) addItem(copyRole.id, copyRole.label, t);
+          }
           break;
-        case 'Meta Ads':
+        }
+        case 'Meta Ads': {
           addItem('social', 'Social Media',
             `Configurar campaña en Meta Ads${row.copy ? ` — ${row.copy}` : ''}`);
+          const socialRole = roles.find((r) => r.id === 'social');
+          if (socialRole) {
+            for (const t of socialRole.tareas) addItem(socialRole.id, socialRole.label, t);
+          }
           break;
-        case 'Call Center':
+        }
+        case 'Call Center': {
           addItem('estratega', 'Estratega',
             `Gestionar Call Center${ref ? ` — ${ref}` : ''}`);
           addItem('copy', 'Copy',
             `Redactar guion para Call Center${row.copy ? ` — ${row.copy}` : ''}`);
+          const copyRole = roles.find((r) => r.id === 'copy');
+          if (copyRole) {
+            for (const t of copyRole.tareas) addItem(copyRole.id, copyRole.label, t);
+          }
+          const estRole = roles.find((r) => r.id === 'estratega');
+          if (estRole) {
+            for (const t of estRole.tareas) addItem(estRole.id, estRole.label, t);
+          }
           break;
-        case 'RRSS':
+        }
+        case 'RRSS': {
           addItem('social', 'Social Media',
             `Plan de contenido para RRSS${row.copy ? ` — ${row.copy}` : ''}`);
+          const socialRole = roles.find((r) => r.id === 'social');
+          if (socialRole) {
+            for (const t of socialRole.tareas) addItem(socialRole.id, socialRole.label, t);
+          }
           break;
+        }
       }
     }
 
@@ -148,7 +181,34 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
       );
     }
 
+    // ─── Tareas de roles involucrados que aún no estén en la lista ───
+    const roleIdsInBrief = new Set(items.map((i) => i.roleId));
+    for (const role of roles) {
+      if (roleIdsInBrief.has(role.id)) continue;
+      if (role.tareas.length === 0) continue;
+      // Solo incluimos roles que participan via canals/loops
+      const involvedInCanal = canales.some(
+        (c) => canalInvolvesRole(c.canal, role.id)
+      );
+      const involvedInLoop = loops.some((l) => l.responsable === role.label);
+      if (involvedInCanal || involvedInLoop) {
+        for (const t of role.tareas) addItem(role.id, role.label, t);
+      }
+    }
+
     return items;
+  };
+
+  const canalInvolvesRole = (canal: string, roleId: string): boolean => {
+    const map: Record<string, string[]> = {
+      Correo:      ['gestor_canales', 'copy'],
+      WhatsApp:    ['gestor_canales', 'copy'],
+      SMS:         ['gestor_canales', 'copy'],
+      'Meta Ads':  ['social'],
+      'Call Center': ['estratega', 'copy'],
+      RRSS:        ['social'],
+    };
+    return map[canal]?.includes(roleId) ?? false;
   };
 
   // Rebuild when canales or loops change
