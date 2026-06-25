@@ -34,6 +34,14 @@ const SEGMENTOS_LABEL: Record<string, string> = {
   mercado_medio: 'Mercado medio',
 };
 
+/** Convierte YYYY-MM-DD a DD/MM para mostrar. Si no es fecha ISO, devuelve el texto original. */
+const formatFecha = (dateStr: string) => {
+  if (!dateStr) return '';
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return dateStr;
+  return `${match[3]}/${match[2]}`;
+};
+
 const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   const { addProject } = useFactoryStore();
   const { roles } = useRolesStore();
@@ -81,21 +89,48 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
     const addItem = (roleId: string, roleLabel: string, tarea: string) => {
       items.push({ id: uid(), roleId, roleLabel, tarea, checked: false });
     };
+
     // Standard items always present
     addItem('produccion', 'Producción', 'Landing page');
     addItem('diseno', 'Diseño', 'Diseño de piezas gráficas');
-    addItem('copy', 'Copy', 'Copies / redacción de contenido');
-    // Conditional items from canales
-    const canalesSet = new Set(canales.map(r => r.canal));
-    if (canalesSet.has('Correo') || canalesSet.has('WhatsApp') || canalesSet.has('SMS') || canalesSet.has('Call Center')) {
-      addItem('produccion', 'Producción', 'Configurar canales de comunicación directa');
+
+    // ─── Responsabilidad por canal ───
+    // Correo / WhatsApp / SMS → Gestor de canales + Copy
+    // Meta Ads              → Social Media
+    // Call Center            → Estratega + Copy
+    // RRSS                   → Social Media
+
+    for (const row of canales) {
+      const fecha = row.dia ? formatFecha(row.dia) : '';
+      const segmento = row.segmento ? SEGMENTOS_LABEL[row.segmento] ?? row.segmento : '';
+      const ref = [fecha, segmento].filter(Boolean).join(' — ');
+
+      switch (row.canal) {
+        case 'Correo':
+        case 'WhatsApp':
+        case 'SMS':
+          addItem('gestor_canales', 'Gestor de canales',
+            `Configurar envío por ${row.canal}${ref ? ` — ${ref}` : ''}`);
+          addItem('copy', 'Copy',
+            `Redactar copy para ${row.canal}${row.copy ? ` — ${row.copy}` : ''}`);
+          break;
+        case 'Meta Ads':
+          addItem('social', 'Social Media',
+            `Configurar campaña en Meta Ads${row.copy ? ` — ${row.copy}` : ''}`);
+          break;
+        case 'Call Center':
+          addItem('estratega', 'Estratega',
+            `Gestionar Call Center${ref ? ` — ${ref}` : ''}`);
+          addItem('copy', 'Copy',
+            `Redactar guion para Call Center${row.copy ? ` — ${row.copy}` : ''}`);
+          break;
+        case 'RRSS':
+          addItem('social', 'Social Media',
+            `Plan de contenido para RRSS${row.copy ? ` — ${row.copy}` : ''}`);
+          break;
+      }
     }
-    if (canalesSet.has('Meta Ads')) {
-      addItem('social', 'Social Media', 'Configurar campaña en Meta Ads');
-    }
-    if (canalesSet.has('RRSS')) {
-      addItem('social', 'Social Media', 'Plan de contenido para redes sociales');
-    }
+
     return items;
   };
 
@@ -393,10 +428,10 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                       <div className="flex items-center gap-1 w-full">
                         <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <input
-                          placeholder="Ej: D-14"
+                          type="date"
                           value={row.dia}
                           onChange={(e) => updateCanalRow(row.id, 'dia', e.target.value)}
-                          className="text-xs bg-transparent border-none outline-none w-full"
+                          className="text-xs bg-transparent border-none outline-none w-full [color-scheme:light] [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                         />
                       </div>
                       <input
