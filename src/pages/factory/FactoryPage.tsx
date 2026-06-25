@@ -42,6 +42,7 @@ import {
   ChevronRight,
   X,
   GitBranch,
+  Pencil,
 } from 'lucide-react';
 import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
@@ -191,8 +192,57 @@ const TaskCard = ({
             <Badge variant="outline" className="text-[9px] px-1 h-3.5 border-priority-p1 text-priority-p1">Media</Badge>
           )}
         </div>
-      </div>
-    </div>
+                    </div>
+
+                    {/* Fábrica briefs (factory sheet) */}
+                    {(() => {
+                      const briefs = project.fabricaBriefs?.filter((b) => b.roleLabel === group.roleLabel) ?? [];
+                      if (briefs.length === 0) return null;
+                      return (
+                        <div className="border-t border-border/40 pt-3 mt-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                            <CheckSquare className="h-3 w-3" />
+                            Hoja de fábrica
+                          </p>
+                          <div className="space-y-0.5">
+                            {briefs.map((b) => (
+                              <div key={b.id}>
+                                <label className="flex items-center gap-2.5 py-1 px-2 rounded-md hover:bg-muted/40 cursor-pointer transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={b.checked}
+                                    onChange={() => updateFabricaBrief(project.id, b.id, { checked: !b.checked })}
+                                    className="h-3.5 w-3.5 rounded border-muted-foreground/50 text-factory focus:ring-factory"
+                                  />
+                                  <span className={`text-xs flex-1 ${b.checked ? 'line-through text-muted-foreground/60' : ''}`}>
+                                    {b.tarea}
+                                  </span>
+                                  {b.metrica && (
+                                    <span className="text-[10px] text-muted-foreground shrink-0">{b.metrica}</span>
+                                  )}
+                                </label>
+                                {/* Loop strategy expandable (when checked and has strategy) */}
+                                {b.checked && (b.metrica || b.lineaBase || b.objetivo || b.mejora) && (
+                                  <div className="ml-7 mb-1 p-2 rounded-md bg-muted/20 border border-border/40 space-y-1.5">
+                                    {b.metrica && (
+                                      <div className="grid grid-cols-3 gap-2 text-[10px]">
+                                        <div><span className="text-muted-foreground">KPI:</span> {b.metrica}</div>
+                                        {b.lineaBase && <div><span className="text-muted-foreground">Base:</span> {b.lineaBase}</div>}
+                                        {b.objetivo && <div><span className="text-muted-foreground">Obj:</span> {b.objetivo}</div>}
+                                      </div>
+                                    )}
+                                    {b.mejora && (
+                                      <p className="text-[10px] text-muted-foreground">{b.mejora}</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
   );
 };
 
@@ -404,7 +454,7 @@ const TeamTasksTab = ({
   allMembers: Array<{ id: string; name: string; roleLabel: string }>;
 }) => {
   const { roles } = useRolesStore();
-  const { addRoleGroup, addMemberToRole, removeMemberFromRole, removeRoleGroup, addTask } = useFactoryStore();
+  const { addRoleGroup, addMemberToRole, removeMemberFromRole, removeRoleGroup, addTask, updateFabricaBrief } = useFactoryStore();
   const [addRoleOpen, setAddRoleOpen] = useState(false);
   const [selectedRole, setSelectedRole] = useState('');
   const availableRoles = roles.filter((r) => !project.roleGroups.some((g) => g.roleId === r.id));
@@ -789,7 +839,44 @@ const TABS = [
 
 const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
   const [activeTab, setActiveTab] = useState<'loop' | 'overview' | 'equipo'>('loop');
-  const { addTask, updateTask, deleteTask, deleteProject, setActiveProject } = useFactoryStore();
+  const { addTask, updateTask, deleteTask, deleteProject, setActiveProject, updateProject } = useFactoryStore();
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: project.name,
+    description: project.description,
+    client: project.client,
+    state: project.state,
+    priority: project.priority,
+    startDate: project.startDate ?? '',
+    dueDate: project.dueDate ?? '',
+  });
+
+  // Sync edit form when project changes
+  useEffect(() => {
+    setEditForm({
+      name: project.name,
+      description: project.description,
+      client: project.client,
+      state: project.state,
+      priority: project.priority,
+      startDate: project.startDate ?? '',
+      dueDate: project.dueDate ?? '',
+    });
+  }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleEditSave = () => {
+    updateProject(project.id, {
+      name: editForm.name.trim(),
+      description: editForm.description.trim(),
+      client: editForm.client.trim(),
+      state: editForm.state,
+      priority: editForm.priority,
+      startDate: editForm.startDate || null,
+      dueDate: editForm.dueDate || null,
+    });
+    setEditOpen(false);
+  };
 
   const allMembers = project.roleGroups.flatMap((g) =>
     g.members.map((m) => ({ id: m.id, name: m.name, roleLabel: g.roleLabel }))
@@ -817,6 +904,10 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                <Pencil className="h-3.5 w-3.5 mr-2" />
+                Editar proyecto
+              </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive" onClick={() => { deleteProject(project.id); setActiveProject(null); }}>
                 <Trash2 className="h-3.5 w-3.5 mr-2" />
                 Eliminar proyecto
@@ -885,6 +976,67 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
           />
         )}
       </div>
+
+      {/* Edit project dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar proyecto</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Nombre</Label>
+              <Input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Descripción</Label>
+              <Textarea rows={2} value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Cliente / Área</Label>
+                <Input value={editForm.client} onChange={(e) => setEditForm((f) => ({ ...f, client: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Fecha inicio</Label>
+                <Input type="date" value={editForm.startDate} onChange={(e) => setEditForm((f) => ({ ...f, startDate: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Estado</Label>
+                <Select value={editForm.state} onValueChange={(v) => setEditForm((f) => ({ ...f, state: v as any }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="planning">En planeación</SelectItem>
+                    <SelectItem value="in_progress">En proceso</SelectItem>
+                    <SelectItem value="review">En revisión</SelectItem>
+                    <SelectItem value="blocked">Bloqueado</SelectItem>
+                    <SelectItem value="done">Completado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Prioridad</Label>
+                <Select value={editForm.priority} onValueChange={(v) => setEditForm((f) => ({ ...f, priority: v as any }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="P0">P0 — Crítica</SelectItem>
+                    <SelectItem value="P1">P1 — Alta</SelectItem>
+                    <SelectItem value="P2">P2 — Normal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Fecha finalización</Label>
+              <Input type="date" value={editForm.dueDate} onChange={(e) => setEditForm((f) => ({ ...f, dueDate: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+            <Button onClick={handleEditSave} disabled={!editForm.name.trim()}>Guardar cambios</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

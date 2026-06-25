@@ -377,10 +377,11 @@ export const LoopTab = ({ project }: Props) => {
     updateStrategyNode(project.id, nodeId, { position: { x: nx, y: ny } });
   };
 
-  // ── Auto-build from canales ──────────────────────────────────────────────
+  // ── Auto-build from canales + loops ────────────────────────────────────
   useEffect(() => {
     const canalTypes = project.canales?.map((c) => c.canal) ?? [];
-    if (canalTypes.length === 0 || nodes.length > 0) return;
+    const loopRows = project.loops ?? [];
+    if ((canalTypes.length === 0 && loopRows.length === 0) || nodes.length > 0) return;
 
     const typeToStage: Record<string, StrategyStageType> = {
       'Formulario de inscripción': 'formulario',
@@ -402,7 +403,7 @@ export const LoopTab = ({ project }: Props) => {
       }
     }
 
-    if (toCreate.length === 0) return;
+    if (toCreate.length === 0 && loopRows.length === 0) return;
 
     // First pass: create all nodes, map id by stage type
     const nodeIdsByStage = new Map<StrategyStageType, string>();
@@ -425,6 +426,35 @@ export const LoopTab = ({ project }: Props) => {
         dependsOn: [], // will link second pass
       });
       nodeIdsByStage.set(item.stage, id);
+    }
+
+    // Create nodes from loops de comportamiento (custom type)
+    const seenLoops = new Set<string>();
+    const lastCanalId = nodeIdsByStage.get('envios') ?? nodeIdsByStage.get('pauta') ?? null;
+    let prevLoopId: string | null = null;
+    for (const loop of loopRows) {
+      if (!loop.disparador && !loop.reaccion) continue;
+      const key = `${loop.disparador}→${loop.reaccion}`;
+      if (seenLoops.has(key)) continue;
+      seenLoops.add(key);
+
+      const role = loop.responsable
+        ? project.roleGroups.find((g) => g.roleLabel === loop.responsable)
+        : undefined;
+      const member = role?.members[0];
+
+      const id = addStrategyNode(project.id, {
+        stageType: 'custom',
+        label: `Loop: ${loop.disparador || '…'} → ${loop.reaccion || '…'}`,
+        description: loop.responsable ? `Responsable: ${loop.responsable}` : undefined,
+        roleId: role?.roleId ?? null,
+        roleLabel: role?.roleLabel ?? null,
+        memberId: member?.id ?? null,
+        memberName: member?.name ?? null,
+        status: 'pending',
+        dependsOn: prevLoopId ? [prevLoopId] : lastCanalId ? [lastCanalId] : [],
+      });
+      prevLoopId = id;
     }
 
     // Second pass: set dependencies (copys → diseno → envios)

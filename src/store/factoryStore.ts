@@ -126,7 +126,7 @@ interface FactoryStore {
   hydrate: () => Promise<void>;
 
   addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs'>) => string;
-  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'dueDate'>>) => void;
+  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate'>>) => void;
   deleteProject: (id: string) => void;
 
   addRoleGroup: (projectId: string, roleId: string, roleLabel: string) => void;
@@ -146,6 +146,8 @@ interface FactoryStore {
   addStrategyNode: (projectId: string, node: Omit<StrategyNode, 'id'>) => string;
   updateStrategyNode: (projectId: string, nodeId: string, updates: Partial<Omit<StrategyNode, 'id'>>) => void;
   deleteStrategyNode: (projectId: string, nodeId: string) => void;
+
+  updateFabricaBrief: (projectId: string, briefId: string, updates: Partial<Pick<FabricaBriefItem, 'checked' | 'metrica' | 'lineaBase' | 'objetivo' | 'mejora'>>) => void;
 
   setActiveProject: (id: string | null) => void;
 }
@@ -415,6 +417,14 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
         strategyNodes: (p.strategyNodes ?? [])
           .filter((n) => n.id !== nodeId)
           .map((n) => ({ ...n, dependsOn: n.dependsOn.filter((d) => d !== nodeId) })),
+      })),
+    })),
+
+  updateFabricaBrief: (projectId, briefId, updates) =>
+    persistAfter(set, get, projectId, (s) => ({
+      projects: patchProject(s.projects, projectId, (p) => ({
+        ...p,
+        fabricaBriefs: (p.fabricaBriefs ?? []).map((b) => (b.id === briefId ? { ...b, ...updates } : b)),
       })),
     })),
 
