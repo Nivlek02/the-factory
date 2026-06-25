@@ -126,7 +126,7 @@ interface FactoryStore {
   hydrate: () => Promise<void>;
 
   addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs'>) => string;
-  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate'>>) => void;
+  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs'>>) => void;
   deleteProject: (id: string) => void;
 
   addRoleGroup: (projectId: string, roleId: string, roleLabel: string) => void;

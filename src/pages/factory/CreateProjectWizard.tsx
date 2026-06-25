@@ -11,10 +11,12 @@ import { useFactoryStore, type FabricaBriefItem } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
 import { Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Check, Target, GitBranch, Calendar } from 'lucide-react';
 
+import { FactoryProject } from '@/store/factoryStore';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (projectId: string) => void;
+  editProject?: FactoryProject;
 }
 
 const STEPS = [
@@ -53,32 +55,52 @@ const formatDisplay = (dateStr: string) => {
   return `${parseInt(match[3], 10)} de ${MESES_CORTO[m - 1]}`;
 };
 
-const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
-  const { addProject } = useFactoryStore();
+const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Props) => {
+  const { addProject, updateProject } = useFactoryStore();
   const { roles } = useRolesStore();
+  const isEditing = !!editProject;
 
   const [step, setStep] = useState(0);
   const today = () => new Date().toISOString().split('T')[0];
   const [data, setData] = useState({
-    name: '', description: '', client: '',
-    state: 'planning' as const, priority: 'P1' as 'P0'|'P1'|'P2',
-    startDate: today(),
-    dueDate: '',
-    strategistName: '',
+    name: editProject?.name ?? '',
+    description: editProject?.description ?? '',
+    client: editProject?.client ?? '',
+    state: (editProject?.state ?? 'planning') as const,
+    priority: (editProject?.priority ?? 'P1') as 'P0'|'P1'|'P2',
+    startDate: editProject?.startDate ?? today(),
+    dueDate: editProject?.dueDate ?? '',
+    strategistName: editProject?.strategistName ?? '',
   });
 
   const [audiencia, setAudiencia] = useState({
-    segmentos: [] as string[],
-    metaInscripciones: '',
-    dolor: '',
-    promesa: '',
-    bigIdea: '',
+    segmentos: editProject?.audienciaNarrativa?.segmentos ?? [] as string[],
+    metaInscripciones: editProject?.audienciaNarrativa?.metaInscripciones ?? '',
+    dolor: editProject?.audienciaNarrativa?.dolor ?? '',
+    promesa: editProject?.audienciaNarrativa?.promesa ?? '',
+    bigIdea: editProject?.audienciaNarrativa?.bigIdea ?? '',
   });
 
   const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const [canalesRows, setCanalesRows] = useState<{ id: string; canal: string; dia: string; copy: string; segmento: string }[]>([]);
-  const [loopsRows, setLoopsRows] = useState<{ id: string; disparador: string; reaccion: string; responsable: string }[]>([]);
-  const [fabricaBriefs, setFabricaBriefs] = useState<FabricaBriefItem[]>([]);
+  const [canalesRows, setCanalesRows] = useState<{ id: string; canal: string; dia: string; copy: string; segmento: string }[]>(
+    editProject?.canales?.map((c) => ({ ...c })) ?? []
+  );
+  const [loopsRows, setLoopsRows] = useState<{ id: string; disparador: string; reaccion: string; responsable: string }[]>(
+    editProject?.loops?.map((l) => ({ ...l })) ?? []
+  );
+  const [fabricaBriefs, setFabricaBriefs] = useState<FabricaBriefItem[]>(
+    editProject?.fabricaBriefs?.map((b) => ({ ...b })) ?? []
+  );
+
+  // Reset when opening without editProject
+  const reset = () => {
+    setStep(0);
+    setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '', strategistName: '' });
+    setAudiencia({ segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' });
+    setCanalesRows([]);
+    setLoopsRows([]);
+    setFabricaBriefs([]);
+  };
 
   const addCanalRow = () => {
     setCanalesRows((prev) => [...prev, { id: uid(), canal: 'Correo', dia: '', copy: '', segmento: '' }]);
@@ -86,7 +108,6 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   const removeCanalRow = (id: string) => setCanalesRows((prev) => prev.filter((r) => r.id !== id));
   const updateCanalRow = (id: string, field: string, value: string) =>
     setCanalesRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
-
   const addLoopRow = () => {
     setLoopsRows((prev) => [...prev, { id: uid(), disparador: '', reaccion: '', responsable: '' }]);
   };
@@ -226,21 +247,39 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   const updateFabricaLoop = (id: string, field: string, value: string) =>
     setFabricaBriefs((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)));
 
-  const reset = () => {
-    setStep(0);
-    setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '', strategistName: '' });
-    setAudiencia({ segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' });
-    setCanalesRows([]);
-    setLoopsRows([]);
-    setFabricaBriefs([]);
+  const close = () => {
+    onOpenChange(false);
+    if (!isEditing) setTimeout(reset, 300);
   };
-
-  const close = () => { onOpenChange(false); setTimeout(reset, 300); };
 
   const canNext = step === 0 ? data.name.trim().length > 0 : true;
   const isLast = step === STEPS.length - 1;
 
   const handleCreate = () => {
+    if (isEditing && editProject) {
+      updateProject(editProject.id, {
+        name: data.name.trim(),
+        description: data.description.trim(),
+        client: data.client.trim(),
+        state: data.state,
+        priority: data.priority,
+        startDate: data.startDate || null,
+        dueDate: data.dueDate || null,
+        audienciaNarrativa: {
+          segmentos: audiencia.segmentos,
+          metaInscripciones: audiencia.metaInscripciones.trim(),
+          dolor: audiencia.dolor.trim(),
+          promesa: audiencia.promesa.trim(),
+          bigIdea: audiencia.bigIdea.trim(),
+        },
+        canales: canalesRows,
+        loops: loopsRows,
+        fabricaBriefs: fabricaBriefs,
+      });
+      onCreated(editProject.id);
+      close();
+      return;
+    }
     const id = addProject({
       name: data.name.trim(),
       description: data.description.trim(),
@@ -269,7 +308,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
     <Dialog open={open} onOpenChange={(v) => v ? onOpenChange(v) : close()}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Nuevo proyecto</DialogTitle>
+          <DialogTitle>{isEditing ? 'Editar proyecto' : 'Nuevo proyecto'}</DialogTitle>
         </DialogHeader>
 
         {/* Stepper */}

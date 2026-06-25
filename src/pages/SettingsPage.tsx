@@ -401,7 +401,7 @@ const SettingsPage = () => {
                 Roles del equipo
               </CardTitle>
               <CardDescription>
-                Define los roles que pueden usarse en los proyectos de The Factory.
+                Define los roles que pueden usarse en los proyectos de La Fabrica.
               </CardDescription>
             </CardHeader>
             <CardContent>

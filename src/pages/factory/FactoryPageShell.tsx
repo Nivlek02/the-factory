@@ -11,7 +11,7 @@ interface FactoryPageShellProps {
 }
 
 const FactoryPageShell = ({
-  eyebrow = 'The Factory',
+  eyebrow = 'La Fabrica',
   title,
   description,
   actions,

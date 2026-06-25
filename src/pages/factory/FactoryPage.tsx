@@ -194,50 +194,140 @@ const TaskCard = ({
         </div>
                     </div>
 
-                    {/* Fábrica briefs (factory sheet) */}
+                    {/* Fábrica briefs (factory sheet) — auto-generated from canales + loops */}
                     {(() => {
-                      const briefs = project.fabricaBriefs?.filter((b) => b.roleLabel === group.roleLabel) ?? [];
-                      if (briefs.length === 0) return null;
+                      // Build briefs inline from project data (same logic as wizard)
+                      const canales = project.canales ?? [];
+                      const loops = project.loops ?? [];
+                      const segLabel: Record<string, string> = {
+                        afiliado: 'Afiliado activo', matriculado: 'Matriculado',
+                        potencial: 'Potencial', no_renovado: 'No renovado',
+                        vip: 'VIP / Alta dirección', cluster: 'Cluster sectorial',
+                        mercado_medio: 'Mercado medio',
+                      };
+                      const fmtFecha = (d: string) => {
+                        if (!d) return '';
+                        const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                        return m ? `${m[3]}/${m[2]}` : d;
+                      };
+                      const canalRoleMap: Record<string, string[]> = {
+                        Correo: ['gestor_canales', 'copy'],
+                        WhatsApp: ['gestor_canales', 'copy'],
+                        SMS: ['gestor_canales', 'copy'],
+                        'Meta Ads': ['social'],
+                        'Call Center': ['estratega', 'copy'],
+                        RRSS: ['social'],
+                      };
+                      // roleId → roleLabel (from roles store)
+                      const roleLabelMap = new Map(roles.map((r) => [r.id, r.label]));
+
+                      const generatedBriefs: { id: string; tarea: string; checked: boolean }[] = [];
+
+                      for (const role of roles) {
+                        if (role.tareas.length === 0) continue;
+                        if (role.id === 'produccion' || role.id === 'diseno') {
+                          for (const t of role.tareas) generatedBriefs.push({ id: `${role.id}-${t}`, tarea: t, checked: false });
+                        }
+                      }
+                      for (const row of canales) {
+                        const ref = [row.dia ? fmtFecha(row.dia) : '', row.segmento ? segLabel[row.segmento] ?? row.segmento : ''].filter(Boolean).join(' — ');
+                        const involved = canalRoleMap[row.canal] ?? [];
+                        for (const rid of involved) {
+                          const lbl = roleLabelMap.get(rid) ?? rid;
+                          if (rid === 'gestor_canales') {
+                            generatedBriefs.push({ id: `canal-${row.id}-gestor`, tarea: `Configurar envío por ${row.canal}${ref ? ` — ${ref}` : ''}`, checked: false });
+                          }
+                          if (rid === 'copy') {
+                            generatedBriefs.push({ id: `canal-${row.id}-copy`, tarea: `Redactar copy para ${row.canal}${row.copy ? ` — ${row.copy}` : ''}`, checked: false });
+                          }
+                          if (rid === 'social') {
+                            generatedBriefs.push({ id: `canal-${row.id}-social`, tarea: row.canal === 'Meta Ads' ? `Configurar campaña en Meta Ads${row.copy ? ` — ${row.copy}` : ''}` : `Plan de contenido para RRSS${row.copy ? ` — ${row.copy}` : ''}`, checked: false });
+                          }
+                          if (rid === 'estratega') {
+                            generatedBriefs.push({ id: `canal-${row.id}-estrat`, tarea: `Gestionar ${row.canal}${ref ? ` — ${ref}` : ''}`, checked: false });
+                          }
+                        }
+                      }
+                      for (const loop of loops) {
+                        if (!loop.responsable) continue;
+                        const role = roles.find((r) => r.label === loop.responsable);
+                        const rid = role?.id ?? loop.responsable.toLowerCase().replace(/\s+/g, '_');
+                        const lbl = role?.label ?? loop.responsable;
+                        generatedBriefs.push({ id: `loop-${loop.id}`, tarea: `Loop: ${loop.disparador || '(sin disparador)'} → ${loop.reaccion || '(sin reacción)'}`, checked: false });
+                      }
+
+                      // Deduplicate
+                      const seenTareas = new Set<string>();
+                      const deduped = generatedBriefs.filter((b) => {
+                        const key = `${group.roleLabel}|${b.tarea}`;
+                        if (seenTareas.has(key)) return false;
+                        seenTareas.add(key);
+                        // Only show briefs for this role
+                        const matchesRole = (b.id.startsWith(`${group.roleId}-`) || b.id.startsWith(`canal-`) || b.id.startsWith(`loop-`));
+                        // Check if this brief is for our role
+                        const ourRole = ['gestor_canales', 'copy', 'social', 'estratega', 'produccion', 'diseno'];
+                        const briefForRole =
+                          ourRole.includes(group.roleId) &&
+                          (b.id.includes(group.roleId) || b.tarea.includes(group.roleLabel));
+                        return true; // show all for now - filter by matching keyword
+                      });
+
+                      // Filter briefs relevant to this role
+                      const roleKeywords = [group.roleId, group.roleLabel.toLowerCase()];
+                      const roleBriefs = deduped.filter((b) => {
+                        const lower = b.tarea.toLowerCase();
+                        return roleKeywords.some((k) => lower.includes(k)) ||
+                               b.id.includes(group.roleId);
+                      });
+
+                      // Merge with existing checked state from project
+                      const existingChecked = new Map(
+                        (project.fabricaBriefs ?? []).map((fb) => [`${fb.roleLabel}|${fb.tarea}`, fb.checked])
+                      );
+                      const merged = roleBriefs.map((b) => ({
+                        ...b,
+                        checked: existingChecked.get(`${group.roleLabel}|${b.tarea}`) ?? b.checked,
+                      }));
+
+                      if (merged.length === 0) return null;
+
+                      const activeCount = merged.filter((b) => b.checked).length;
                       return (
                         <div className="border-t border-border/40 pt-3 mt-3">
                           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
                             <CheckSquare className="h-3 w-3" />
                             Hoja de fábrica
+                            <span className="text-[10px] font-normal normal-case text-muted-foreground">
+                              · {activeCount} de {merged.length} activas
+                            </span>
                           </p>
                           <div className="space-y-0.5">
-                            {briefs.map((b) => (
-                              <div key={b.id}>
-                                <label className="flex items-center gap-2.5 py-1 px-2 rounded-md hover:bg-muted/40 cursor-pointer transition-colors">
-                                  <input
-                                    type="checkbox"
-                                    checked={b.checked}
-                                    onChange={() => updateFabricaBrief(project.id, b.id, { checked: !b.checked })}
-                                    className="h-3.5 w-3.5 rounded border-muted-foreground/50 text-factory focus:ring-factory"
-                                  />
-                                  <span className={`text-xs flex-1 ${b.checked ? 'line-through text-muted-foreground/60' : ''}`}>
-                                    {b.tarea}
-                                  </span>
-                                  {b.metrica && (
-                                    <span className="text-[10px] text-muted-foreground shrink-0">{b.metrica}</span>
-                                  )}
-                                </label>
-                                {/* Loop strategy expandable (when checked and has strategy) */}
-                                {b.checked && (b.metrica || b.lineaBase || b.objetivo || b.mejora) && (
-                                  <div className="ml-7 mb-1 p-2 rounded-md bg-muted/20 border border-border/40 space-y-1.5">
-                                    {b.metrica && (
-                                      <div className="grid grid-cols-3 gap-2 text-[10px]">
-                                        <div><span className="text-muted-foreground">KPI:</span> {b.metrica}</div>
-                                        {b.lineaBase && <div><span className="text-muted-foreground">Base:</span> {b.lineaBase}</div>}
-                                        {b.objetivo && <div><span className="text-muted-foreground">Obj:</span> {b.objetivo}</div>}
-                                      </div>
-                                    )}
-                                    {b.mejora && (
-                                      <p className="text-[10px] text-muted-foreground">{b.mejora}</p>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
+                            {merged.map((b) => {
+                              const isChecked = b.checked;
+                              return (
+                                <div key={b.id}>
+                                  <label className="flex items-center gap-2.5 py-1 px-2 rounded-md hover:bg-muted/40 cursor-pointer transition-colors">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        // Persist: find or create brief entry
+                                        const existing = (project.fabricaBriefs ?? []).find(
+                                          (fb) => fb.roleLabel === group.roleLabel && fb.tarea === b.tarea
+                                        );
+                                        if (existing) {
+                                          updateFabricaBrief(project.id, existing.id, { checked: !isChecked });
+                                        }
+                                      }}
+                                      className="h-3.5 w-3.5 rounded border-muted-foreground/50 text-factory focus:ring-factory"
+                                    />
+                                    <span className={`text-xs flex-1 ${isChecked ? 'line-through text-muted-foreground/60' : ''}`}>
+                                      {b.tarea}
+                                    </span>
+                                  </label>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -839,44 +929,9 @@ const TABS = [
 
 const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
   const [activeTab, setActiveTab] = useState<'loop' | 'overview' | 'equipo'>('loop');
-  const { addTask, updateTask, deleteTask, deleteProject, setActiveProject, updateProject } = useFactoryStore();
+  const { addTask, updateTask, deleteTask, deleteProject, setActiveProject } = useFactoryStore();
 
-  const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: project.name,
-    description: project.description,
-    client: project.client,
-    state: project.state,
-    priority: project.priority,
-    startDate: project.startDate ?? '',
-    dueDate: project.dueDate ?? '',
-  });
-
-  // Sync edit form when project changes
-  useEffect(() => {
-    setEditForm({
-      name: project.name,
-      description: project.description,
-      client: project.client,
-      state: project.state,
-      priority: project.priority,
-      startDate: project.startDate ?? '',
-      dueDate: project.dueDate ?? '',
-    });
-  }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleEditSave = () => {
-    updateProject(project.id, {
-      name: editForm.name.trim(),
-      description: editForm.description.trim(),
-      client: editForm.client.trim(),
-      state: editForm.state,
-      priority: editForm.priority,
-      startDate: editForm.startDate || null,
-      dueDate: editForm.dueDate || null,
-    });
-    setEditOpen(false);
-  };
+  const [editWizardOpen, setEditWizardOpen] = useState(false);
 
   const allMembers = project.roleGroups.flatMap((g) =>
     g.members.map((m) => ({ id: m.id, name: m.name, roleLabel: g.roleLabel }))
@@ -904,7 +959,7 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setEditOpen(true)}>
+              <DropdownMenuItem onClick={() => setEditWizardOpen(true)}>
                 <Pencil className="h-3.5 w-3.5 mr-2" />
                 Editar proyecto
               </DropdownMenuItem>
@@ -977,66 +1032,12 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
         )}
       </div>
 
-      {/* Edit project dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Editar proyecto</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Nombre</Label>
-              <Input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Descripción</Label>
-              <Textarea rows={2} value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Cliente / Área</Label>
-                <Input value={editForm.client} onChange={(e) => setEditForm((f) => ({ ...f, client: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Fecha inicio</Label>
-                <Input type="date" value={editForm.startDate} onChange={(e) => setEditForm((f) => ({ ...f, startDate: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Estado</Label>
-                <Select value={editForm.state} onValueChange={(v) => setEditForm((f) => ({ ...f, state: v as any }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="planning">En planeación</SelectItem>
-                    <SelectItem value="in_progress">En proceso</SelectItem>
-                    <SelectItem value="review">En revisión</SelectItem>
-                    <SelectItem value="blocked">Bloqueado</SelectItem>
-                    <SelectItem value="done">Completado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Prioridad</Label>
-                <Select value={editForm.priority} onValueChange={(v) => setEditForm((f) => ({ ...f, priority: v as any }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="P0">P0 — Crítica</SelectItem>
-                    <SelectItem value="P1">P1 — Alta</SelectItem>
-                    <SelectItem value="P2">P2 — Normal</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Fecha finalización</Label>
-              <Input type="date" value={editForm.dueDate} onChange={(e) => setEditForm((f) => ({ ...f, dueDate: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
-            <Button onClick={handleEditSave} disabled={!editForm.name.trim()}>Guardar cambios</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateProjectWizard
+        open={editWizardOpen}
+        onOpenChange={setEditWizardOpen}
+        onCreated={() => {}}
+        editProject={project}
+      />
     </div>
   );
 };
@@ -1074,7 +1075,7 @@ const FactoryPage = () => {
                 <Sparkles className="h-3.5 w-3.5 text-factory" />
               </div>
               <div className="leading-tight">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">The Factory</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">La Fabrica</p>
                 <h1 className="font-display text-sm font-semibold text-foreground">Espacio de trabajo</h1>
               </div>
             </div>

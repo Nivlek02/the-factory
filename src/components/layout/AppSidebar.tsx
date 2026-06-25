@@ -94,7 +94,7 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
               <div className="min-w-0">
                 <h1 className="font-display font-semibold text-base leading-none">Tremu</h1>
                 <p className="text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/50 mt-1">
-                  The Factory
+                  La Fabrica
                 </p>
               </div>
             </div>
@@ -116,10 +116,10 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
         <div className="px-2 mb-5">
           <SectionLabel accent>
             <Sparkles className="h-3 w-3" />
-            The Factory
+            La Fabrica
           </SectionLabel>
           <div className="space-y-0.5">
-            <NavItem to="/" end icon={<Factory />} label="The Factory" />
+            <NavItem to="/" end icon={<Factory />} label="La Fabrica" />
           </div>
         </div>
 
