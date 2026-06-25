@@ -8,6 +8,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { useFactoryStore, type FabricaBriefItem } from '@/store/factoryStore';
+import { useRolesStore } from '@/store/rolesStore';
 import { Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Check, Target, GitBranch } from 'lucide-react';
 
 interface Props {
@@ -23,8 +24,19 @@ const STEPS = [
   { key: 'fabrica', label: 'Fábrica', icon: Cog },
 ] as const;
 
+const SEGMENTOS_LABEL: Record<string, string> = {
+  afiliado: 'Afiliado activo',
+  matriculado: 'Matriculado',
+  potencial: 'Potencial',
+  no_renovado: 'No renovado',
+  vip: 'VIP / Alta dirección',
+  cluster: 'Cluster sectorial',
+  mercado_medio: 'Mercado medio',
+};
+
 const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   const { addProject } = useFactoryStore();
+  const { roles } = useRolesStore();
 
   const [step, setStep] = useState(0);
   const today = () => new Date().toISOString().split('T')[0];
@@ -390,12 +402,18 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                         onChange={(e) => updateCanalRow(row.id, 'copy', e.target.value)}
                         className="text-xs bg-transparent border-none outline-none w-full"
                       />
-                      <input
-                        placeholder="Segmento"
+                      <select
                         value={row.segmento}
                         onChange={(e) => updateCanalRow(row.id, 'segmento', e.target.value)}
-                        className="text-xs bg-transparent border-none outline-none w-full text-right"
-                      />
+                        className="text-xs bg-transparent border-none outline-none w-full text-right cursor-pointer"
+                      >
+                        <option value="">Segmento</option>
+                        {audiencia.segmentos.map((segId) => (
+                          <option key={segId} value={segId}>
+                            {SEGMENTOS_LABEL[segId] ?? segId}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         onClick={() => removeCanalRow(row.id)}
                         className="text-muted-foreground hover:text-destructive transition-colors"
@@ -450,12 +468,18 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                             />
                           </td>
                           <td className="p-1.5 flex items-center gap-1">
-                            <input
-                              placeholder="Responsable"
+                            <select
                               value={row.responsable}
                               onChange={(e) => updateLoopRow(row.id, 'responsable', e.target.value)}
-                              className="flex-1 bg-transparent border-none outline-none text-xs py-1"
-                            />
+                              className="flex-1 bg-transparent border-none outline-none text-xs py-1 cursor-pointer"
+                            >
+                              <option value="">Responsable</option>
+                              {roles.map((r) => (
+                                <option key={r.id} value={r.label}>
+                                  {r.label}
+                                </option>
+                              ))}
+                            </select>
                             <button
                               onClick={() => removeLoopRow(row.id)}
                               className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
