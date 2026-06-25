@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/select';
 import { useFactoryStore, type FabricaBriefItem } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
-import { Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Check, Target, GitBranch } from 'lucide-react';
+import { Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Check, Target, GitBranch, Calendar } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -82,19 +82,19 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
       items.push({ id: uid(), roleId, roleLabel, tarea, checked: false });
     };
     // Standard items always present
-    addItem('produccion', 'Canales directos', 'Landing page');
-    addItem('diseno', 'Diseñador', 'Diseño de piezas gráficas');
+    addItem('produccion', 'Producción', 'Landing page');
+    addItem('diseno', 'Diseño', 'Diseño de piezas gráficas');
     addItem('copy', 'Copy', 'Copies / redacción de contenido');
     // Conditional items from canales
     const canalesSet = new Set(canales.map(r => r.canal));
     if (canalesSet.has('Correo') || canalesSet.has('WhatsApp') || canalesSet.has('SMS') || canalesSet.has('Call Center')) {
-      addItem('produccion', 'Canales directos', 'Configurar canales de comunicación directa');
+      addItem('produccion', 'Producción', 'Configurar canales de comunicación directa');
     }
     if (canalesSet.has('Meta Ads')) {
-      addItem('social', 'Traficker', 'Configurar campaña en Meta Ads');
+      addItem('social', 'Social Media', 'Configurar campaña en Meta Ads');
     }
     if (canalesSet.has('RRSS')) {
-      addItem('social', 'Social', 'Plan de contenido para redes sociales');
+      addItem('social', 'Social Media', 'Plan de contenido para redes sociales');
     }
     return items;
   };
@@ -390,12 +390,15 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                         <option value="RRSS">RRSS</option>
                         <option value="Call Center">Call Center</option>
                       </select>
-                      <input
-                        placeholder="Ej: D-14"
-                        value={row.dia}
-                        onChange={(e) => updateCanalRow(row.id, 'dia', e.target.value)}
-                        className="text-xs bg-transparent border-none outline-none w-full"
-                      />
+                      <div className="flex items-center gap-1 w-full">
+                        <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <input
+                          placeholder="Ej: D-14"
+                          value={row.dia}
+                          onChange={(e) => updateCanalRow(row.id, 'dia', e.target.value)}
+                          className="text-xs bg-transparent border-none outline-none w-full"
+                        />
+                      </div>
                       <input
                         placeholder="Ángulo del toque…"
                         value={row.copy}
@@ -405,7 +408,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                       <select
                         value={row.segmento}
                         onChange={(e) => updateCanalRow(row.id, 'segmento', e.target.value)}
-                        className="text-xs bg-transparent border-none outline-none w-full text-right cursor-pointer"
+                        className="text-xs bg-transparent border-none outline-none w-full text-left cursor-pointer"
                       >
                         <option value="">Segmento</option>
                         {audiencia.segmentos.map((segId) => (
