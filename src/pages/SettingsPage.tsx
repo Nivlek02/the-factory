@@ -47,7 +47,7 @@ import { useRolesStore } from '@/store/rolesStore';
 
 const SettingsPage = () => {
   const { users, currentUser, addUser, updateUser, deleteUser, loadUsers } = useAuthStore();
-  const { roles, addRole, updateRole, removeRole } = useRolesStore();
+  const { roles, addRole, updateRole, removeRole, addTarea, removeTarea } = useRolesStore();
   const { toast } = useToast();
 
   const [newRoleName, setNewRoleName] = useState('');

@@ -76,6 +76,28 @@ export const useRolesStore = create<RolesStore>()(
           ),
         })),
     }),
-    { name: 'factory-roles-store' }
+    {
+      name: 'factory-roles-store',
+      version: 1,
+      migrate: (persisted: any) => {
+        const oldRoles: { id: string; label: string; isDefault?: boolean }[] = persisted?.roles ?? [];
+        const roles = oldRoles.map((r) => {
+          const def = DEFAULT_ROLES.find((d) => d.id === r.id);
+          return {
+            id: r.id,
+            label: r.label,
+            isDefault: r.isDefault ?? def?.isDefault ?? false,
+            tareas: (r as any).tareas ?? def?.tareas ?? [],
+          };
+        });
+        // Ensure all default roles exist
+        for (const def of DEFAULT_ROLES) {
+          if (!roles.find((r) => r.id === def.id)) {
+            roles.push({ ...def });
+          }
+        }
+        return { ...persisted, roles };
+      },
+    }
   )
 );
