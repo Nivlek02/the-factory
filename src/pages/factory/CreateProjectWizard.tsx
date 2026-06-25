@@ -42,6 +42,17 @@ const formatFecha = (dateStr: string) => {
   return `${match[3]}/${match[2]}`;
 };
 
+const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** Muestra "15 de mar" desde YYYY-MM-DD */
+const formatDisplay = (dateStr: string) => {
+  if (!dateStr) return '';
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return dateStr;
+  const m = parseInt(match[2], 10);
+  return `${parseInt(match[3], 10)} de ${MESES_CORTO[m - 1]}`;
+};
+
 const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   const { addProject } = useFactoryStore();
   const { roles } = useRolesStore();
@@ -83,8 +94,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
   const updateLoopRow = (id: string, field: string, value: string) =>
     setLoopsRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
 
-  // ─── Auto-populate Fábrica briefs from canales ───
-  const buildFabricaBriefs = (canales: typeof canalesRows): FabricaBriefItem[] => {
+  // ─── Auto-populate Fábrica briefs from canales + loops ───
+  const buildFabricaBriefs = (canales: typeof canalesRows, loops: typeof loopsRows): FabricaBriefItem[] => {
     const items: FabricaBriefItem[] = [];
     const addItem = (roleId: string, roleLabel: string, tarea: string) => {
       items.push({ id: uid(), roleId, roleLabel, tarea, checked: false });
@@ -95,11 +106,6 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
     addItem('diseno', 'Diseño', 'Diseño de piezas gráficas');
 
     // ─── Responsabilidad por canal ───
-    // Correo / WhatsApp / SMS → Gestor de canales + Copy
-    // Meta Ads              → Social Media
-    // Call Center            → Estratega + Copy
-    // RRSS                   → Social Media
-
     for (const row of canales) {
       const fecha = row.dia ? formatFecha(row.dia) : '';
       const segmento = row.segmento ? SEGMENTOS_LABEL[row.segmento] ?? row.segmento : '';
@@ -131,17 +137,28 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
       }
     }
 
+    // ─── Loops → tareas por responsable ───
+    for (const row of loops) {
+      if (!row.responsable) continue;
+      const role = roles.find((r) => r.label === row.responsable);
+      addItem(
+        role?.id ?? row.responsable.toLowerCase().replace(/\s+/g, '_'),
+        row.responsable,
+        `Loop: ${row.disparador || '(sin disparador)'} → ${row.reaccion || '(sin reacción)'}`
+      );
+    }
+
     return items;
   };
 
-  // Rebuild when canalesRows change, but only when there are rows
+  // Rebuild when canales or loops change
   useEffect(() => {
-    if (canalesRows.length > 0) {
-      setFabricaBriefs(buildFabricaBriefs(canalesRows));
+    if (canalesRows.length > 0 || loopsRows.some((l) => l.responsable)) {
+      setFabricaBriefs(buildFabricaBriefs(canalesRows, loopsRows));
     } else {
       setFabricaBriefs([]);
     }
-  }, [canalesRows]);
+  }, [canalesRows, loopsRows]);
 
   const toggleFabricaBrief = (id: string) =>
     setFabricaBriefs((prev) => prev.map((b) => (b.id === id ? { ...b, checked: !b.checked } : b)));
@@ -405,14 +422,17 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                 </Label>
                 <div className="space-y-2">
                   {/* Header */}
-                  <div className="grid grid-cols-[100px_70px_1fr_100px] gap-2 px-2">
+                  <div className="grid grid-cols-[100px_minmax(50px,70px)_1fr_minmax(80px,100px)] gap-2 px-2">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Canal</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Día</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      <span className="hidden sm:inline">Día</span>
+                    </span>
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Copy / Ángulo del toque</span>
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-right">Segmento</span>
                   </div>
                   {canalesRows.map((row) => (
-                    <div key={row.id} className="grid grid-cols-[100px_70px_1fr_100px_24px] gap-2 items-center rounded-lg border border-border/60 bg-card p-2">
+                    <div key={row.id} className="grid grid-cols-[100px_minmax(50px,70px)_1fr_minmax(80px,100px)_24px] gap-2 items-center rounded-lg border border-border/60 bg-card p-2">
                       <select
                         value={row.canal}
                         onChange={(e) => updateCanalRow(row.id, 'canal', e.target.value)}
@@ -425,13 +445,18 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                         <option value="RRSS">RRSS</option>
                         <option value="Call Center">Call Center</option>
                       </select>
-                      <div className="flex items-center gap-1 w-full">
-                        <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <div className="relative flex items-center gap-1 w-full cursor-pointer">
+                        <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0 pointer-events-none" />
+                        {row.dia && (
+                          <span className="text-xs text-foreground truncate pointer-events-none">
+                            {formatDisplay(row.dia)}
+                          </span>
+                        )}
                         <input
                           type="date"
                           value={row.dia}
                           onChange={(e) => updateCanalRow(row.id, 'dia', e.target.value)}
-                          className="text-xs bg-transparent border-none outline-none w-full [color-scheme:light] [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                          className="absolute inset-0 opacity-0 cursor-pointer"
                         />
                       </div>
                       <input
