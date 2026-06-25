@@ -192,241 +192,8 @@ const TaskCard = ({
             <Badge variant="outline" className="text-[9px] px-1 h-3.5 border-priority-p1 text-priority-p1">Media</Badge>
           )}
         </div>
-                    </div>
-
-                    {/* Fábrica briefs (factory sheet) — auto-generated from canales + loops */}
-                    {(() => {
-                      // Build briefs inline from project data (same logic as wizard)
-                      const canales = project.canales ?? [];
-                      const loops = project.loops ?? [];
-                      const segLabel: Record<string, string> = {
-                        afiliado: 'Afiliado activo', matriculado: 'Matriculado',
-                        potencial: 'Potencial', no_renovado: 'No renovado',
-                        vip: 'VIP / Alta dirección', cluster: 'Cluster sectorial',
-                        mercado_medio: 'Mercado medio',
-                      };
-                      const fmtFecha = (d: string) => {
-                        if (!d) return '';
-                        const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-                        return m ? `${m[3]}/${m[2]}` : d;
-                      };
-                      const canalRoleMap: Record<string, string[]> = {
-                        Correo: ['gestor_canales', 'copy'],
-                        WhatsApp: ['gestor_canales', 'copy'],
-                        SMS: ['gestor_canales', 'copy'],
-                        'Meta Ads': ['social'],
-                        'Call Center': ['estratega', 'copy'],
-                        RRSS: ['social'],
-                      };
-                      // roleId → roleLabel (from roles store)
-                      const roleLabelMap = new Map(roles.map((r) => [r.id, r.label]));
-
-                      const generatedBriefs: { id: string; tarea: string; checked: boolean }[] = [];
-
-                      for (const role of roles) {
-                        if (role.tareas.length === 0) continue;
-                        if (role.id === 'produccion' || role.id === 'diseno') {
-                          for (const t of role.tareas) generatedBriefs.push({ id: `${role.id}-${t}`, tarea: t, checked: false });
-                        }
-                      }
-                      for (const row of canales) {
-                        const ref = [row.dia ? fmtFecha(row.dia) : '', row.segmento ? segLabel[row.segmento] ?? row.segmento : ''].filter(Boolean).join(' — ');
-                        const involved = canalRoleMap[row.canal] ?? [];
-                        for (const rid of involved) {
-                          const lbl = roleLabelMap.get(rid) ?? rid;
-                          if (rid === 'gestor_canales') {
-                            generatedBriefs.push({ id: `canal-${row.id}-gestor`, tarea: `Configurar envío por ${row.canal}${ref ? ` — ${ref}` : ''}`, checked: false });
-                          }
-                          if (rid === 'copy') {
-                            generatedBriefs.push({ id: `canal-${row.id}-copy`, tarea: `Redactar copy para ${row.canal}${row.copy ? ` — ${row.copy}` : ''}`, checked: false });
-                          }
-                          if (rid === 'social') {
-                            generatedBriefs.push({ id: `canal-${row.id}-social`, tarea: row.canal === 'Meta Ads' ? `Configurar campaña en Meta Ads${row.copy ? ` — ${row.copy}` : ''}` : `Plan de contenido para RRSS${row.copy ? ` — ${row.copy}` : ''}`, checked: false });
-                          }
-                          if (rid === 'estratega') {
-                            generatedBriefs.push({ id: `canal-${row.id}-estrat`, tarea: `Gestionar ${row.canal}${ref ? ` — ${ref}` : ''}`, checked: false });
-                          }
-                        }
-                      }
-                      for (const loop of loops) {
-                        if (!loop.responsable) continue;
-                        const role = roles.find((r) => r.label === loop.responsable);
-                        const rid = role?.id ?? loop.responsable.toLowerCase().replace(/\s+/g, '_');
-                        const lbl = role?.label ?? loop.responsable;
-                        generatedBriefs.push({ id: `loop-${loop.id}`, tarea: `Loop: ${loop.disparador || '(sin disparador)'} → ${loop.reaccion || '(sin reacción)'}`, checked: false });
-                      }
-
-                      // Deduplicate
-                      const seenTareas = new Set<string>();
-                      const deduped = generatedBriefs.filter((b) => {
-                        const key = `${group.roleLabel}|${b.tarea}`;
-                        if (seenTareas.has(key)) return false;
-                        seenTareas.add(key);
-                        // Only show briefs for this role
-                        const matchesRole = (b.id.startsWith(`${group.roleId}-`) || b.id.startsWith(`canal-`) || b.id.startsWith(`loop-`));
-                        // Check if this brief is for our role
-                        const ourRole = ['gestor_canales', 'copy', 'social', 'estratega', 'produccion', 'diseno'];
-                        const briefForRole =
-                          ourRole.includes(group.roleId) &&
-                          (b.id.includes(group.roleId) || b.tarea.includes(group.roleLabel));
-                        return true; // show all for now - filter by matching keyword
-                      });
-
-                      // Filter briefs relevant to this role
-                      const roleKeywords = [group.roleId, group.roleLabel.toLowerCase()];
-                      const roleBriefs = deduped.filter((b) => {
-                        const lower = b.tarea.toLowerCase();
-                        return roleKeywords.some((k) => lower.includes(k)) ||
-                               b.id.includes(group.roleId);
-                      });
-
-                      // Merge with existing checked state from project
-                      const existingChecked = new Map(
-                        (project.fabricaBriefs ?? []).map((fb) => [`${fb.roleLabel}|${fb.tarea}`, fb.checked])
-                      );
-                      const merged = roleBriefs.map((b) => ({
-                        ...b,
-                        checked: existingChecked.get(`${group.roleLabel}|${b.tarea}`) ?? b.checked,
-                      }));
-
-                      if (merged.length === 0) return null;
-
-                      const activeCount = merged.filter((b) => b.checked).length;
-                      return (
-                        <div className="border-t border-border/40 pt-3 mt-3">
-                          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                            <CheckSquare className="h-3 w-3" />
-                            Hoja de fábrica
-                            <span className="text-[10px] font-normal normal-case text-muted-foreground">
-                              · {activeCount} de {merged.length} activas
-                            </span>
-                          </p>
-                          <div className="space-y-0.5">
-                            {merged.map((b) => {
-                              const isChecked = b.checked;
-                              return (
-                                <div key={b.id}>
-                                  <label className="flex items-center gap-2.5 py-1 px-2 rounded-md hover:bg-muted/40 cursor-pointer transition-colors">
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() => {
-                                        // Persist: find or create brief entry
-                                        const existing = (project.fabricaBriefs ?? []).find(
-                                          (fb) => fb.roleLabel === group.roleLabel && fb.tarea === b.tarea
-                                        );
-                                        if (existing) {
-                                          updateFabricaBrief(project.id, existing.id, { checked: !isChecked });
-                                        }
-                                      }}
-                                      className="h-3.5 w-3.5 rounded border-muted-foreground/50 text-factory focus:ring-factory"
-                                    />
-                                    <span className={`text-xs flex-1 ${isChecked ? 'line-through text-muted-foreground/60' : ''}`}>
-                                      {b.tarea}
-                                    </span>
-                                  </label>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-  );
-};
-
-// ─── Role Group Card (Team Tab) ───────────────────────────────────────────────
-
-const RoleGroupCard = ({
-  group,
-  colorIndex,
-  project,
-}: {
-  group: ProjectRoleGroup;
-  colorIndex: number;
-  project: FactoryProject;
-}) => {
-  const { addMemberToRole, removeMemberFromRole, removeRoleGroup } = useFactoryStore();
-  const [newMember, setNewMember] = useState('');
-  const memberInputRef = useRef<HTMLInputElement>(null);
-  const color = roleColor(colorIndex);
-
-  const handleAddMember = () => {
-    const name = newMember.trim();
-    if (!name) return;
-    addMemberToRole(project.id, group.roleId, name);
-    setNewMember('');
-    memberInputRef.current?.focus();
-  };
-
-  return (
-    <Card className="shadow-sm overflow-hidden">
-      {/* Role header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/60" style={{ borderLeftWidth: 3, borderLeftColor: color }}>
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: color }}>
-            {group.roleLabel.charAt(0).toUpperCase()}
-          </div>
-          <span className="font-semibold text-sm">{group.roleLabel}</span>
-          <span className="text-[10px] text-muted-foreground">
-            {group.members.length} persona{group.members.length !== 1 ? 's' : ''}
-          </span>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-muted-foreground hover:text-destructive"
-          onClick={() => removeRoleGroup(project.id, group.roleId)}
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
       </div>
-
-      <CardContent className="p-4">
-        {/* Members */}
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Users className="h-3 w-3" />
-            Personas
-          </p>
-          <div className="space-y-1.5 mb-2">
-            {group.members.length === 0 && (
-              <p className="text-xs text-muted-foreground italic">Sin personas asignadas</p>
-            )}
-            {group.members.map((m) => (
-              <div key={m.id} className="flex items-center justify-between gap-2 py-1 px-2 rounded-md bg-muted/40 group/member">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0" style={{ backgroundColor: color }}>
-                    {m.name.charAt(0).toUpperCase()}
-                  </div>
-                  <span className="text-xs font-medium truncate">{m.name}</span>
-                </div>
-                <button
-                  className="text-muted-foreground hover:text-destructive opacity-0 group-hover/member:opacity-100 transition-opacity shrink-0"
-                  onClick={() => removeMemberFromRole(project.id, group.roleId, m.id)}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-1">
-            <Input
-              ref={memberInputRef}
-              placeholder="Nombre de persona…"
-              value={newMember}
-              className="h-7 text-xs"
-              onChange={(e) => setNewMember(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-            />
-            <Button size="icon" variant="outline" className="h-7 w-7 shrink-0" onClick={handleAddMember} disabled={!newMember.trim()}>
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 };
 
@@ -742,6 +509,37 @@ const TeamTasksTab = ({
                         <Plus className="h-3.5 w-3.5" />
                       </Button>
                     </div>
+
+                    {/* Hoja de fábrica — briefs de este rol */}
+                    {(() => {
+                      const briefs = project.fabricaBriefs?.filter((b) => b.roleLabel === group.roleLabel) ?? [];
+                      if (briefs.length === 0) return null;
+                      return (
+                        <div className="border-t border-border/40 pt-3 mt-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                            <CheckSquare className="h-3 w-3" />
+                            Hoja de fábrica
+                          </p>
+                          <div className="space-y-0.5">
+                            {briefs.map((b) => (
+                              <div key={b.id}>
+                                <label className="flex items-center gap-2.5 py-1 px-2 rounded-md hover:bg-muted/40 cursor-pointer transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={b.checked}
+                                    onChange={() => updateFabricaBrief(project.id, b.id, { checked: !b.checked })}
+                                    className="h-3.5 w-3.5 rounded border-muted-foreground/50 text-factory focus:ring-factory"
+                                  />
+                                  <span className={`text-xs flex-1 ${b.checked ? 'line-through text-muted-foreground/60' : ''}`}>
+                                    {b.tarea}
+                                  </span>
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </CardContent>
               </Card>
@@ -749,6 +547,48 @@ const TeamTasksTab = ({
           })}
         </div>
       )}
+
+      {/* Standalone Hoja de fábrica — muestra todos los briefs agrupados por rol (incluso roles sin grupo) */}
+      {project.fabricaBriefs && project.fabricaBriefs.length > 0 && (() => {
+        const grouped = project.fabricaBriefs.reduce<Record<string, typeof project.fabricaBriefs>>((acc, b) => {
+          if (!acc[b.roleLabel]) acc[b.roleLabel] = [];
+          acc[b.roleLabel].push(b);
+          return acc;
+        }, {});
+        return (
+          <div className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckSquare className="h-4 w-4 text-factory" />
+              <h3 className="text-xs font-semibold uppercase tracking-wider">Hoja de fábrica</h3>
+              <span className="text-[10px] text-muted-foreground">
+                · {project.fabricaBriefs.filter((b) => b.checked).length} de {project.fabricaBriefs.length} activas
+              </span>
+            </div>
+            <div className="space-y-3">
+              {Object.entries(grouped).map(([roleLabel, items]) => (
+                <div key={roleLabel} className="rounded-lg border border-border/60 bg-card p-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-factory mb-2">{roleLabel}</h4>
+                  <div className="space-y-0.5">
+                    {items.map((b) => (
+                      <label key={b.id} className="flex items-center gap-2.5 py-1 px-2 rounded-md hover:bg-muted/40 cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={b.checked}
+                          onChange={() => updateFabricaBrief(project.id, b.id, { checked: !b.checked })}
+                          className="h-3.5 w-3.5 rounded border-muted-foreground/50 text-factory focus:ring-factory"
+                        />
+                        <span className={`text-xs flex-1 ${b.checked ? 'line-through text-muted-foreground/60' : ''}`}>
+                          {b.tarea}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Add role dialog */}
       <Dialog open={addRoleOpen} onOpenChange={setAddRoleOpen}>

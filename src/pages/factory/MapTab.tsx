@@ -471,61 +471,16 @@ export const LoopTab = ({ project }: Props) => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Loop metrics from canal data ──────────────────────────────────────────
+  // ── Loop metrics (blank until actual action tracking data exists) ──────
   const loopMetrics = useMemo(() => {
-    const totalTareas = project.tasks.length;
-    const completedTareas = project.tasks.filter((t) => t.status === 'completed').length;
-    const pendingTareas = totalTareas - completedTareas;
-    const canales = project.canales ?? [];
-    const loopsCount = project.loops?.length ?? 0;
-    const fabricaCount = project.fabricaBriefs?.length ?? 0;
-
-    // Reach & cost per canal type
-    const CANAL_META: Record<string, { alcance: number; costo: number; leadRate: number }> = {
-      Correo:    { alcance: 8000,  costo: 200, leadRate: 0.05 },
-      WhatsApp:  { alcance: 12000, costo: 150, leadRate: 0.08 },
-      SMS:       { alcance: 15000, costo: 100, leadRate: 0.03 },
-      'Meta Ads':{ alcance: 50000, costo: 500, leadRate: 0.02 },
-      'Call Center': { alcance: 3000, costo: 800, leadRate: 0.15 },
-      RRSS:      { alcance: 20000, costo: 300, leadRate: 0.01 },
-    };
-
-    let totalAlcance = 0;
-    let totalCosto = 0;
-    let totalLeads = 0;
-    for (const row of canales) {
-      const meta = CANAL_META[row.canal];
-      if (meta) {
-        totalAlcance += meta.alcance;
-        totalCosto += meta.costo;
-        totalLeads += Math.round(meta.alcance * meta.leadRate);
-      }
-    }
-
-    // Fallback if no canales
-    if (canales.length === 0) {
-      totalAlcance = 0;
-      totalCosto = 0;
-      totalLeads = 0;
-    }
-
-    const alcance = totalAlcance > 0 ? `${(totalAlcance / 1000).toFixed(0)}k+` : '—';
-    const conversiones = totalTareas > 0 ? `${Math.round((completedTareas / totalTareas) * 100)}%` : '—';
-    const leads = totalLeads > 0 ? `${totalLeads}+` : '—';
-    const inversion = totalCosto > 0 ? `$${totalCosto}` : '—';
-
-    const deltaPendientes = pendingTareas > 3 ? '-12%' : '+8%';
-    const deltaCompletadas = completedTareas > 0 ? '+15%' : '0%';
-    const deltaLoops = loopsCount > 0 ? '+3%' : '0%';
-    const deltaFabrica = fabricaCount > 0 ? '+22%' : '0%';
-
+    // No hay datos de métricas reales aún — todo en blanco
     return {
-      alcance: { value: alcance, delta: deltaCompletadas },
-      conversiones: { value: conversiones, delta: deltaPendientes },
-      leads: { value: leads, delta: deltaLoops },
-      inversion: { value: inversion, delta: deltaFabrica },
+      alcance: { value: '—', delta: '0%' },
+      conversiones: { value: '—', delta: '0%' },
+      leads: { value: '—', delta: '0%' },
+      inversion: { value: '—', delta: '0%' },
     };
-  }, [project]);
+  }, []);
 
 
   return (
