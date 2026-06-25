@@ -43,7 +43,7 @@ export const useRolesStore = create<RolesStore>()(
 
       removeRole: (id) =>
         set((s) => ({
-          roles: s.roles.filter((r) => r.id !== id || r.isDefault),
+          roles: s.roles.filter((r) => r.id !== id),
         })),
     }),
     { name: 'factory-roles-store' }
