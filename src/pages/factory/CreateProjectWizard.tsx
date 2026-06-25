@@ -445,10 +445,16 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                         <option value="RRSS">RRSS</option>
                         <option value="Call Center">Call Center</option>
                       </select>
-                      <div className="relative flex items-center gap-1 w-full cursor-pointer">
-                        <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0 pointer-events-none" />
+                      <div
+                        className="relative flex items-center gap-1 w-full cursor-pointer"
+                        onClick={(e) => {
+                          const input = e.currentTarget.querySelector('input[type="date"]') as HTMLInputElement;
+                          input?.showPicker();
+                        }}
+                      >
+                        <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         {row.dia && (
-                          <span className="text-xs text-foreground truncate pointer-events-none">
+                          <span className="text-xs text-foreground truncate">
                             {formatDisplay(row.dia)}
                           </span>
                         )}
@@ -456,7 +462,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated }: Props) => {
                           type="date"
                           value={row.dia}
                           onChange={(e) => updateCanalRow(row.id, 'dia', e.target.value)}
-                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          className="w-0 h-0 opacity-0 absolute -z-10"
                         />
                       </div>
                       <input
