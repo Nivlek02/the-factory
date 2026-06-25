@@ -39,16 +39,14 @@ import {
   MoreVertical,
   Trash2,
   UserPlus,
-  ClipboardList,
   ChevronRight,
   X,
-  ListTodo,
-  Workflow,
+  GitBranch,
 } from 'lucide-react';
 import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
 import CreateProjectWizard from './CreateProjectWizard';
-import MapTab from './MapTab';
+import { LoopTab } from './MapTab';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -392,15 +390,74 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
   );
 };
 
-// ─── Team Tab ─────────────────────────────────────────────────────────────────
+// ─── Equipo + Tareas (merged) ──────────────────────────────────────────────
 
-const TeamTab = ({ project }: { project: FactoryProject }) => {
+const TeamTasksTab = ({
+  project,
+  onStatusChange,
+  onDeleteTask,
+  allMembers,
+}: {
+  project: FactoryProject;
+  onStatusChange: (taskId: string, status: string) => void;
+  onDeleteTask: (taskId: string) => void;
+  allMembers: Array<{ id: string; name: string; roleLabel: string }>;
+}) => {
   const { roles } = useRolesStore();
-  const { addRoleGroup } = useFactoryStore();
+  const { addRoleGroup, addMemberToRole, removeMemberFromRole, removeRoleGroup, addTask } = useFactoryStore();
   const [addRoleOpen, setAddRoleOpen] = useState(false);
   const [selectedRole, setSelectedRole] = useState('');
-
   const availableRoles = roles.filter((r) => !project.roleGroups.some((g) => g.roleId === r.id));
+
+  // State for "Agregar persona y tareas"
+  const [addPersonOpen, setAddPersonOpen] = useState(false);
+  const [personName, setPersonName] = useState('');
+  const [personRole, setPersonRole] = useState('');
+  const [personTasks, setPersonTasks] = useState<string[]>(['']);
+
+  // Inline task creation per role
+  const [taskInputs, setTaskInputs] = useState<Record<string, string>>({});
+  const setTask = (roleId: string, v: string) => setTaskInputs((s) => ({ ...s, [roleId]: v }));
+  const handleAddTask = (roleId: string, roleLabel: string) => {
+    const title = (taskInputs[roleId] ?? '').trim();
+    if (!title) return;
+    addTask(project.id, {
+      title,
+      description: '',
+      assignedMemberId: null,
+      assignedMemberName: null,
+      assignedRoleLabel: roleLabel,
+      status: 'pending',
+      priority: null,
+      dueDate: null,
+    });
+    setTask(roleId, '');
+  };
+
+  const handleAddPerson = () => {
+    const name = personName.trim();
+    if (!name || !personRole) return;
+    addMemberToRole(project.id, personRole, name);
+    // Create tasks for this person
+    for (const t of personTasks) {
+      const title = t.trim();
+      if (!title) continue;
+      addTask(project.id, {
+        title,
+        description: '',
+        assignedMemberId: null,
+        assignedMemberName: name,
+        assignedRoleLabel: roles.find((r) => r.id === personRole)?.label ?? null,
+        status: 'pending',
+        priority: null,
+        dueDate: null,
+      });
+    }
+    setPersonName('');
+    setPersonRole('');
+    setPersonTasks(['']);
+    setAddPersonOpen(false);
+  };
 
   const handleAddRole = () => {
     const role = roles.find((r) => r.id === selectedRole);
@@ -410,16 +467,24 @@ const TeamTab = ({ project }: { project: FactoryProject }) => {
     setAddRoleOpen(false);
   };
 
+  const totalMembers = project.roleGroups.reduce((s, g) => s + g.members.length, 0);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">
-          {project.roleGroups.length} rol{project.roleGroups.length !== 1 ? 'es' : ''} en este proyecto
+          {project.roleGroups.length} rol{project.roleGroups.length !== 1 ? 'es' : ''} · {totalMembers} persona{totalMembers !== 1 ? 's' : ''} · {project.tasks.length} tarea{project.tasks.length !== 1 ? 's' : ''}
         </p>
-        <Button size="sm" variant="outline" onClick={() => setAddRoleOpen(true)}>
-          <UserPlus className="h-4 w-4" />
-          Agregar rol
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setAddRoleOpen(true)}>
+            <UserPlus className="h-4 w-4" />
+            Agregar rol
+          </Button>
+          <Button size="sm" onClick={() => setAddPersonOpen(true)}>
+            <UserPlus className="h-4 w-4" />
+            Agregar persona + tareas
+          </Button>
+        </div>
       </div>
 
       {project.roleGroups.length === 0 ? (
@@ -428,7 +493,7 @@ const TeamTab = ({ project }: { project: FactoryProject }) => {
             <Users className="h-8 w-8 text-muted-foreground mb-3" />
             <p className="text-sm font-medium mb-1">Sin roles asignados</p>
             <p className="text-xs text-muted-foreground mb-4">
-              Agrega roles al proyecto. Cada rol puede tener personas y requerimientos específicos.
+              Agrega roles al proyecto. Cada rol puede tener personas y tareas específicas.
             </p>
             <Button size="sm" onClick={() => setAddRoleOpen(true)}>
               <UserPlus className="h-4 w-4" />
@@ -438,9 +503,110 @@ const TeamTab = ({ project }: { project: FactoryProject }) => {
         </Card>
       ) : (
         <div className="space-y-3">
-          {project.roleGroups.map((group, i) => (
-            <RoleGroupCard key={group.roleId} group={group} colorIndex={i} project={project} />
-          ))}
+          {project.roleGroups.map((group, i) => {
+            const color = roleColor(i);
+            const roleTasks = project.tasks.filter((t) => t.assignedRoleLabel === group.roleLabel);
+            const pending = roleTasks.filter((t) => t.status !== 'completed');
+            const done = roleTasks.filter((t) => t.status === 'completed');
+            return (
+              <Card key={group.roleId} className="shadow-sm overflow-hidden">
+                {/* Role header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border/60" style={{ borderLeftWidth: 3, borderLeftColor: color }}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: color }}>
+                      {group.roleLabel.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="font-semibold text-sm">{group.roleLabel}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {group.members.length} persona{group.members.length !== 1 ? 's' : ''} · {roleTasks.length} tarea{roleTasks.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeRoleGroup(project.id, group.roleId)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+
+                <CardContent className="p-4 space-y-3">
+                  {/* Members */}
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                      <Users className="h-3 w-3" />
+                      Personas
+                    </p>
+                    <div className="space-y-1.5 mb-2">
+                      {group.members.length === 0 && (
+                        <p className="text-xs text-muted-foreground italic">Sin personas asignadas</p>
+                      )}
+                      {group.members.map((m) => (
+                        <div key={m.id} className="flex items-center justify-between gap-2 py-1 px-2 rounded-md bg-muted/40 group/member">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0" style={{ backgroundColor: color }}>
+                              {m.name.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="text-xs font-medium truncate">{m.name}</span>
+                          </div>
+                          <button
+                            className="text-muted-foreground hover:text-destructive opacity-0 group-hover/member:opacity-100 transition-opacity shrink-0"
+                            onClick={() => removeMemberFromRole(project.id, group.roleId, m.id)}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tasks */}
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                      <CheckSquare className="h-3 w-3" />
+                      Tareas
+                    </p>
+                    {pending.length === 0 && done.length === 0 && (
+                      <p className="text-xs text-muted-foreground italic mb-2">Sin tareas asignadas</p>
+                    )}
+                    <div className="space-y-1 mb-2">
+                      {pending.map((t) => (
+                        <TaskRow
+                          key={t.id}
+                          task={t}
+                          onStatusChange={(s) => onStatusChange(t.id, s)}
+                          onDelete={() => onDeleteTask(t.id)}
+                        />
+                      ))}
+                      {done.map((t) => (
+                        <TaskRow
+                          key={t.id}
+                          task={t}
+                          onStatusChange={(s) => onStatusChange(t.id, s)}
+                          onDelete={() => onDeleteTask(t.id)}
+                          done
+                        />
+                      ))}
+                    </div>
+                    {/* Inline add task */}
+                    <div className="flex gap-1">
+                      <Input
+                        placeholder="Nueva tarea…"
+                        value={taskInputs[group.roleId] ?? ''}
+                        className="h-7 text-xs"
+                        onChange={(e) => setTask(group.roleId, e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddTask(group.roleId, group.roleLabel)}
+                      />
+                      <Button size="icon" variant="outline" className="h-7 w-7 shrink-0" onClick={() => handleAddTask(group.roleId, group.roleLabel)} disabled={!(taskInputs[group.roleId] ?? '').trim()}>
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -478,152 +644,137 @@ const TeamTab = ({ project }: { project: FactoryProject }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Agregar persona + tareas dialog */}
+      <Dialog open={addPersonOpen} onOpenChange={setAddPersonOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agregar persona y tareas</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Nombre de la persona</Label>
+              <Input
+                placeholder="Ej: Carlos Pérez"
+                value={personName}
+                onChange={(e) => setPersonName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Rol</Label>
+              <Select value={personRole} onValueChange={setPersonRole}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un rol…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {project.roleGroups.map((g) => (
+                    <SelectItem key={g.roleId} value={g.roleId}>{g.roleLabel}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {project.roleGroups.length === 0 && (
+                <p className="text-xs text-muted-foreground">Agrega un rol al proyecto primero.</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tareas</Label>
+              {personTasks.map((t, idx) => (
+                <div key={idx} className="flex gap-1">
+                  <Input
+                    placeholder="Nombre de la tarea…"
+                    value={t}
+                    onChange={(e) => {
+                      const next = [...personTasks];
+                      next[idx] = e.target.value;
+                      setPersonTasks(next);
+                    }}
+                    className="h-8 text-xs flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        setPersonTasks([...personTasks, '']);
+                      }
+                    }}
+                  />
+                  {personTasks.length > 1 && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => setPersonTasks(personTasks.filter((_, i) => i !== idx))}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs h-7"
+                onClick={() => setPersonTasks([...personTasks, ''])}
+              >
+                <Plus className="h-3 w-3" />
+                Agregar otra tarea
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddPersonOpen(false)}>Cancelar</Button>
+            <Button onClick={handleAddPerson} disabled={!personName.trim() || !personRole}>Agregar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
-// ─── Tasks Tab ────────────────────────────────────────────────────────────────
+// ─── Compact task row for inline display ──────────────────────────────────
 
-const TasksTab = ({
-  project,
-  onNewTask,
-  onStatusChange,
-  onDeleteTask,
+const TaskRow = ({
+  task, onStatusChange, onDelete, done,
 }: {
-  project: FactoryProject;
-  onNewTask: () => void;
-  onStatusChange: (taskId: string, status: string) => void;
-  onDeleteTask: (taskId: string) => void;
+  task: ProjectTask;
+  onStatusChange: (status: string) => void;
+  onDelete: () => void;
+  done?: boolean;
 }) => {
-  const columns = [
-    { key: 'pending',     label: 'Pendiente' },
-    { key: 'in_progress', label: 'En proceso' },
-    { key: 'in_review',   label: 'En revisión' },
-    { key: 'completed',   label: 'Completada' },
-  ];
-
-  const allMembers = project.roleGroups.flatMap((g) =>
-    g.members.map((m) => ({ id: m.id, name: m.name, roleLabel: g.roleLabel }))
-  );
-
-  const { addRequirement, removeRequirement } = useFactoryStore();
-  const [reqInputs, setReqInputs] = useState<Record<string, string>>({});
-  const setReq = (roleId: string, v: string) => setReqInputs((s) => ({ ...s, [roleId]: v }));
-  const handleAddReq = (roleId: string) => {
-    const text = (reqInputs[roleId] ?? '').trim();
-    if (!text) return;
-    addRequirement(project.id, roleId, text);
-    setReq(roleId, '');
-  };
-  const totalReqs = project.roleGroups.reduce((s, g) => s + g.requirements.length, 0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">{project.tasks.length} tareas · {totalReqs} requerimientos</p>
-        <Button size="sm" onClick={onNewTask}>
-          <Plus className="h-4 w-4" />
-          Nueva tarea
-        </Button>
-      </div>
-
-      {/* Requirements per role — unified with tasks */}
-      {project.roleGroups.length > 0 && (
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-              <ListTodo className="h-3 w-3" />
-              Requerimientos por rol
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {project.roleGroups.map((g, i) => {
-                const color = roleColor(i);
-                return (
-                  <div key={g.roleId} className="rounded-lg border border-border/60 bg-card/60 p-3" style={{ borderLeft: `3px solid ${color}` }}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold" style={{ color }}>{g.roleLabel}</span>
-                      <span className="text-[10px] text-muted-foreground">{g.requirements.length} req.</span>
-                    </div>
-                    <div className="space-y-1 mb-2">
-                      {g.requirements.length === 0 && (
-                        <p className="text-[11px] text-muted-foreground italic">Sin requerimientos</p>
-                      )}
-                      {g.requirements.map((req) => (
-                        <div key={req.id} className="flex items-start justify-between gap-2 py-1 px-2 rounded-md bg-muted/40 group/req">
-                          <span className="text-[11px] leading-snug flex-1">{req.text}</span>
-                          <button
-                            className="text-muted-foreground hover:text-destructive opacity-0 group-hover/req:opacity-100 transition-opacity shrink-0 mt-0.5"
-                            onClick={() => removeRequirement(project.id, g.roleId, req.id)}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex gap-1">
-                      <Input
-                        placeholder="Agregar requerimiento…"
-                        value={reqInputs[g.roleId] ?? ''}
-                        className="h-7 text-xs"
-                        onChange={(e) => setReq(g.roleId, e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddReq(g.roleId)}
-                      />
-                      <Button size="icon" variant="outline" className="h-7 w-7 shrink-0" onClick={() => handleAddReq(g.roleId)} disabled={!(reqInputs[g.roleId] ?? '').trim()}>
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+    <div className="flex items-center gap-2 py-1 px-2 rounded-md bg-muted/40 group/row">
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 transition-colors ${
+              done ? 'bg-state-done border-state-done' : 'border-muted-foreground/40 hover:border-state-done'
+            }`}
+            aria-label="Cambiar estado"
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {TASK_STATUSES.map((s) => (
+            <DropdownMenuItem key={s.value} onClick={() => { onStatusChange(s.value); setMenuOpen(false); }}>
+              <span className={`inline-block w-2 h-2 rounded-full mr-2 ${TASK_STATUS_META[s.value].cls.split(' ')[0]}`} />
+              {s.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <span className={`text-xs flex-1 truncate ${done ? 'line-through text-muted-foreground/60' : ''}`}>
+        {task.title}
+      </span>
+      {task.assignedMemberName && (
+        <span className="text-[10px] text-muted-foreground shrink-0">{task.assignedMemberName}</span>
       )}
-
-      {project.tasks.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="p-8 flex flex-col items-center text-center">
-            <ClipboardList className="h-8 w-8 text-muted-foreground mb-3" />
-            <p className="text-sm font-medium mb-1">Sin tareas aún</p>
-            <p className="text-xs text-muted-foreground mb-4">
-              Crea tareas y asígnalas a las personas del equipo.
-            </p>
-            <Button size="sm" onClick={onNewTask}>
-              <Plus className="h-4 w-4" />
-              Nueva tarea
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          {columns.map((col) => {
-            const colTasks = project.tasks.filter((t) => t.status === col.key);
-            const meta = TASK_STATUS_META[col.key];
-            return (
-              <div key={col.key} className="flex flex-col gap-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${meta.cls}`}>
-                    <CircleDot className="h-2.5 w-2.5" />
-                    {col.label}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">{colTasks.length}</span>
-                </div>
-                <div className="flex flex-col gap-2 min-h-16">
-                  {colTasks.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      allMembers={allMembers}
-                      onStatusChange={(status) => onStatusChange(task.id, status)}
-                      onDelete={() => onDeleteTask(task.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <button
+        onClick={onDelete}
+        className="opacity-0 group-hover/row:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
+        aria-label="Eliminar"
+      >
+        <X className="h-3 w-3" />
+      </button>
     </div>
   );
 };
@@ -631,50 +782,18 @@ const TasksTab = ({
 // ─── Project Workspace ────────────────────────────────────────────────────────
 
 const TABS = [
-  { key: 'map',      label: 'Mapa',      icon: <Workflow className="h-3.5 w-3.5" /> },
+  { key: 'loop',     label: 'Loop',      icon: <GitBranch className="h-3.5 w-3.5" /> },
   { key: 'overview', label: 'Overview',  icon: <Flag className="h-3.5 w-3.5" /> },
-  { key: 'team',     label: 'Equipo',    icon: <Users className="h-3.5 w-3.5" /> },
-  { key: 'tasks',    label: 'Tareas',    icon: <CheckSquare className="h-3.5 w-3.5" /> },
+  { key: 'equipo',   label: 'Equipo',    icon: <Users className="h-3.5 w-3.5" /> },
 ] as const;
 
-const BLANK_TASK = {
-  title: '',
-  description: '',
-  assignedMemberId: '',
-  assignedMemberName: null as string | null,
-  assignedRoleLabel: null as string | null,
-  status: 'pending',
-  priority: '' as 'high' | 'medium' | '',
-  dueDate: '',
-};
-
 const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
-  const [activeTab, setActiveTab] = useState<'map' | 'overview' | 'team' | 'tasks'>('map');
-  const [newTaskOpen, setNewTaskOpen] = useState(false);
-  const [taskForm, setTaskForm] = useState(BLANK_TASK);
-
+  const [activeTab, setActiveTab] = useState<'loop' | 'overview' | 'equipo'>('loop');
   const { addTask, updateTask, deleteTask, deleteProject, setActiveProject } = useFactoryStore();
 
   const allMembers = project.roleGroups.flatMap((g) =>
     g.members.map((m) => ({ id: m.id, name: m.name, roleLabel: g.roleLabel }))
   );
-
-  const handleAddTask = () => {
-    if (!taskForm.title.trim()) return;
-    const member = allMembers.find((m) => m.id === taskForm.assignedMemberId);
-    addTask(project.id, {
-      title: taskForm.title.trim(),
-      description: taskForm.description.trim(),
-      assignedMemberId: member?.id ?? null,
-      assignedMemberName: member?.name ?? null,
-      assignedRoleLabel: member?.roleLabel ?? null,
-      status: taskForm.status as any,
-      priority: taskForm.priority as any || null,
-      dueDate: taskForm.dueDate || null,
-    });
-    setTaskForm(BLANK_TASK);
-    setNewTaskOpen(false);
-  };
 
   const stateMeta = STATE_META[project.state];
   const priorityMeta = PRIORITY_META[project.priority];
@@ -731,8 +850,7 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
         <div className="flex gap-0.5">
           {TABS.map((tab) => {
             const count =
-              tab.key === 'team' ? project.roleGroups.length :
-              tab.key === 'tasks' ? project.tasks.length : null;
+              tab.key === 'equipo' ? project.roleGroups.length : null;
             return (
               <button
                 key={tab.key}
@@ -756,105 +874,17 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {activeTab === 'map' && <MapTab project={project} />}
+        {activeTab === 'loop' && <LoopTab project={project} />}
         {activeTab === 'overview' && <OverviewTab project={project} />}
-        {activeTab === 'team' && <TeamTab project={project} />}
-        {activeTab === 'tasks' && (
-          <TasksTab
+        {activeTab === 'equipo' && (
+          <TeamTasksTab
             project={project}
-            onNewTask={() => setNewTaskOpen(true)}
             onStatusChange={(taskId, status) => updateTask(project.id, taskId, { status: status as any })}
             onDeleteTask={(taskId) => deleteTask(project.id, taskId)}
+            allMembers={allMembers}
           />
         )}
       </div>
-
-      {/* New Task Dialog */}
-      <Dialog open={newTaskOpen} onOpenChange={setNewTaskOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Nueva tarea</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Título</Label>
-              <Input
-                placeholder="¿Qué hay que hacer?"
-                value={taskForm.title}
-                onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Descripción <span className="text-muted-foreground">(opcional)</span></Label>
-              <Textarea
-                placeholder="Más detalles…"
-                rows={2}
-                value={taskForm.description}
-                onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Asignar a</Label>
-                <Select
-                  value={taskForm.assignedMemberId}
-                  onValueChange={(v) => setTaskForm((f) => ({ ...f, assignedMemberId: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sin asignar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {allMembers.length === 0 ? (
-                      <SelectItem value="__none__" disabled>Agrega personas al equipo primero</SelectItem>
-                    ) : (
-                      allMembers.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.name} — {m.roleLabel}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Estado</Label>
-                <Select value={taskForm.status} onValueChange={(v) => setTaskForm((f) => ({ ...f, status: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {TASK_STATUSES.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Prioridad</Label>
-                <Select value={taskForm.priority} onValueChange={(v) => setTaskForm((f) => ({ ...f, priority: v as any }))}>
-                  <SelectTrigger><SelectValue placeholder="Sin prioridad" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="high">Alta</SelectItem>
-                    <SelectItem value="medium">Media</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Fecha límite</Label>
-                <Input
-                  type="date"
-                  value={taskForm.dueDate}
-                  onChange={(e) => setTaskForm((f) => ({ ...f, dueDate: e.target.value }))}
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNewTaskOpen(false)}>Cancelar</Button>
-            <Button onClick={handleAddTask} disabled={!taskForm.title.trim()}>Crear tarea</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

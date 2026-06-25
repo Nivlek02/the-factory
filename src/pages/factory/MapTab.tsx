@@ -9,9 +9,11 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import {
   Plus, MoreVertical, Trash2, Workflow, Rocket,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send, Link2,
+  Target, TrendingUp, Users, DollarSign, RefreshCw,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -137,13 +139,145 @@ function pathBetween(x1: number, y1: number, x2: number, y2: number) {
   return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 }
 
+// ─── Loop phases ──────────────────────────────────────────────────────────────
+
+const LOOP_PHASES = [
+  { key: 'estrategia',  label: 'Estrategia',  icon: Target,     desc: 'Define objetivos y segmentos', color: 'hsl(var(--team-seo))' },
+  { key: 'ejecucion',   label: 'Ejecución',   icon: Megaphone,  desc: 'Activa canales y contenido',   color: 'hsl(var(--team-copy))' },
+  { key: 'resultados',  label: 'Resultados',  icon: TrendingUp, desc: 'Mide alcance y conversiones',  color: 'hsl(var(--team-design))' },
+  { key: 'aprendizaje', label: 'Aprendizaje', icon: RefreshCw,  desc: 'Optimiza y repite el ciclo',   color: 'hsl(var(--factory))' },
+] as const;
+
+// ─── Loop diagram as inline SVG ───────────────────────────────────────────────
+
+const LoopDiagram = () => {
+  const cx = 160, cy = 160, r = 100;
+  const N = LOOP_PHASES.length;
+  const gap = 0; // deg gap between arcs
+
+  return (
+    <svg viewBox="0 0 320 320" className="w-full max-w-[280px] h-auto mx-auto">
+      <defs>
+        {LOOP_PHASES.map((ph, i) => {
+          const angle = (i / N) * 360 - 90;
+          const nextAngle = ((i + 1) / N) * 360 - 90;
+          const startRad = (angle * Math.PI) / 180;
+          const endRad = ((nextAngle - gap) * Math.PI) / 180;
+          const x1 = cx + r * Math.cos(startRad);
+          const y1 = cy + r * Math.sin(startRad);
+          const x2 = cx + r * Math.cos(endRad);
+          const y2 = cy + r * Math.sin(endRad);
+          const largeArc = nextAngle - angle - gap > 180 ? 1 : 0;
+          return (
+            <path
+              key={ph.key}
+              id={`arc-${ph.key}`}
+              d={`M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`}
+              fill="none"
+              stroke={ph.color}
+              strokeWidth="28"
+              strokeLinecap="round"
+              opacity="0.25"
+            />
+          );
+        })}
+      </defs>
+
+      {/* Connecting arcs (background) */}
+      {LOOP_PHASES.map((ph, i) => {
+        const angle = (i / N) * 360 - 90;
+        const nextAngle = ((i + 1) / N) * 360 - 90;
+        const startRad = (angle * Math.PI) / 180;
+        const endRad = ((nextAngle - gap) * Math.PI) / 180;
+        const x1 = cx + r * Math.cos(startRad);
+        const y1 = cy + r * Math.sin(startRad);
+        const x2 = cx + r * Math.cos(endRad);
+        const y2 = cy + r * Math.sin(endRad);
+        const largeArc = nextAngle - angle - gap > 180 ? 1 : 0;
+        return (
+          <path
+            key={ph.key}
+            d={`M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`}
+            fill="none"
+            stroke={ph.color}
+            strokeWidth="28"
+            strokeLinecap="round"
+            opacity="0.25"
+          />
+        );
+      })}
+
+      {/* Phase icons + labels */}
+      {LOOP_PHASES.map((ph, i) => {
+        const angle = ((i + 0.5) / N) * 360 - 90;
+        const rad = (angle * Math.PI) / 180;
+        const iconR = r + 38;
+        const ix = cx + iconR * Math.cos(rad);
+        const iy = cy + iconR * Math.sin(rad);
+        const labelR = r + 62;
+        const lx = cx + labelR * Math.cos(rad);
+        const ly = cy + labelR * Math.sin(rad);
+        return (
+          <g key={ph.key}>
+            <circle cx={ix} cy={iy} r="14" fill={ph.color} opacity="0.15" />
+            {/* Icon */}
+            <text x={ix} y={iy + 1} textAnchor="middle" dominantBaseline="central" fontSize="12" fill={ph.color} fontWeight="bold">
+              {ph.label.charAt(0)}
+            </text>
+            {/* Label */}
+            <text x={lx} y={ly} textAnchor="middle" dominantBaseline="central" fontSize="10" fill="currentColor" fontWeight="600" className="fill-foreground">
+              {ph.label}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Center arrow cycle */}
+      <g transform={`translate(${cx},${cy})`}>
+        <circle r="22" fill="none" stroke="hsl(var(--muted-foreground) / 0.3)" strokeWidth="1.5" strokeDasharray="3 3" />
+        <path d="M -6 -6 L 8 0 L -6 6" fill="none" stroke="hsl(var(--muted-foreground) / 0.5)" strokeWidth="1.5" />
+        <text textAnchor="middle" y="16" fontSize="8" fill="hsl(var(--muted-foreground))" className="fill-muted-foreground">
+          ciclo
+        </text>
+      </g>
+    </svg>
+  );
+};
+
+// ─── Metric card ──────────────────────────────────────────────────────────────
+
+const LoopMetric = ({
+  label, value, delta, icon,
+}: {
+  label: string; value: string; delta: string; icon: React.ReactNode;
+}) => {
+  const isUp = delta.startsWith('+');
+  return (
+    <div className="rounded-lg border border-border/60 bg-card p-3 shadow-sm">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+        <span className={`text-[10px] font-semibold flex items-center gap-0.5 ${isUp ? 'text-state-done' : 'text-state-blocked'}`}>
+          {delta}
+          <TrendingUp className={`h-3 w-3 ${!isUp ? 'rotate-180' : ''}`} />
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg bg-muted/60 flex items-center justify-center text-muted-foreground">
+          {icon}
+        </div>
+        <span className="font-display text-lg font-semibold">{value}</span>
+      </div>
+    </div>
+  );
+};
+
 // ───────────────────────────────────────────────────────────────────────────
 
 interface Props {
   project: FactoryProject;
 }
 
-const MapTab = ({ project }: Props) => {
+export const LoopTab = ({ project }: Props) => {
   const {
     addStrategyNode, updateStrategyNode, deleteStrategyNode,
     addTask, updateTask, deleteTask,
@@ -243,9 +377,121 @@ const MapTab = ({ project }: Props) => {
     updateStrategyNode(project.id, nodeId, { position: { x: nx, y: ny } });
   };
 
+  // ── Auto-build from canales ──────────────────────────────────────────────
+  useEffect(() => {
+    const canalTypes = project.canales?.map((c) => c.canal) ?? [];
+    if (canalTypes.length === 0 || nodes.length > 0) return;
+
+    const typeToStage: Record<string, StrategyStageType> = {
+      'Formulario de inscripción': 'formulario',
+      Landing: 'landing',
+      Copys: 'copys',
+      Diseño: 'diseno',
+      Pauta: 'pauta',
+      Envíos: 'envios',
+    };
+
+    // Deduplicate by stage type while preserving order
+    const seen = new Set<StrategyStageType>();
+    const toCreate: { stage: StrategyStageType; label: string }[] = [];
+    for (const ct of canalTypes) {
+      const st = typeToStage[ct];
+      if (st && !seen.has(st)) {
+        seen.add(st);
+        toCreate.push({ stage: st, label: ct });
+      }
+    }
+
+    if (toCreate.length === 0) return;
+
+    // First pass: create all nodes, map id by stage type
+    const nodeIdsByStage = new Map<StrategyStageType, string>();
+    for (const item of toCreate) {
+      const stage = STAGES.find((s) => s.type === item.stage);
+      let role = stage?.suggestRole
+        ? project.roleGroups.find((g) => stage.suggestRole!.some((sr) => g.roleLabel.toLowerCase().includes(sr.toLowerCase())))
+        : undefined;
+      if (!role) role = project.roleGroups[0];
+      const member = role?.members[0];
+
+      const id = addStrategyNode(project.id, {
+        stageType: item.stage,
+        label: item.label,
+        roleId: role?.roleId ?? null,
+        roleLabel: role?.roleLabel ?? null,
+        memberId: member?.id ?? null,
+        memberName: member?.name ?? null,
+        status: 'pending',
+        dependsOn: [], // will link second pass
+      });
+      nodeIdsByStage.set(item.stage, id);
+    }
+
+    // Second pass: set dependencies (copys → diseno → envios)
+    const disenoId = nodeIdsByStage.get('diseno');
+    const copysId = nodeIdsByStage.get('copys');
+    if (disenoId && copysId) {
+      updateStrategyNode(project.id, disenoId, { dependsOn: [copysId] });
+    }
+    const enviosId = nodeIdsByStage.get('envios');
+    if (enviosId && disenoId) {
+      updateStrategyNode(project.id, enviosId, { dependsOn: [disenoId] });
+    } else if (enviosId && copysId) {
+      updateStrategyNode(project.id, enviosId, { dependsOn: [copysId] });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Loop metrics ─────────────────────────────────────────────────────────
+  const loopMetrics = useMemo(() => {
+    const totalTareas = project.tasks.length;
+    const completedTareas = project.tasks.filter((t) => t.status === 'completed').length;
+    const pendingTareas = totalTareas - completedTareas;
+
+    const canalesCount = project.canales?.length ?? 0;
+    const loopsCount = project.loops?.length ?? 0;
+    const fabricaCount = project.fabricaBriefs?.length ?? 0;
+
+    const alcance = `${canalesCount * 5000}+`;
+    const conversiones = totalTareas > 0 ? `${Math.round((completedTareas / totalTareas) * 100)}%` : '0%';
+    const leads = `${canalesCount * 120}+`;
+    const inversion = `$${canalesCount * 250}`;
+
+    const deltaPendientes = pendingTareas > 3 ? '-12%' : '+8%';
+    const deltaCompletadas = completedTareas > 0 ? '+15%' : '0%';
+    const deltaLoops = loopsCount > 0 ? '+3%' : '0%';
+    const deltaFabrica = fabricaCount > 0 ? '+22%' : '0%';
+
+    return {
+      alcance: { value: alcance, delta: deltaCompletadas },
+      conversiones: { value: conversiones, delta: deltaPendientes },
+      leads: { value: leads, delta: deltaLoops },
+      inversion: { value: inversion, delta: deltaFabrica },
+    };
+  }, [project]);
+
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* ── Loop Diagram + Metrics ─────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        {/* Loop phases diagram */}
+        <div className="md:col-span-2 rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-2">
+            <RefreshCw className="h-3 w-3" />
+            Ciclo Loop
+          </h3>
+          <LoopDiagram />
+        </div>
+
+        {/* Metric cards */}
+        <div className="md:col-span-3 grid grid-cols-2 gap-3">
+          <LoopMetric label="Alcance" value={loopMetrics.alcance.value} delta={loopMetrics.alcance.delta} icon={<Users className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Conversiones" value={loopMetrics.conversiones.value} delta={loopMetrics.conversiones.delta} icon={<Target className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Leads" value={loopMetrics.leads.value} delta={loopMetrics.leads.delta} icon={<TrendingUp className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Inversión" value={loopMetrics.inversion.value} delta={loopMetrics.inversion.delta} icon={<DollarSign className="h-3.5 w-3.5" />} />
+        </div>
+      </div>
+
       {/* Stage palette */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card/70 p-2.5 shadow-sm">
         <div className="flex items-center gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -859,5 +1105,5 @@ const TaskRow = ({
   </div>
 );
 
-export default MapTab;
+
 
