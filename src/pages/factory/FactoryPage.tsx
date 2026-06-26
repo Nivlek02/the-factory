@@ -301,270 +301,121 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
 
 const TeamTasksTab = ({
   project,
-  onStatusChange,
-  onDeleteTask,
-  allMembers,
 }: {
   project: FactoryProject;
-  onStatusChange: (taskId: string, status: string) => void;
-  onDeleteTask: (taskId: string) => void;
-  allMembers: Array<{ id: string; name: string; roleLabel: string }>;
 }) => {
-  const { roles, addRole } = useRolesStore();
-  const { addRoleGroup, removeMemberFromRole, removeRoleGroup, addTask, addFabricaBriefs, updateFabricaBrief } = useFactoryStore();
+  const { addRole } = useRolesStore();
+  const { addRoleGroup, addFabricaBriefs, updateFabricaBrief } = useFactoryStore();
   const [addRoleOpen, setAddRoleOpen] = useState(false);
 
-  // State for new role form
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleTareas, setNewRoleTareas] = useState('');
-
-  // Inline task creation per role
-  const [taskInputs, setTaskInputs] = useState<Record<string, string>>({});
-  const setTask = (roleId: string, v: string) => setTaskInputs((s) => ({ ...s, [roleId]: v }));
-  const handleAddTask = (roleId: string, roleLabel: string) => {
-    const title = (taskInputs[roleId] ?? '').trim();
-    if (!title) return;
-    addTask(project.id, {
-      title,
-      description: '',
-      assignedMemberId: null,
-      assignedMemberName: null,
-      assignedRoleLabel: roleLabel,
-      status: 'pending',
-      priority: null,
-      dueDate: null,
-    });
-    setTask(roleId, '');
-  };
 
   const handleAddRole = () => {
     const name = newRoleName.trim();
     if (!name) return;
-    // Parse responsibilities from textarea (one per line)
     const tareas = newRoleTareas
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
-    // Generate a stable id matching the store convention
     const roleId = `role-${Date.now()}`;
-    // Create the role in the global store with its responsibilities
     addRole(name, tareas);
-    // Add the role group to the project
     addRoleGroup(project.id, roleId, name);
-    // Add each responsibility as a hoja de fábrica item (checked = false = to do)
     if (tareas.length > 0) {
       addFabricaBriefs(
         project.id,
-        tareas.map((t) => ({
-          roleId,
-          roleLabel: name,
-          tarea: t,
-        }))
+        tareas.map((t) => ({ roleId, roleLabel: name, tarea: t }))
       );
     }
-    // Reset and close
     setNewRoleName('');
     setNewRoleTareas('');
     setAddRoleOpen(false);
   };
 
-  const totalMembers = project.roleGroups.reduce((s, g) => s + g.members.length, 0);
+  const briefs = project.fabricaBriefs ?? [];
+  const grouped = briefs.reduce<Record<string, typeof briefs>>((acc, b) => {
+    if (!acc[b.roleLabel]) acc[b.roleLabel] = [];
+    acc[b.roleLabel].push(b);
+    return acc;
+  }, {});
+  const totalChecked = briefs.filter((b) => b.checked).length;
+  const isEmpty = briefs.length === 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">
-          {project.roleGroups.length} rol{project.roleGroups.length !== 1 ? 'es' : ''} · {totalMembers} persona{totalMembers !== 1 ? 's' : ''} · {project.tasks.length} tarea{project.tasks.length !== 1 ? 's' : ''}
-        </p>
+        <div>
+          <h3 className="font-display text-base font-semibold">Hoja de fábrica</h3>
+          {!isEmpty && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {totalChecked} de {briefs.length} completadas
+            </p>
+          )}
+        </div>
         <Button size="sm" onClick={() => setAddRoleOpen(true)}>
           <UserPlus className="h-4 w-4" />
           Agregar rol al equipo
         </Button>
       </div>
 
-      {project.roleGroups.length > 0 && (
+      {/* Empty state */}
+      {isEmpty ? (
+        <div className="rounded-xl border border-dashed border-border/60 p-10 flex flex-col items-center text-center">
+          <CheckSquare className="h-8 w-8 text-muted-foreground/40 mb-3" />
+          <p className="text-sm font-medium text-muted-foreground mb-1">
+            Sin tareas pendientes
+          </p>
+          <p className="text-xs text-muted-foreground/60 max-w-xs">
+            Agrega un rol con responsabilidades para empezar a llenar la hoja de fábrica del proyecto.
+          </p>
+        </div>
+      ) : (
+        /* Hoja de fábrica grouped by role */
         <div className="space-y-3">
-          {project.roleGroups.map((group, i) => {
-            const color = roleColor(i);
-            const roleTasks = project.tasks.filter((t) => t.assignedRoleLabel === group.roleLabel);
-            const pending = roleTasks.filter((t) => t.status !== 'completed');
-            const done = roleTasks.filter((t) => t.status === 'completed');
-            return (
-              <Card key={group.roleId} className="shadow-sm overflow-hidden">
-                {/* Role header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border/60" style={{ borderLeftWidth: 3, borderLeftColor: color }}>
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: color }}>
-                      {group.roleLabel.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="font-semibold text-sm">{group.roleLabel}</span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {group.members.length} persona{group.members.length !== 1 ? 's' : ''} · {roleTasks.length} tarea{roleTasks.length !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                    onClick={() => removeRoleGroup(project.id, group.roleId)}
+          {Object.entries(grouped).map(([roleLabel, items]) => (
+            <div
+              key={roleLabel}
+              className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-muted/20">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                  {roleLabel}
+                </h4>
+                <span className="text-[10px] text-muted-foreground">
+                  {items.filter((b) => b.checked).length}/{items.length}
+                </span>
+              </div>
+              <div className="p-2">
+                {items.map((b) => (
+                  <label
+                    key={b.id}
+                    className="flex items-center gap-3 py-1.5 px-2 rounded-md hover:bg-muted/40 cursor-pointer transition-colors group"
                   >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-
-                <CardContent className="p-4 space-y-3">
-                  {/* Members */}
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                      <Users className="h-3 w-3" />
-                      Personas
-                    </p>
-                    <div className="space-y-1.5 mb-2">
-                      {group.members.length === 0 && (
-                        <p className="text-xs text-muted-foreground italic">Sin personas asignadas</p>
-                      )}
-                      {group.members.map((m) => (
-                        <div key={m.id} className="flex items-center justify-between gap-2 py-1 px-2 rounded-md bg-muted/40 group/member">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0" style={{ backgroundColor: color }}>
-                              {m.name.charAt(0).toUpperCase()}
-                            </div>
-                            <span className="text-xs font-medium truncate">{m.name}</span>
-                          </div>
-                          <button
-                            className="text-muted-foreground hover:text-destructive opacity-0 group-hover/member:opacity-100 transition-opacity shrink-0"
-                            onClick={() => removeMemberFromRole(project.id, group.roleId, m.id)}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Tasks */}
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                      <CheckSquare className="h-3 w-3" />
-                      Tareas
-                    </p>
-                    {pending.length === 0 && done.length === 0 && (
-                      <p className="text-xs text-muted-foreground italic mb-2">Sin tareas asignadas</p>
-                    )}
-                    <div className="space-y-1 mb-2">
-                      {pending.map((t) => (
-                        <TaskRow
-                          key={t.id}
-                          task={t}
-                          onStatusChange={(s) => onStatusChange(t.id, s)}
-                          onDelete={() => onDeleteTask(t.id)}
-                        />
-                      ))}
-                      {done.map((t) => (
-                        <TaskRow
-                          key={t.id}
-                          task={t}
-                          onStatusChange={(s) => onStatusChange(t.id, s)}
-                          onDelete={() => onDeleteTask(t.id)}
-                          done
-                        />
-                      ))}
-                    </div>
-                    {/* Inline add task */}
-                    <div className="flex gap-1">
-                      <Input
-                        placeholder="Nueva tarea…"
-                        value={taskInputs[group.roleId] ?? ''}
-                        className="h-7 text-xs"
-                        onChange={(e) => setTask(group.roleId, e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddTask(group.roleId, group.roleLabel)}
-                      />
-                      <Button size="icon" variant="outline" className="h-7 w-7 shrink-0" onClick={() => handleAddTask(group.roleId, group.roleLabel)} disabled={!(taskInputs[group.roleId] ?? '').trim()}>
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-
-                    {/* Hoja de fábrica — briefs de este rol */}
-                    {(() => {
-                      const briefs = project.fabricaBriefs?.filter((b) => b.roleLabel === group.roleLabel) ?? [];
-                      if (briefs.length === 0) return null;
-                      return (
-                        <div className="border-t border-border/40 pt-3 mt-3">
-                          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                            <CheckSquare className="h-3 w-3" />
-                            Hoja de fábrica
-                          </p>
-                          <div className="space-y-0.5">
-                            {briefs.map((b) => (
-                              <div key={b.id}>
-                                <label className="flex items-center gap-2.5 py-1 px-2 rounded-md hover:bg-muted/40 cursor-pointer transition-colors">
-                                  <input
-                                    type="checkbox"
-                                    checked={b.checked}
-                                    onChange={() => updateFabricaBrief(project.id, b.id, { checked: !b.checked })}
-                                    className="h-3.5 w-3.5 rounded border-muted-foreground/50 text-factory focus:ring-factory"
-                                  />
-                                  <span className={`text-xs flex-1 ${b.checked ? 'line-through text-muted-foreground/60' : ''}`}>
-                                    {b.tarea}
-                                  </span>
-                                </label>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                    <input
+                      type="checkbox"
+                      checked={b.checked}
+                      onChange={() => updateFabricaBrief(project.id, b.id, { checked: !b.checked })}
+                      className="h-4 w-4 rounded border-muted-foreground/40 text-primary focus:ring-primary/30"
+                    />
+                    <span
+                      className={`text-sm flex-1 transition-all ${
+                        b.checked
+                          ? 'line-through text-muted-foreground/50'
+                          : 'text-foreground/80'
+                      }`}
+                    >
+                      {b.tarea}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Standalone Hoja de fábrica — muestra todos los briefs agrupados por rol (incluso roles sin grupo) */}
-      {project.fabricaBriefs && project.fabricaBriefs.length > 0 && (() => {
-        const grouped = project.fabricaBriefs.reduce<Record<string, typeof project.fabricaBriefs>>((acc, b) => {
-          if (!acc[b.roleLabel]) acc[b.roleLabel] = [];
-          acc[b.roleLabel].push(b);
-          return acc;
-        }, {});
-        return (
-          <div className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <CheckSquare className="h-4 w-4 text-factory" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider">Hoja de fábrica</h3>
-              <span className="text-[10px] text-muted-foreground">
-                · {project.fabricaBriefs.filter((b) => b.checked).length} de {project.fabricaBriefs.length} activas
-              </span>
-            </div>
-            <div className="space-y-3">
-              {Object.entries(grouped).map(([roleLabel, items]) => (
-                <div key={roleLabel} className="rounded-lg border border-border/60 bg-card p-3">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-factory mb-2">{roleLabel}</h4>
-                  <div className="space-y-0.5">
-                    {items.map((b) => (
-                      <label key={b.id} className="flex items-center gap-2.5 py-1 px-2 rounded-md hover:bg-muted/40 cursor-pointer transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={b.checked}
-                          onChange={() => updateFabricaBrief(project.id, b.id, { checked: !b.checked })}
-                          className="h-3.5 w-3.5 rounded border-muted-foreground/50 text-factory focus:ring-factory"
-                        />
-                        <span className={`text-xs flex-1 ${b.checked ? 'line-through text-muted-foreground/60' : ''}`}>
-                          {b.tarea}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Add role dialog — creates a new role with name + responsibilities */}
+      {/* Add role dialog */}
       <Dialog open={addRoleOpen} onOpenChange={setAddRoleOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -599,55 +450,6 @@ const TeamTasksTab = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-};
-
-// ─── Compact task row for inline display ──────────────────────────────────
-
-const TaskRow = ({
-  task, onStatusChange, onDelete, done,
-}: {
-  task: ProjectTask;
-  onStatusChange: (status: string) => void;
-  onDelete: () => void;
-  done?: boolean;
-}) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  return (
-    <div className="flex items-center gap-2 py-1 px-2 rounded-md bg-muted/40 group/row">
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-        <DropdownMenuTrigger asChild>
-          <button
-            className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 transition-colors ${
-              done ? 'bg-state-done border-state-done' : 'border-muted-foreground/40 hover:border-state-done'
-            }`}
-            aria-label="Cambiar estado"
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          {TASK_STATUSES.map((s) => (
-            <DropdownMenuItem key={s.value} onClick={() => { onStatusChange(s.value); setMenuOpen(false); }}>
-              <span className={`inline-block w-2 h-2 rounded-full mr-2 ${TASK_STATUS_META[s.value].cls.split(' ')[0]}`} />
-              {s.label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <span className={`text-xs flex-1 truncate ${done ? 'line-through text-muted-foreground/60' : ''}`}>
-        {task.title}
-      </span>
-      {task.assignedMemberName && (
-        <span className="text-[10px] text-muted-foreground shrink-0">{task.assignedMemberName}</span>
-      )}
-      <button
-        onClick={onDelete}
-        className="opacity-0 group-hover/row:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
-        aria-label="Eliminar"
-      >
-        <X className="h-3 w-3" />
-      </button>
     </div>
   );
 };
@@ -756,12 +558,7 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
         {activeTab === 'loop' && <LoopTab project={project} />}
         {activeTab === 'overview' && <OverviewTab project={project} />}
         {activeTab === 'equipo' && (
-          <TeamTasksTab
-            project={project}
-            onStatusChange={(taskId, status) => updateTask(project.id, taskId, { status: status as any })}
-            onDeleteTask={(taskId) => deleteTask(project.id, taskId)}
-            allMembers={allMembers}
-          />
+          <TeamTasksTab project={project} />
         )}
       </div>
 
