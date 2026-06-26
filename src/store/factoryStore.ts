@@ -114,6 +114,7 @@ export interface FactoryProject {
   canales: CanalRow[];
   loops: LoopRow[];
   fabricaBriefs: FabricaBriefItem[];
+  requerimientos: string[];
 }
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -125,8 +126,8 @@ interface FactoryStore {
 
   hydrate: () => Promise<void>;
 
-  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs'>) => string;
-  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs'>>) => void;
+  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos'>) => string;
+  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos'>>) => void;
   deleteProject: (id: string) => void;
 
   addRoleGroup: (projectId: string, roleId: string, roleLabel: string) => void;
@@ -186,6 +187,7 @@ const rowToProject = (row: any): FactoryProject => {
     canales: data.canales ?? [],
     loops: data.loops ?? [],
     fabricaBriefs: data.fabricaBriefs ?? [],
+    requerimientos: data.requerimientos ?? [],
   };
 };
 
@@ -207,6 +209,7 @@ const projectToRow = (p: FactoryProject) => ({
       canales: p.canales,
       loops: p.loops,
       fabricaBriefs: p.fabricaBriefs,
+      requerimientos: p.requerimientos,
     },
 });
 
@@ -272,6 +275,7 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       canales: data.canales ?? [],
       loops: data.loops ?? [],
       fabricaBriefs: data.fabricaBriefs ?? [],
+      requerimientos: data.requerimientos ?? [],
       id,
       createdAt: new Date().toISOString(),
       roleGroups: [],

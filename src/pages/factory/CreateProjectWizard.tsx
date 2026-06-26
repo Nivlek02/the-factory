@@ -36,6 +36,33 @@ const SEGMENTOS_LABEL: Record<string, string> = {
   mercado_medio: 'Mercado medio',
 };
 
+const REQUERIMIENTOS = [
+  { id: 'landing', label: 'Landing' },
+  { id: 'formulario', label: 'Formulario de inscripción' },
+  { id: 'pauta_digital', label: 'Pauta digital' },
+  { id: 'piezas', label: 'Piezas' },
+] as const;
+
+type ReqId = (typeof REQUERIMIENTOS)[number]['id'];
+
+/** Maps each requerimiento to the roles + specific tareas that should appear when selected.
+ *  If tareas array is empty for a role, ALL their tareas are included. */
+const REQ_ROLE_TAREAS: Record<ReqId, Record<string, string[]>> = {
+  landing: {
+    gestor_canales: ['Landing'],
+    produccion: ['Landing page'],
+  },
+  formulario: {
+    gestor_canales: ['Formulario de inscripción'],
+  },
+  pauta_digital: {
+    social: [],
+  },
+  piezas: {
+    diseno: ['Diseño de piezas gráficas'],
+  },
+};
+
 /** Convierte YYYY-MM-DD a DD/MM para mostrar. Si no es fecha ISO, devuelve el texto original. */
 const formatFecha = (dateStr: string) => {
   if (!dateStr) return '';
@@ -88,6 +115,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   const [loopsRows, setLoopsRows] = useState<{ id: string; disparador: string; reaccion: string; responsable: string }[]>(
     editProject?.loops?.map((l) => ({ ...l })) ?? []
   );
+  const [requerimientos, setRequerimientos] = useState<string[]>(
+    editProject?.requerimientos ?? []
+  );
   const [fabricaBriefs, setFabricaBriefs] = useState<FabricaBriefItem[]>(
     editProject?.fabricaBriefs?.map((b) => ({ ...b })) ?? []
   );
@@ -99,6 +129,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     setAudiencia({ segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' });
     setCanalesRows([]);
     setLoopsRows([]);
+    setRequerimientos([]);
     setFabricaBriefs([]);
   };
 
@@ -115,11 +146,35 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   const updateLoopRow = (id: string, field: string, value: string) =>
     setLoopsRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
 
+  // ─── Helpers for requerimiento filtering ───
+  /** Returns the subset of tareas for a role that match the selected requerimientos.
+   *  If no requerimientos are selected, returns all tareas (full brief). */
+  const filterTareasByRequerimientos = (roleId: string, roleTareas: string[], reqs: string[]): string[] => {
+    if (reqs.length === 0) return roleTareas;
+    const matched = new Set<string>();
+    for (const reqId of reqs) {
+      const reqRoles = REQ_ROLE_TAREAS[reqId as ReqId];
+      if (!reqRoles) continue;
+      const reqTareas = reqRoles[roleId];
+      if (!reqTareas) continue;
+      if (reqTareas.length === 0) {
+        // Empty array means ALL tareas for this role when this req is selected
+        return roleTareas;
+      }
+      for (const t of reqTareas) matched.add(t);
+    }
+    return roleTareas.filter((t) => matched.has(t));
+  };
+
   // ─── Auto-populate Fábrica briefs from canales + loops ───
-  const buildFabricaBriefs = (canales: typeof canalesRows, loops: typeof loopsRows): FabricaBriefItem[] => {
+  const buildFabricaBriefs = (canales: typeof canalesRows, loops: typeof loopsRows, reqs: string[]): FabricaBriefItem[] => {
     const items: FabricaBriefItem[] = [];
     const addItem = (roleId: string, roleLabel: string, tarea: string) => {
       items.push({ id: uid(), roleId, roleLabel, tarea, checked: false });
+    };
+    const addRoleTareasFiltered = (roleId: string, roleLabel: string, roleTareas: string[]) => {
+      const filtered = filterTareasByRequerimientos(roleId, roleTareas, reqs);
+      for (const t of filtered) addItem(roleId, roleLabel, t);
     };
 
     // ─── Tareas configuradas desde Ajustes ───
@@ -127,7 +182,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     for (const role of roles) {
       if (role.tareas.length === 0) continue;
       if (role.id === 'produccion' || role.id === 'diseno') {
-        for (const t of role.tareas) addItem(role.id, role.label, t);
+        addRoleTareasFiltered(role.id, role.label, role.tareas);
       }
     }
 
@@ -143,7 +198,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         case 'SMS': {
           const gestor = roles.find((r) => r.id === 'gestor_canales');
           if (gestor) {
-            for (const t of gestor.tareas) addItem(gestor.id, gestor.label, t);
+            addRoleTareasFiltered(gestor.id, gestor.label, gestor.tareas);
           }
           addItem('gestor_canales', 'Gestor de canales',
             `Configurar envío por ${row.canal}${ref ? ` — ${ref}` : ''}`);
@@ -151,7 +206,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
             `Redactar copy para ${row.canal}${row.copy ? ` — ${row.copy}` : ''}`);
           const copyRole = roles.find((r) => r.id === 'copy');
           if (copyRole) {
-            for (const t of copyRole.tareas) addItem(copyRole.id, copyRole.label, t);
+            addRoleTareasFiltered(copyRole.id, copyRole.label, copyRole.tareas);
           }
           break;
         }
@@ -160,7 +215,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
             `Configurar campaña en Meta Ads${row.copy ? ` — ${row.copy}` : ''}`);
           const socialRole = roles.find((r) => r.id === 'social');
           if (socialRole) {
-            for (const t of socialRole.tareas) addItem(socialRole.id, socialRole.label, t);
+            addRoleTareasFiltered(socialRole.id, socialRole.label, socialRole.tareas);
           }
           break;
         }
@@ -171,11 +226,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
             `Redactar guion para Call Center${row.copy ? ` — ${row.copy}` : ''}`);
           const copyRole = roles.find((r) => r.id === 'copy');
           if (copyRole) {
-            for (const t of copyRole.tareas) addItem(copyRole.id, copyRole.label, t);
+            addRoleTareasFiltered(copyRole.id, copyRole.label, copyRole.tareas);
           }
           const estRole = roles.find((r) => r.id === 'estratega');
           if (estRole) {
-            for (const t of estRole.tareas) addItem(estRole.id, estRole.label, t);
+            addRoleTareasFiltered(estRole.id, estRole.label, estRole.tareas);
           }
           break;
         }
@@ -184,7 +239,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
             `Plan de contenido para RRSS${row.copy ? ` — ${row.copy}` : ''}`);
           const socialRole = roles.find((r) => r.id === 'social');
           if (socialRole) {
-            for (const t of socialRole.tareas) addItem(socialRole.id, socialRole.label, t);
+            addRoleTareasFiltered(socialRole.id, socialRole.label, socialRole.tareas);
           }
           break;
         }
@@ -207,13 +262,13 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     for (const role of roles) {
       if (roleIdsInBrief.has(role.id)) continue;
       if (role.tareas.length === 0) continue;
-      // Solo incluimos roles que participan via canals/loops
+      // Solo incluimos roles que participan via canales/loops
       const involvedInCanal = canales.some(
         (c) => canalInvolvesRole(c.canal, role.id)
       );
       const involvedInLoop = loops.some((l) => l.responsable === role.label);
       if (involvedInCanal || involvedInLoop) {
-        for (const t of role.tareas) addItem(role.id, role.label, t);
+        addRoleTareasFiltered(role.id, role.label, role.tareas);
       }
     }
 
@@ -232,14 +287,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     return map[canal]?.includes(roleId) ?? false;
   };
 
-  // Rebuild when canales or loops change
+  // Rebuild when canales, loops or requerimientos change
   useEffect(() => {
     if (canalesRows.length > 0 || loopsRows.some((l) => l.responsable)) {
-      setFabricaBriefs(buildFabricaBriefs(canalesRows, loopsRows));
+      setFabricaBriefs(buildFabricaBriefs(canalesRows, loopsRows, requerimientos));
     } else {
       setFabricaBriefs([]);
     }
-  }, [canalesRows, loopsRows]);
+  }, [canalesRows, loopsRows, requerimientos]);
 
   const toggleFabricaBrief = (id: string) =>
     setFabricaBriefs((prev) => prev.map((b) => (b.id === id ? { ...b, checked: !b.checked } : b)));
@@ -275,6 +330,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         canales: canalesRows,
         loops: loopsRows,
         fabricaBriefs: fabricaBriefs,
+        requerimientos,
       });
       onCreated(editProject.id);
       close();
@@ -299,6 +355,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       canales: canalesRows,
       loops: loopsRows,
       fabricaBriefs: fabricaBriefs,
+      requerimientos,
     });
     onCreated(id);
     close();
@@ -666,6 +723,41 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                 >
                   <Plus className="h-3.5 w-3.5" /> Agregar disparador
                 </button>
+              </div>
+
+              {/* ─── Requerimientos ─── */}
+              <div className="border-t pt-4">
+                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
+                  Requerimiento
+                </Label>
+                <p className="text-xs text-muted-foreground mb-3 italic">
+                  Selecciona los requerimientos del proyecto para generar las tareas correspondientes en el brief de fábrica.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {REQUERIMIENTOS.map((req) => {
+                    const active = requerimientos.includes(req.id);
+                    return (
+                      <button
+                        key={req.id}
+                        type="button"
+                        onClick={() =>
+                          setRequerimientos((prev) =>
+                            active
+                              ? prev.filter((r) => r !== req.id)
+                              : [...prev, req.id]
+                          )
+                        }
+                        className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                          active
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                        }`}
+                      >
+                        {req.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
