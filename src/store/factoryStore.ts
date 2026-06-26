@@ -147,6 +147,7 @@ interface FactoryStore {
   updateStrategyNode: (projectId: string, nodeId: string, updates: Partial<Omit<StrategyNode, 'id'>>) => void;
   deleteStrategyNode: (projectId: string, nodeId: string) => void;
 
+  addFabricaBriefs: (projectId: string, briefs: Omit<FabricaBriefItem, 'id' | 'checked'>[]) => void;
   updateFabricaBrief: (projectId: string, briefId: string, updates: Partial<Pick<FabricaBriefItem, 'checked' | 'metrica' | 'lineaBase' | 'objetivo' | 'mejora'>>) => void;
 
   setActiveProject: (id: string | null) => void;
@@ -417,6 +418,17 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
         strategyNodes: (p.strategyNodes ?? [])
           .filter((n) => n.id !== nodeId)
           .map((n) => ({ ...n, dependsOn: n.dependsOn.filter((d) => d !== nodeId) })),
+      })),
+    })),
+
+  addFabricaBriefs: (projectId, briefs) =>
+    persistAfter(set, get, projectId, (s) => ({
+      projects: patchProject(s.projects, projectId, (p) => ({
+        ...p,
+        fabricaBriefs: [
+          ...(p.fabricaBriefs ?? []),
+          ...briefs.map((b) => ({ ...b, id: uid(), checked: false })),
+        ],
       })),
     })),
 

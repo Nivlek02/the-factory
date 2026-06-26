@@ -311,7 +311,7 @@ const TeamTasksTab = ({
   allMembers: Array<{ id: string; name: string; roleLabel: string }>;
 }) => {
   const { roles, addRole } = useRolesStore();
-  const { addRoleGroup, removeMemberFromRole, removeRoleGroup, addTask, updateFabricaBrief } = useFactoryStore();
+  const { addRoleGroup, removeMemberFromRole, removeRoleGroup, addTask, addFabricaBriefs, updateFabricaBrief } = useFactoryStore();
   const [addRoleOpen, setAddRoleOpen] = useState(false);
 
   // State for new role form
@@ -351,6 +351,17 @@ const TeamTasksTab = ({
     addRole(name, tareas);
     // Add the role group to the project
     addRoleGroup(project.id, roleId, name);
+    // Add each responsibility as a hoja de fábrica item (checked = false = to do)
+    if (tareas.length > 0) {
+      addFabricaBriefs(
+        project.id,
+        tareas.map((t) => ({
+          roleId,
+          roleLabel: name,
+          tarea: t,
+        }))
+      );
+    }
     // Reset and close
     setNewRoleName('');
     setNewRoleTareas('');
