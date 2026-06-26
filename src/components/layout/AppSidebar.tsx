@@ -87,14 +87,15 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
         <div className={`flex items-center w-full ${collapsed ? 'justify-center' : 'justify-between'}`}>
           {!collapsed && (
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="relative w-9 h-9 rounded-xl bg-gradient-factory flex items-center justify-center flex-shrink-0 shadow-glow">
-                <Factory className="h-[18px] w-[18px] text-factory-foreground" />
-                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-state-done ring-2 ring-sidebar animate-pulse" />
-              </div>
+              <img
+                src="/fabrica-logo.svg"
+                alt="La Fábrica"
+                className="w-9 h-9 rounded-xl shadow-glow shrink-0"
+              />
               <div className="min-w-0">
-                <h1 className="font-display font-semibold text-base leading-none">Tremu</h1>
+                <h1 className="font-display font-semibold text-base leading-none">La Fábrica</h1>
                 <p className="text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/50 mt-1">
-                  La Fabrica
+                  Bienvenidos a la fabrica
                 </p>
               </div>
             </div>
@@ -116,7 +117,7 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
         <div className="px-2 mb-5">
           <SectionLabel accent>
             <Sparkles className="h-3 w-3" />
-            La Fabrica
+            Bienvenidos a la fabrica
           </SectionLabel>
           <div className="space-y-0.5">
             <NavItem to="/" end icon={<Factory />} label="La Fabrica" />

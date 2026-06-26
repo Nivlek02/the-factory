@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="96" fill="url(#grad)" />
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="512" y2="512">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="50%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+  <!-- Factory building -->
+  <g transform="translate(256, 280)">
+    <!-- Base building -->
+    <rect x="-80" y="-30" width="160" height="120" rx="8" fill="white" fill-opacity="0.2"/>
+    <rect x="-68" y="-18" width="136" height="96" rx="4" fill="white" fill-opacity="0.9"/>
+    <!-- Chimney -->
+    <rect x="40" y="-70" width="16" height="40" rx="2" fill="white" fill-opacity="0.5"/>
+    <rect x="36" y="-76" width="24" height="8" rx="2" fill="white" fill-opacity="0.35"/>
+    <!-- Smoke -->
+    <circle cx="48" cy="-90" r="10" fill="white" fill-opacity="0.2"/>
+    <circle cx="56" cy="-105" r="8" fill="white" fill-opacity="0.15"/>
+    <circle cx="50" cy="-118" r="6" fill="white" fill-opacity="0.1"/>
+    <!-- Windows -->
+    <rect x="-52" y="-8" width="22" height="22" rx="3" fill="url(#grad)"/>
+    <rect x="-20" y="-8" width="22" height="22" rx="3" fill="url(#grad)"/>
+    <rect x="12" y="-8" width="22" height="22" rx="3" fill="url(#grad)"/>
+    <rect x="-52" y="26" width="22" height="22" rx="3" fill="url(#grad)"/>
+    <rect x="-20" y="26" width="22" height="22" rx="3" fill="url(#grad)"/>
+    <rect x="12" y="26" width="22" height="22" rx="3" fill="url(#grad)"/>
+    <!-- Door -->
+    <rect x="-16" y="50" width="32" height="40" rx="16" fill="url(#grad)" fill-opacity="0.15"/>
+    <rect x="-16" y="50" width="32" height="40" rx="16" fill="none" stroke="url(#grad)" stroke-width="2"/>
+    <circle cx="4" cy="76" r="2.5" fill="url(#grad)"/>
+  </g>
+  <!-- "La Fábrica" text -->
+  <text x="256" y="444" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="36" letter-spacing="4" fill="white" fill-opacity="0.9">LA FÁBRICA</text>
+</svg>
