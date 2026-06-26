@@ -6,52 +6,52 @@
 
 @layer base {
   :root {
-    --background: 220 20% 98%;
-    --foreground: 224 47% 8%;
+    --background: 214 70% 95%;
+    --foreground: 216 56% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 224 47% 8%;
+    --card-foreground: 216 56% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 224 47% 8%;
+    --popover-foreground: 216 56% 12%;
 
-    --primary: 238 75% 58%;
+    --primary: 217 65% 29%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 250 90% 72%;
+    --primary-glow: 217 60% 42%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 224 47% 8%;
+    --secondary: 214 50% 90%;
+    --secondary-foreground: 216 56% 12%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 214 50% 93%;
+    --muted-foreground: 216 30% 35%;
 
-    --accent: 238 75% 58%;
+    --accent: 217 60% 42%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 238 75% 58%;
+    --border: 214 50% 88%;
+    --input: 214 50% 88%;
+    --ring: 217 60% 42%;
 
-    --radius: 0.75rem;
+    --radius: 0.625rem;
 
     /* THE FACTORY — operational tokens */
-    --factory: 238 75% 58%;
+    --factory: 217 60% 42%;
     --factory-foreground: 0 0% 100%;
-    --factory-glow: 250 90% 72%;
-    --factory-soft: 238 75% 96%;
+    --factory-glow: 217 60% 42%;
+    --factory-soft: 214 70% 92%;
 
     --surface: 0 0% 100%;
-    --surface-elevated: 220 20% 99%;
-    --surface-overlay: 224 47% 8%;
+    --surface-elevated: 214 50% 97%;
+    --surface-overlay: 216 56% 12%;
 
     /* Operational states */
-    --state-planning: 220 9% 46%;
-    --state-planning-bg: 220 14% 96%;
-    --state-progress: 217 91% 60%;
-    --state-progress-bg: 217 91% 96%;
+    --state-planning: 216 30% 40%;
+    --state-planning-bg: 214 50% 93%;
+    --state-progress: 217 65% 29%;
+    --state-progress-bg: 214 70% 93%;
     --state-review: 38 92% 50%;
     --state-review-bg: 38 100% 95%;
     --state-blocked: 0 84% 60%;
@@ -63,7 +63,7 @@
     --priority-p0: 0 84% 55%;
     --priority-p1: 25 95% 53%;
     --priority-p2: 38 92% 50%;
-    --priority-p3: 220 9% 60%;
+    --priority-p3: 216 30% 60%;
 
     /* Teams */
     --team-design: 262 83% 58%;
@@ -74,17 +74,17 @@
     --team-direction: 280 70% 55%;
 
     /* Gradients */
-    --gradient-factory: linear-gradient(135deg, hsl(238 75% 58%), hsl(250 90% 72%));
-    --gradient-factory-soft: linear-gradient(135deg, hsl(238 75% 58% / 0.08), hsl(250 90% 72% / 0.04));
-    --gradient-surface: linear-gradient(180deg, hsl(0 0% 100%), hsl(220 20% 98%));
+    --gradient-factory: linear-gradient(135deg, hsl(217 65% 29%), hsl(217 60% 42%));
+    --gradient-factory-soft: linear-gradient(135deg, hsl(217 65% 29% / 0.08), hsl(217 60% 42% / 0.04));
+    --gradient-surface: linear-gradient(180deg, hsl(0 0% 100%), hsl(214 50% 95%));
 
     /* Elevated shadows */
-    --shadow-elevated: 0 8px 32px -8px hsl(224 47% 8% / 0.08), 0 2px 6px -2px hsl(224 47% 8% / 0.04);
-    --shadow-glow: 0 0 0 1px hsl(238 75% 58% / 0.1), 0 8px 24px -8px hsl(238 75% 58% / 0.25);
+    --shadow-elevated: 0 8px 32px -8px hsl(216 56% 12% / 0.08), 0 2px 6px -2px hsl(216 56% 12% / 0.04);
+    --shadow-glow: 0 0 0 1px hsl(217 60% 42% / 0.1), 0 8px 24px -8px hsl(217 60% 42% / 0.25);
 
     /* Custom status colors */
-    --status-pending: 220 9% 46%;
-    --status-pending-bg: 220 14% 96%;
+    --status-pending: 216 30% 40%;
+    --status-pending-bg: 214 50% 93%;
     --status-progress: 38 92% 50%;
     --status-progress-bg: 38 100% 95%;
     --status-completed: 142 71% 45%;
@@ -96,22 +96,22 @@
     --board-social: 340 82% 52%;
     --board-seo: 160 84% 39%;
 
-    /* Sidebar — Factory dark */
-    --sidebar-background: 224 47% 6%;
-    --sidebar-foreground: 220 14% 92%;
-    --sidebar-primary: 238 75% 58%;
+    /* Sidebar — Navy dark from palette */
+    --sidebar-background: 216 56% 12%;
+    --sidebar-foreground: 214 50% 92%;
+    --sidebar-primary: 217 60% 42%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 224 32% 12%;
-    --sidebar-accent-foreground: 220 14% 96%;
-    --sidebar-border: 224 32% 14%;
-    --sidebar-ring: 238 75% 58%;
+    --sidebar-accent: 216 40% 18%;
+    --sidebar-accent-foreground: 214 50% 96%;
+    --sidebar-border: 216 40% 18%;
+    --sidebar-ring: 217 60% 42%;
 
     /* Shadows */
-    --shadow-sm: 0 1px 2px 0 hsl(220 9% 46% / 0.05);
-    --shadow-md: 0 4px 6px -1px hsl(220 9% 46% / 0.1), 0 2px 4px -2px hsl(220 9% 46% / 0.1);
-    --shadow-lg: 0 10px 15px -3px hsl(220 9% 46% / 0.1), 0 4px 6px -4px hsl(220 9% 46% / 0.1);
-    --shadow-card: 0 1px 3px 0 hsl(220 9% 46% / 0.1), 0 1px 2px -1px hsl(220 9% 46% / 0.1);
-    --shadow-card-hover: 0 4px 12px 0 hsl(220 9% 46% / 0.15), 0 2px 4px -2px hsl(220 9% 46% / 0.1);
+    --shadow-sm: 0 1px 2px 0 hsl(216 56% 12% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(216 56% 12% / 0.1), 0 2px 4px -2px hsl(216 56% 12% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(216 56% 12% / 0.1), 0 4px 6px -4px hsl(216 56% 12% / 0.1);
+    --shadow-card: 0 1px 3px 0 hsl(216 56% 12% / 0.1), 0 1px 2px -1px hsl(216 56% 12% / 0.1);
+    --shadow-card-hover: 0 4px 12px 0 hsl(216 56% 12% / 0.15), 0 2px 4px -2px hsl(216 56% 12% / 0.1);
   }
 
   .dark {
