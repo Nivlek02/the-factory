@@ -310,17 +310,13 @@ const TeamTasksTab = ({
   onDeleteTask: (taskId: string) => void;
   allMembers: Array<{ id: string; name: string; roleLabel: string }>;
 }) => {
-  const { roles } = useRolesStore();
-  const { addRoleGroup, addMemberToRole, removeMemberFromRole, removeRoleGroup, addTask, updateFabricaBrief } = useFactoryStore();
+  const { roles, addRole } = useRolesStore();
+  const { addRoleGroup, removeMemberFromRole, removeRoleGroup, addTask, updateFabricaBrief } = useFactoryStore();
   const [addRoleOpen, setAddRoleOpen] = useState(false);
-  const [selectedRole, setSelectedRole] = useState('');
-  const availableRoles = roles.filter((r) => !project.roleGroups.some((g) => g.roleId === r.id));
 
-  // State for "Agregar persona y tareas"
-  const [addPersonOpen, setAddPersonOpen] = useState(false);
-  const [personName, setPersonName] = useState('');
-  const [personRole, setPersonRole] = useState('');
-  const [personTasks, setPersonTasks] = useState<string[]>(['']);
+  // State for new role form
+  const [newRoleName, setNewRoleName] = useState('');
+  const [newRoleTareas, setNewRoleTareas] = useState('');
 
   // Inline task creation per role
   const [taskInputs, setTaskInputs] = useState<Record<string, string>>({});
@@ -341,36 +337,23 @@ const TeamTasksTab = ({
     setTask(roleId, '');
   };
 
-  const handleAddPerson = () => {
-    const name = personName.trim();
-    if (!name || !personRole) return;
-    addMemberToRole(project.id, personRole, name);
-    // Create tasks for this person
-    for (const t of personTasks) {
-      const title = t.trim();
-      if (!title) continue;
-      addTask(project.id, {
-        title,
-        description: '',
-        assignedMemberId: null,
-        assignedMemberName: name,
-        assignedRoleLabel: roles.find((r) => r.id === personRole)?.label ?? null,
-        status: 'pending',
-        priority: null,
-        dueDate: null,
-      });
-    }
-    setPersonName('');
-    setPersonRole('');
-    setPersonTasks(['']);
-    setAddPersonOpen(false);
-  };
-
   const handleAddRole = () => {
-    const role = roles.find((r) => r.id === selectedRole);
-    if (!role) return;
-    addRoleGroup(project.id, role.id, role.label);
-    setSelectedRole('');
+    const name = newRoleName.trim();
+    if (!name) return;
+    // Parse responsibilities from textarea (one per line)
+    const tareas = newRoleTareas
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    // Generate a stable id matching the store convention
+    const roleId = `role-${Date.now()}`;
+    // Create the role in the global store with its responsibilities
+    addRole(name, tareas);
+    // Add the role group to the project
+    addRoleGroup(project.id, roleId, name);
+    // Reset and close
+    setNewRoleName('');
+    setNewRoleTareas('');
     setAddRoleOpen(false);
   };
 
@@ -382,33 +365,13 @@ const TeamTasksTab = ({
         <p className="text-sm font-medium">
           {project.roleGroups.length} rol{project.roleGroups.length !== 1 ? 'es' : ''} · {totalMembers} persona{totalMembers !== 1 ? 's' : ''} · {project.tasks.length} tarea{project.tasks.length !== 1 ? 's' : ''}
         </p>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setAddRoleOpen(true)}>
-            <UserPlus className="h-4 w-4" />
-            Agregar rol
-          </Button>
-          <Button size="sm" onClick={() => setAddPersonOpen(true)}>
-            <UserPlus className="h-4 w-4" />
-            Agregar persona + tareas
-          </Button>
-        </div>
+        <Button size="sm" onClick={() => setAddRoleOpen(true)}>
+          <UserPlus className="h-4 w-4" />
+          Agregar rol al equipo
+        </Button>
       </div>
 
-      {project.roleGroups.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="p-8 flex flex-col items-center text-center">
-            <Users className="h-8 w-8 text-muted-foreground mb-3" />
-            <p className="text-sm font-medium mb-1">Sin roles asignados</p>
-            <p className="text-xs text-muted-foreground mb-4">
-              Agrega roles al proyecto. Cada rol puede tener personas y tareas específicas.
-            </p>
-            <Button size="sm" onClick={() => setAddRoleOpen(true)}>
-              <UserPlus className="h-4 w-4" />
-              Agregar primer rol
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
+      {project.roleGroups.length > 0 && (
         <div className="space-y-3">
           {project.roleGroups.map((group, i) => {
             const color = roleColor(i);
@@ -590,119 +553,38 @@ const TeamTasksTab = ({
         );
       })()}
 
-      {/* Add role dialog */}
+      {/* Add role dialog — creates a new role with name + responsibilities */}
       <Dialog open={addRoleOpen} onOpenChange={setAddRoleOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Agregar rol al proyecto</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Rol</Label>
-              <Select value={selectedRole} onValueChange={setSelectedRole}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un rol…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableRoles.length === 0 ? (
-                    <SelectItem value="__none__" disabled>Todos los roles ya están en el proyecto</SelectItem>
-                  ) : (
-                    availableRoles.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {availableRoles.length === 0 && (
-                <p className="text-xs text-muted-foreground">Crea más roles en Ajustes para agregarlos aquí.</p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddRoleOpen(false)}>Cancelar</Button>
-            <Button onClick={handleAddRole} disabled={!selectedRole}>Agregar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Agregar persona + tareas dialog */}
-      <Dialog open={addPersonOpen} onOpenChange={setAddPersonOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Agregar persona y tareas</DialogTitle>
+            <DialogTitle>Agregar rol al equipo</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label>Nombre de la persona</Label>
+              <Label>Nombre del rol</Label>
               <Input
-                placeholder="Ej: Carlos Pérez"
-                value={personName}
-                onChange={(e) => setPersonName(e.target.value)}
+                placeholder="Ej: Diseñador UX"
+                value={newRoleName}
+                onChange={(e) => setNewRoleName(e.target.value)}
                 autoFocus
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Rol</Label>
-              <Select value={personRole} onValueChange={setPersonRole}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un rol…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {project.roleGroups.map((g) => (
-                    <SelectItem key={g.roleId} value={g.roleId}>{g.roleLabel}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {project.roleGroups.length === 0 && (
-                <p className="text-xs text-muted-foreground">Agrega un rol al proyecto primero.</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tareas</Label>
-              {personTasks.map((t, idx) => (
-                <div key={idx} className="flex gap-1">
-                  <Input
-                    placeholder="Nombre de la tarea…"
-                    value={t}
-                    onChange={(e) => {
-                      const next = [...personTasks];
-                      next[idx] = e.target.value;
-                      setPersonTasks(next);
-                    }}
-                    className="h-8 text-xs flex-1"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        setPersonTasks([...personTasks, '']);
-                      }
-                    }}
-                  />
-                  {personTasks.length > 1 && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => setPersonTasks(personTasks.filter((_, i) => i !== idx))}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-xs h-7"
-                onClick={() => setPersonTasks([...personTasks, ''])}
-              >
-                <Plus className="h-3 w-3" />
-                Agregar otra tarea
-              </Button>
+              <Label>Responsabilidades</Label>
+              <p className="text-[10px] text-muted-foreground">
+                Una por línea. Estas serán las tareas del rol.
+              </p>
+              <Textarea
+                placeholder={`Ej: Diseñar piezas gráficas\nCrear prototipos\nRevisar briefs creativos`}
+                value={newRoleTareas}
+                onChange={(e) => setNewRoleTareas(e.target.value)}
+                className="min-h-[120px] text-sm"
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddPersonOpen(false)}>Cancelar</Button>
-            <Button onClick={handleAddPerson} disabled={!personName.trim() || !personRole}>Agregar</Button>
+            <Button variant="outline" onClick={() => setAddRoleOpen(false)}>Cancelar</Button>
+            <Button onClick={handleAddRole} disabled={!newRoleName.trim()}>Agregar rol</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

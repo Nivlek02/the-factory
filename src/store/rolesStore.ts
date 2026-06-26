@@ -30,7 +30,7 @@ const DEFAULT_ROLES: CustomRole[] = [
 
 interface RolesStore {
   roles: CustomRole[];
-  addRole: (label: string) => void;
+  addRole: (label: string, tareas?: string[]) => void;
   updateRole: (id: string, label: string) => void;
   removeRole: (id: string) => void;
   addTarea: (roleId: string, tarea: string) => void;
@@ -42,11 +42,11 @@ export const useRolesStore = create<RolesStore>()(
     (set) => ({
       roles: DEFAULT_ROLES,
 
-      addRole: (label) =>
+      addRole: (label, tareas) =>
         set((s) => ({
           roles: [
             ...s.roles,
-            { id: `role-${Date.now()}`, label: label.trim(), isDefault: false, tareas: [] },
+            { id: `role-${Date.now()}`, label: label.trim(), isDefault: false, tareas: tareas ?? [] },
           ],
         })),
 
