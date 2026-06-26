@@ -1,36 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <rect width="512" height="512" rx="96" fill="url(#grad)" />
-  <defs>
-    <linearGradient id="grad" x1="0" y1="0" x2="512" y2="512">
-      <stop offset="0%" stop-color="#6366f1"/>
-      <stop offset="50%" stop-color="#8b5cf6"/>
-      <stop offset="100%" stop-color="#a855f7"/>
-    </linearGradient>
-  </defs>
-  <!-- Factory building -->
-  <g transform="translate(256, 280)">
-    <!-- Base building -->
-    <rect x="-80" y="-30" width="160" height="120" rx="8" fill="white" fill-opacity="0.2"/>
-    <rect x="-68" y="-18" width="136" height="96" rx="4" fill="white" fill-opacity="0.9"/>
+  <!-- White rounded background -->
+  <rect width="512" height="512" rx="96" fill="#FFFFFF" />
+  <rect x="8" y="8" width="496" height="496" rx="88" fill="none" stroke="#E8F0FB" stroke-width="2" />
+
+  <!-- Factory building icon -->
+  <g transform="translate(256, 270)">
+    <!-- Main body -->
+    <rect x="-72" y="-36" width="144" height="108" rx="6" fill="#E8F0FB" />
+    <rect x="-72" y="-36" width="144" height="108" rx="6" fill="none" stroke="#2B5BAD" stroke-width="5" />
+
+    <!-- Roof -->
+    <polygon points="0,-76 -84,-36 84,-36" fill="#2B5BAD" stroke="#2B5BAD" stroke-width="4" stroke-linejoin="round" />
+
     <!-- Chimney -->
-    <rect x="40" y="-70" width="16" height="40" rx="2" fill="white" fill-opacity="0.5"/>
-    <rect x="36" y="-76" width="24" height="8" rx="2" fill="white" fill-opacity="0.35"/>
-    <!-- Smoke -->
-    <circle cx="48" cy="-90" r="10" fill="white" fill-opacity="0.2"/>
-    <circle cx="56" cy="-105" r="8" fill="white" fill-opacity="0.15"/>
-    <circle cx="50" cy="-118" r="6" fill="white" fill-opacity="0.1"/>
-    <!-- Windows -->
-    <rect x="-52" y="-8" width="22" height="22" rx="3" fill="url(#grad)"/>
-    <rect x="-20" y="-8" width="22" height="22" rx="3" fill="url(#grad)"/>
-    <rect x="12" y="-8" width="22" height="22" rx="3" fill="url(#grad)"/>
-    <rect x="-52" y="26" width="22" height="22" rx="3" fill="url(#grad)"/>
-    <rect x="-20" y="26" width="22" height="22" rx="3" fill="url(#grad)"/>
-    <rect x="12" y="26" width="22" height="22" rx="3" fill="url(#grad)"/>
+    <rect x="36" y="-76" width="18" height="40" rx="3" fill="#2B5BAD" />
+    <rect x="32" y="-82" width="26" height="8" rx="2" fill="#1A3F7C" />
+
+    <!-- Smoke puffs -->
+    <circle cx="45" cy="-98" r="10" fill="#E8F0FB" />
+    <circle cx="54" cy="-112" r="8" fill="#E8F0FB" />
+    <circle cx="48" cy="-126" r="6" fill="#E8F0FB" />
+
+    <!-- Windows row 1 -->
+    <rect x="-52" y="-14" width="24" height="26" rx="4" fill="#2B5BAD" />
+    <rect x="-16" y="-14" width="24" height="26" rx="4" fill="#2B5BAD" />
+    <rect x="20" y="-14" width="24" height="26" rx="4" fill="#2B5BAD" />
+
+    <!-- Windows row 2 -->
+    <rect x="-52" y="22" width="24" height="26" rx="4" fill="#2B5BAD" />
+    <rect x="-16" y="22" width="24" height="26" rx="4" fill="#2B5BAD" />
+    <rect x="20" y="22" width="24" height="26" rx="4" fill="#2B5BAD" />
+
     <!-- Door -->
-    <rect x="-16" y="50" width="32" height="40" rx="16" fill="url(#grad)" fill-opacity="0.15"/>
-    <rect x="-16" y="50" width="32" height="40" rx="16" fill="none" stroke="url(#grad)" stroke-width="2"/>
-    <circle cx="4" cy="76" r="2.5" fill="url(#grad)"/>
+    <rect x="-18" y="52" width="36" height="42" rx="18" fill="#1A3F7C" />
+    <circle cx="2" cy="78" r="4" fill="#FFFFFF" />
   </g>
-  <!-- "La Fábrica" text -->
-  <text x="256" y="444" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="36" letter-spacing="4" fill="white" fill-opacity="0.9">LA FÁBRICA</text>
 </svg>
