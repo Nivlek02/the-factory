@@ -499,7 +499,7 @@ export const LoopTab = ({ project }: Props) => {
         {/* Metric cards */}
         <div className="md:col-span-3 grid grid-cols-2 gap-3">
           <LoopMetric label="Alcance" value={loopMetrics.alcance.value} delta={loopMetrics.alcance.delta} icon={<Users className="h-3.5 w-3.5" />} />
-          <LoopMetric label="CLIs" value={loopMetrics.clis.value} delta={loopMetrics.clis.delta} icon={<Target className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Clics" value={loopMetrics.clis.value} delta={loopMetrics.clis.delta} icon={<Target className="h-3.5 w-3.5" />} />
           <LoopMetric label="Leads" value={loopMetrics.leads.value} delta={loopMetrics.leads.delta} icon={<TrendingUp className="h-3.5 w-3.5" />} />
           <LoopMetric label="Inversión" value={loopMetrics.inversion.value} delta={loopMetrics.inversion.delta} icon={<DollarSign className="h-3.5 w-3.5" />} />
         </div>

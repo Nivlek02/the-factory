@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,7 +84,7 @@ const formatDisplay = (dateStr: string) => {
 };
 
 const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Props) => {
-  const { addProject, updateProject } = useFactoryStore();
+  const { addProject, updateProject, projects: allProjects } = useFactoryStore();
   const { roles } = useRolesStore();
   const isEditing = !!editProject;
 
@@ -100,6 +100,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     dueDate: editProject?.dueDate ?? '',
     strategistName: editProject?.strategistName ?? '',
     segmentLink: (editProject as any)?.segmentLink ?? '',
+    eventCategory: (editProject as any)?.eventCategory ?? '',
+    promocionarEn: (editProject as any)?.promocionarEn ?? [] as string[],
   });
 
   const [audiencia, setAudiencia] = useState({
@@ -111,6 +113,47 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   });
 
   const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  // ─── Categorías de evento ───
+  const EVENT_CATEGORIES = [
+    'Aplicar inteligencia artificial',
+    'Promover la sostenibilidad',
+    'Recibir financiamiento',
+    'Ser más productivo y eficiente',
+    'Vender en el exterior',
+    'Vender más',
+  ] as const;
+
+  // ─── Proyectos existentes para "Promocionar en" ───
+  const matchingProjects = useMemo(() => {
+    if (!data.eventCategory) return [];
+    const cat = data.eventCategory.toLowerCase().trim();
+    const start = data.startDate ? new Date(data.startDate) : null;
+    const end = data.dueDate ? new Date(data.dueDate) : null;
+
+    return allProjects.filter((p) => {
+      // Skip self when editing
+      if (editProject && p.id === editProject.id) return false;
+      // Must have same category
+      if (!p.eventCategory || p.eventCategory.toLowerCase().trim() !== cat) return false;
+      // Must have at least one date to compare
+      const pStart = p.startDate ? new Date(p.startDate) : null;
+      const pEnd = p.dueDate ? new Date(p.dueDate) : null;
+      if (!pStart && !pEnd) return false;
+      if (!start && !end) return false;
+
+      const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+      // Check if any of the 4 date pairs are within 7 days
+      const dates = [start, end].filter(Boolean) as Date[];
+      const pDates = [pStart, pEnd].filter(Boolean) as Date[];
+      for (const d of dates) {
+        for (const pd of pDates) {
+          if (Math.abs(d.getTime() - pd.getTime()) <= SEVEN_DAYS) return true;
+        }
+      }
+      return false;
+    });
+  }, [data.eventCategory, data.startDate, data.dueDate, allProjects, editProject]);
   const [canalesRows, setCanalesRows] = useState<{ id: string; canal: string; dia: string; copy: string; segmento: string }[]>(
     editProject?.canales?.map((c) => ({ ...c })) ?? []
   );
@@ -169,7 +212,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   // Reset when opening without editProject
   const reset = () => {
     setStep(0);
-    setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '', strategistName: '', segmentLink: '' });
+    setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '', strategistName: '', segmentLink: '', eventCategory: '', promocionarEn: [] });
     setAudiencia({ segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' });
     setCanalesRows([]);
     setLoopsRows([]);
@@ -377,6 +420,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         fabricaBriefs: fabricaBriefs,
         requerimientos,
         segmentLink: data.segmentLink.trim(),
+        eventCategory: data.eventCategory,
+        promocionarEn: data.promocionarEn,
       });
       onCreated(editProject.id);
       close();
@@ -393,6 +438,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       dueDate: data.dueDate || null,
       strategistName: data.strategistName.trim(),
       segmentLink: data.segmentLink.trim(),
+      eventCategory: data.eventCategory,
+      promocionarEn: data.promocionarEn,
       audienciaNarrativa: {
         segmentos: audiencia.segmentos,
         metaInscripciones: audiencia.metaInscripciones.trim(),
@@ -489,6 +536,21 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   />
                 </div>
               </div>
+              {/* Categoría del evento */}
+              <div className="space-y-1.5">
+                <Label>Categoría del evento</Label>
+                <Select
+                  value={data.eventCategory}
+                  onValueChange={(v) => setData((d) => ({ ...d, eventCategory: v, promocionarEn: [] }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecciona una categoría…" /></SelectTrigger>
+                  <SelectContent>
+                    {EVENT_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-4 gap-3">
                 <div className="space-y-1.5">
                   <Label>Estratega</Label>
@@ -531,6 +593,50 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   />
                 </div>
               </div>
+
+              {/* Promocionar en — proyectos existentes con misma categoría y fechas cercanas */}
+              {data.eventCategory && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block">
+                    Promocionar en
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Proyectos existentes con la misma categoría y fechas a ±7 días de distancia.
+                  </p>
+                  {matchingProjects.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">
+                      No hay proyectos existentes que coincidan con la categoría y el rango de fechas.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {matchingProjects.map((p) => {
+                        const selected = data.promocionarEn.includes(p.id);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() =>
+                              setData((d) => ({
+                                ...d,
+                                promocionarEn: selected
+                                  ? d.promocionarEn.filter((id) => id !== p.id)
+                                  : [...d.promocionarEn, p.id],
+                              }))
+                            }
+                            className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                              selected
+                                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                            }`}
+                          >
+                            {p.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -971,20 +1077,19 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                         placeholder="¿Qué vamos a hacer para mejorar este indicador?"
                                         value={item.mejora ?? ''}
                                         onChange={(e) => updateFabricaLoop(item.id, 'mejora', e.target.value)}
-                                        className="h-7 text-xs"
-                                      />
-                                    </div>
+                                      className="h-7 text-xs"
+                                    />
                                   </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                      ));
-                    })()}
-                  </div>
-                )}
-              </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
               <div className="border-t pt-3 flex items-center justify-between text-xs text-muted-foreground">
                 <span>
                   {fabricaBriefs.filter((b) => b.checked).length} de {fabricaBriefs.length} activaciones confirmadas

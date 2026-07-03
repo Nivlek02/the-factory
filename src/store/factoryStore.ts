@@ -120,6 +120,8 @@ export interface FactoryProject {
   fabricaBriefs: FabricaBriefItem[];
   requerimientos: string[];
   segmentLink: string;
+  eventCategory: string;
+  promocionarEn: string[];
 }
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -131,8 +133,8 @@ interface FactoryStore {
 
   hydrate: () => Promise<void>;
 
-  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink'>) => string;
-  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink'>>) => void;
+  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn'>) => string;
+  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn'>>) => void;
   deleteProject: (id: string) => void;
 
   addRoleGroup: (projectId: string, roleId: string, roleLabel: string) => void;
@@ -194,6 +196,8 @@ const rowToProject = (row: any): FactoryProject => {
     fabricaBriefs: data.fabricaBriefs ?? [],
     requerimientos: data.requerimientos ?? [],
     segmentLink: data.segmentLink ?? '',
+    eventCategory: data.eventCategory ?? '',
+    promocionarEn: data.promocionarEn ?? [],
   };
 };
 
@@ -217,6 +221,8 @@ const projectToRow = (p: FactoryProject) => ({
       fabricaBriefs: p.fabricaBriefs,
       requerimientos: p.requerimientos,
       segmentLink: p.segmentLink,
+      eventCategory: p.eventCategory,
+      promocionarEn: p.promocionarEn,
     },
 });
 
@@ -284,6 +290,8 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       fabricaBriefs: data.fabricaBriefs ?? [],
       requerimientos: data.requerimientos ?? [],
       segmentLink: data.segmentLink ?? '',
+      eventCategory: data.eventCategory ?? '',
+      promocionarEn: data.promocionarEn ?? [],
       id,
       createdAt: new Date().toISOString(),
       roleGroups: [],
