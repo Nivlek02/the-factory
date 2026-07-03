@@ -238,7 +238,7 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
         <Card className="shadow-sm">
           <CardContent className="p-4">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Descripción</p>
-            <p className="text-sm text-foreground/80 leading-relaxed">{project.description}</p>
+            <div className="text-sm text-foreground/80 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: project.description }} />
           </CardContent>
         </Card>
       )}

@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/select';
 import { useFactoryStore, type FabricaBriefItem } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
+import RichTextEditor from '@/components/ui/rich-text-editor';
 import { Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Check, Target, GitBranch, Calendar } from 'lucide-react';
 
 import { FactoryProject } from '@/store/factoryStore';
@@ -409,11 +410,10 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
               </div>
               <div className="space-y-1.5">
                 <Label>Descripción</Label>
-                <Textarea
-                  rows={3}
+                <RichTextEditor
+                  content={data.description}
+                  onChange={(html) => setData((d) => ({ ...d, description: html }))}
                   placeholder="Objetivo, alcance, contexto…"
-                  value={data.description}
-                  onChange={(e) => setData((d) => ({ ...d, description: e.target.value }))}
                 />
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -487,38 +487,63 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   Segmentos de audiencia
                 </Label>
                 <div className="flex flex-wrap gap-2">
-                  {[
-                    { id: 'afiliado', label: 'Afiliado activo' },
-                    { id: 'matriculado', label: 'Matriculado' },
-                    { id: 'potencial', label: 'Potencial' },
-                    { id: 'no_renovado', label: 'No renovado' },
-                    { id: 'vip', label: 'VIP / Alta dirección' },
-                    { id: 'cluster', label: 'Cluster sectorial' },
-                    { id: 'mercado_medio', label: 'Mercado medio' },
-                  ].map((seg) => {
-                    const active = audiencia.segmentos.includes(seg.id);
+                  {(() => {
+                    const ALL_SEGMENTS = ['afiliado', 'matriculado', 'potencial', 'no_renovado', 'vip', 'cluster', 'mercado_medio'];
+                    const allSelected = ALL_SEGMENTS.every((s) => audiencia.segmentos.includes(s));
                     return (
-                      <button
-                        key={seg.id}
-                        type="button"
-                        onClick={() =>
-                          setAudiencia((a) => ({
-                            ...a,
-                            segmentos: active
-                              ? a.segmentos.filter((s) => s !== seg.id)
-                              : [...a.segmentos, seg.id],
-                          }))
-                        }
-                        className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
-                          active
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
-                        }`}
-                      >
-                        {seg.label}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAudiencia((a) => ({
+                              ...a,
+                              segmentos: allSelected ? [] : [...ALL_SEGMENTS],
+                            }))
+                          }
+                          className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                            allSelected
+                              ? 'border-blue-500 bg-blue-50 text-blue-700'
+                              : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                          }`}
+                        >
+                          Todos
+                        </button>
+                        {ALL_SEGMENTS.map((segId) => {
+                          const seg = { id: segId, label: ({
+                            afiliado: 'Afiliado activo',
+                            matriculado: 'Matriculado',
+                            potencial: 'Potencial',
+                            no_renovado: 'No renovado',
+                            vip: 'VIP / Alta dirección',
+                            cluster: 'Cluster sectorial',
+                            mercado_medio: 'Mercado medio',
+                          } as Record<string, string>)[segId] };
+                          const active = audiencia.segmentos.includes(seg.id);
+                          return (
+                            <button
+                              key={seg.id}
+                              type="button"
+                              onClick={() =>
+                                setAudiencia((a) => ({
+                                  ...a,
+                                  segmentos: active
+                                    ? a.segmentos.filter((s) => s !== seg.id)
+                                    : [...a.segmentos, seg.id],
+                                }))
+                              }
+                              className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                                active
+                                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                  : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                              }`}
+                            >
+                              {seg.label}
+                            </button>
+                          );
+                        })}
+                      </>
                     );
-                  })}
+                  })()}
                 </div>
               </div>
 
@@ -677,12 +702,57 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                       {loopsRows.map((row) => (
                         <tr key={row.id} className="border-b border-border/60">
                           <td className="p-1.5">
-                            <input
-                              placeholder="Ej: Abrió correo pero no hizo clic"
-                              value={row.disparador}
-                              onChange={(e) => updateLoopRow(row.id, 'disparador', e.target.value)}
-                              className="w-full bg-transparent border-none outline-none text-xs py-1"
-                            />
+                            {(() => {
+                              const emailTriggers = canalesRows
+                                .filter((c) => c.canal === 'Correo' && c.copy.trim())
+                                .map((c) => ({ label: `📧 ${c.copy.trim()}`, value: `Envío de correo: ${c.copy.trim()}` }));
+                              const standardTriggers = [
+                                'Abrió correo pero no hizo clic',
+                                'Hizo clic en el enlace',
+                                'No abrió el correo',
+                                'Respondió al correo',
+                                'Se dio de baja',
+                              ];
+                              const allPresetValues = ['', ...standardTriggers, ...emailTriggers.map((t) => t.value)];
+                              const isCustomInput = row.disparador === '__custom__' || (row.disparador !== '' && !allPresetValues.includes(row.disparador));
+                              if (emailTriggers.length > 0 && !isCustomInput) {
+                                return (
+                                  <select
+                                    value={row.disparador}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (val === '__custom__') {
+                                        updateLoopRow(row.id, 'disparador', '__custom__');
+                                      } else {
+                                        updateLoopRow(row.id, 'disparador', val);
+                                      }
+                                    }}
+                                    className="w-full bg-transparent border-none outline-none text-xs py-1 cursor-pointer"
+                                  >
+                                    <option value="">Seleccionar disparador…</option>
+                                    <optgroup label="Disparadores estándar">
+                                      {standardTriggers.map((t) => (
+                                        <option key={t} value={t}>{t}</option>
+                                      ))}
+                                    </optgroup>
+                                    <optgroup label="Envíos programados">
+                                      {emailTriggers.map((t, i) => (
+                                        <option key={i} value={t.value}>{t.label}</option>
+                                      ))}
+                                    </optgroup>
+                                    <option value="__custom__">✏️ Escribir personalizado…</option>
+                                  </select>
+                                );
+                              }
+                              return (
+                                <input
+                                  placeholder="Escribe el disparador personalizado…"
+                                  value={isCustomInput && row.disparador === '__custom__' ? '' : row.disparador}
+                                  onChange={(e) => updateLoopRow(row.id, 'disparador', e.target.value)}
+                                  className="w-full bg-transparent border-none outline-none text-xs py-1"
+                                />
+                              );
+                            })()}
                           </td>
                           <td className="p-1.5">
                             <input
