@@ -99,6 +99,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     startDate: editProject?.startDate ?? today(),
     dueDate: editProject?.dueDate ?? '',
     strategistName: editProject?.strategistName ?? '',
+    segmentLink: (editProject as any)?.segmentLink ?? '',
   });
 
   const [audiencia, setAudiencia] = useState({
@@ -123,10 +124,52 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     editProject?.fabricaBriefs?.map((b) => ({ ...b })) ?? []
   );
 
+  // ─── Draft auto-save to localStorage ───
+  const DRAFT_KEY = 'factory-project-draft';
+  const hasDraft = !isEditing && typeof window !== 'undefined' && localStorage.getItem(DRAFT_KEY) !== null;
+
+  // Restore draft from localStorage when opening without editProject
+  useEffect(() => {
+    if (open && !isEditing) {
+      try {
+        const saved = localStorage.getItem(DRAFT_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.data) setData(parsed.data);
+          if (parsed.audiencia) setAudiencia(parsed.audiencia);
+          if (parsed.canalesRows) setCanalesRows(parsed.canalesRows);
+          if (parsed.loopsRows) setLoopsRows(parsed.loopsRows);
+          if (parsed.requerimientos) setRequerimientos(parsed.requerimientos);
+          if (parsed.step !== undefined) setStep(parsed.step);
+        }
+      } catch { /* ignore invalid draft */ }
+    }
+  }, [open]);
+
+  // Auto-save to localStorage on changes (debounced)
+  useEffect(() => {
+    if (!open || isEditing) return;
+    const timer = setTimeout(() => {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        data,
+        audiencia,
+        canalesRows,
+        loopsRows,
+        requerimientos,
+        step,
+      }));
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [open, isEditing, data, audiencia, canalesRows, loopsRows, requerimientos, step]);
+
+  const clearDraft = () => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  };
+
   // Reset when opening without editProject
   const reset = () => {
     setStep(0);
-    setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '', strategistName: '' });
+    setData({ name: '', description: '', client: '', state: 'planning', priority: 'P1', startDate: today(), dueDate: '', strategistName: '', segmentLink: '' });
     setAudiencia({ segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' });
     setCanalesRows([]);
     setLoopsRows([]);
@@ -304,6 +347,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     setFabricaBriefs((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)));
 
   const close = () => {
+    clearDraft();
     onOpenChange(false);
     if (!isEditing) setTimeout(reset, 300);
   };
@@ -332,11 +376,13 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         loops: loopsRows,
         fabricaBriefs: fabricaBriefs,
         requerimientos,
+        segmentLink: data.segmentLink.trim(),
       });
       onCreated(editProject.id);
       close();
       return;
     }
+    clearDraft();
     const id = addProject({
       name: data.name.trim(),
       description: data.description.trim(),
@@ -346,6 +392,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       startDate: data.startDate || null,
       dueDate: data.dueDate || null,
       strategistName: data.strategistName.trim(),
+      segmentLink: data.segmentLink.trim(),
       audienciaNarrativa: {
         segmentos: audiencia.segmentos,
         metaInscripciones: audiencia.metaInscripciones.trim(),
@@ -442,7 +489,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 <div className="space-y-1.5">
                   <Label>Estratega</Label>
                   <Input
@@ -474,6 +521,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                       <SelectItem value="P2">P2 — Normal</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Link del segmento</Label>
+                  <Input
+                    placeholder="URL del segmento (opcional)"
+                    value={data.segmentLink}
+                    onChange={(e) => setData((d) => ({ ...d, segmentLink: e.target.value }))}
+                  />
                 </div>
               </div>
             </div>
@@ -658,6 +713,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                         className="text-xs bg-transparent border-none outline-none w-full text-left cursor-pointer"
                       >
                         <option value="">Segmento</option>
+                        <option value="todos">Segmento General</option>
                         {audiencia.segmentos.map((segId) => (
                           <option key={segId} value={segId}>
                             {SEGMENTOS_LABEL[segId] ?? segId}

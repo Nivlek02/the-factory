@@ -50,7 +50,17 @@ export const useSupabaseTasks = (board?: BoardType) => {
       (newTask) => {
         if (board && newTask.board !== board) return;
         setTasks((prev) => {
-          if (prev.some(t => t.id === newTask.id)) return prev;
+          // Dedup by id, taskNumber, and title+board fingerprint
+          const exists = prev.some(t => 
+            t.id === newTask.id || 
+            (t.taskNumber && t.taskNumber === newTask.taskNumber) ||
+            (t.title === newTask.title && t.board === newTask.board && !t.taskNumber)
+          );
+          if (exists) {
+            if (prev.some(t => t.id === newTask.id)) return prev;
+            // Same content found but different id — keep the existing one
+            return prev;
+          }
           return [newTask, ...prev];
         });
       },

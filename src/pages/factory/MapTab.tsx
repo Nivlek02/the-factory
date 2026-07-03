@@ -476,7 +476,7 @@ export const LoopTab = ({ project }: Props) => {
     // No hay datos de métricas reales aún — todo en blanco
     return {
       alcance: { value: '—', delta: '0%' },
-      conversiones: { value: '—', delta: '0%' },
+      clis: { value: '—', delta: '0%' },
       leads: { value: '—', delta: '0%' },
       inversion: { value: '—', delta: '0%' },
     };
@@ -499,7 +499,7 @@ export const LoopTab = ({ project }: Props) => {
         {/* Metric cards */}
         <div className="md:col-span-3 grid grid-cols-2 gap-3">
           <LoopMetric label="Alcance" value={loopMetrics.alcance.value} delta={loopMetrics.alcance.delta} icon={<Users className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Conversiones" value={loopMetrics.conversiones.value} delta={loopMetrics.conversiones.delta} icon={<Target className="h-3.5 w-3.5" />} />
+          <LoopMetric label="CLIs" value={loopMetrics.conversiones.value} delta={loopMetrics.conversiones.delta} icon={<Target className="h-3.5 w-3.5" />} />
           <LoopMetric label="Leads" value={loopMetrics.leads.value} delta={loopMetrics.leads.delta} icon={<TrendingUp className="h-3.5 w-3.5" />} />
           <LoopMetric label="Inversión" value={loopMetrics.inversion.value} delta={loopMetrics.inversion.delta} icon={<DollarSign className="h-3.5 w-3.5" />} />
         </div>

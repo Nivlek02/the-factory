@@ -37,6 +37,10 @@ export interface FabricaBriefItem {
   lineaBase?: string;
   objetivo?: string;
   mejora?: string;
+  /** Deliverable del Copy — contenido WYSIWYG */
+  deliverableContent?: string;
+  deliverableAttachments?: Array<{name: string; url: string; type: string}>;
+  deliverableSubmittedAt?: string | null;
 }
 
 export type ProjectPriority = 'P0' | 'P1' | 'P2';
@@ -115,6 +119,7 @@ export interface FactoryProject {
   loops: LoopRow[];
   fabricaBriefs: FabricaBriefItem[];
   requerimientos: string[];
+  segmentLink: string;
 }
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -126,8 +131,8 @@ interface FactoryStore {
 
   hydrate: () => Promise<void>;
 
-  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos'>) => string;
-  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos'>>) => void;
+  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink'>) => string;
+  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink'>>) => void;
   deleteProject: (id: string) => void;
 
   addRoleGroup: (projectId: string, roleId: string, roleLabel: string) => void;
@@ -188,6 +193,7 @@ const rowToProject = (row: any): FactoryProject => {
     loops: data.loops ?? [],
     fabricaBriefs: data.fabricaBriefs ?? [],
     requerimientos: data.requerimientos ?? [],
+    segmentLink: data.segmentLink ?? '',
   };
 };
 
@@ -210,6 +216,7 @@ const projectToRow = (p: FactoryProject) => ({
       loops: p.loops,
       fabricaBriefs: p.fabricaBriefs,
       requerimientos: p.requerimientos,
+      segmentLink: p.segmentLink,
     },
 });
 
@@ -276,6 +283,7 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       loops: data.loops ?? [],
       fabricaBriefs: data.fabricaBriefs ?? [],
       requerimientos: data.requerimientos ?? [],
+      segmentLink: data.segmentLink ?? '',
       id,
       createdAt: new Date().toISOString(),
       roleGroups: [],

@@ -44,10 +44,12 @@ import {
   GitBranch,
   Pencil,
 } from 'lucide-react';
-import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup } from '@/store/factoryStore';
+import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup, CanalRow, FabricaBriefItem } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
 import CreateProjectWizard from './CreateProjectWizard';
 import { LoopTab } from './MapTab';
+import RichTextEditor from '@/components/ui/rich-text-editor';
+import FileUpload from '@/components/ui/file-upload';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -290,9 +292,116 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
                 {new Date(project.createdAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
               </p>
             </div>
+            {project.segmentLink && (
+              <div className="col-span-2">
+                <span className="text-muted-foreground">Link del segmento</span>
+                <p className="font-medium mt-0.5 truncate">
+                  <a href={project.segmentLink} target="_blank" rel="noopener noreferrer" className="text-factory hover:underline">
+                    {project.segmentLink}
+                  </a>
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
+
+      {/* ─── Form summary — Audiencia y narrativa ─── */}
+      {(project.audienciaNarrativa?.segmentos?.length > 0 || project.audienciaNarrativa?.metaInscripciones || project.audienciaNarrativa?.dolor || project.audienciaNarrativa?.promesa || project.audienciaNarrativa?.bigIdea) && (
+        <Card className="shadow-sm">
+          <CardContent className="p-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Audiencia y Narrativa</p>
+            <div className="space-y-3 text-xs">
+              {project.audienciaNarrativa?.segmentos?.length > 0 && (
+                <div>
+                  <span className="text-muted-foreground">Segmentos</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {project.audienciaNarrativa.segmentos.map((seg) => (
+                      <span key={seg} className="px-2 py-0.5 rounded-full bg-muted text-[10px] font-medium">
+                        {({
+                          afiliado: 'Afiliado activo',
+                          matriculado: 'Matriculado',
+                          potencial: 'Potencial',
+                          no_renovado: 'No renovado',
+                          vip: 'VIP / Alta dirección',
+                          cluster: 'Cluster sectorial',
+                          mercado_medio: 'Mercado medio',
+                        } as Record<string, string>)[seg] ?? seg}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {project.audienciaNarrativa?.metaInscripciones && (
+                <div>
+                  <span className="text-muted-foreground">Meta de inscripciones</span>
+                  <p className="font-medium mt-0.5">{project.audienciaNarrativa.metaInscripciones}</p>
+                </div>
+              )}
+              {project.audienciaNarrativa?.dolor && (
+                <div>
+                  <span className="text-muted-foreground">Dolor que resuelve</span>
+                  <p className="font-medium mt-0.5">{project.audienciaNarrativa.dolor}</p>
+                </div>
+              )}
+              {project.audienciaNarrativa?.promesa && (
+                <div>
+                  <span className="text-muted-foreground">Promesa</span>
+                  <p className="font-medium mt-0.5">{project.audienciaNarrativa.promesa}</p>
+                </div>
+              )}
+              {project.audienciaNarrativa?.bigIdea && (
+                <div>
+                  <span className="text-muted-foreground">Big Idea</span>
+                  <p className="font-medium mt-0.5">{project.audienciaNarrativa.bigIdea}</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Form summary — Plan de canales ─── */}
+      {project.canales && project.canales.length > 0 && (
+        <Card className="shadow-sm">
+          <CardContent className="p-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Plan de canales</p>
+            <div className="space-y-1.5">
+              {project.canales.map((c) => (
+                <div key={c.id} className="flex items-center gap-2 text-xs py-1 border-b border-border/40 last:border-0">
+                  <span className="font-medium w-20 shrink-0">{c.canal}</span>
+                  {c.dia && <span className="text-muted-foreground text-[10px]">{c.dia}</span>}
+                  {c.copy && <span className="text-muted-foreground truncate flex-1">— {c.copy}</span>}
+                  {c.segmento && (
+                    <span className="px-1.5 py-0.5 rounded bg-muted text-[10px] shrink-0">
+                      {c.segmento}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Form summary — Loops ─── */}
+      {project.loops && project.loops.length > 0 && (
+        <Card className="shadow-sm">
+          <CardContent className="p-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Loops de comportamiento</p>
+            <div className="space-y-1.5">
+              {project.loops.map((l) => (
+                <div key={l.id} className="flex items-center gap-2 text-xs py-1 border-b border-border/40 last:border-0">
+                  <span className="font-medium">{l.disparador || '—'}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <span className="text-muted-foreground flex-1">{l.reaccion || '—'}</span>
+                  {l.responsable && <span className="text-[10px] text-muted-foreground shrink-0">({l.responsable})</span>}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
@@ -307,6 +416,9 @@ const TeamTasksTab = ({
   const { addRole } = useRolesStore();
   const { addRoleGroup, addFabricaBriefs, updateFabricaBrief } = useFactoryStore();
   const [addRoleOpen, setAddRoleOpen] = useState(false);
+  const [deliverableBrief, setDeliverableBrief] = useState<FabricaBriefItem | null>(null);
+  const [deliverableContent, setDeliverableContent] = useState('');
+  const [deliverableAttachments, setDeliverableAttachments] = useState<Array<{name: string; url: string; type: string}>>([]);
 
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleTareas, setNewRoleTareas] = useState('');
@@ -388,9 +500,9 @@ const TeamTasksTab = ({
               </div>
               <div className="p-2">
                 {items.map((b) => (
-                  <label
+                  <div
                     key={b.id}
-                    className="flex items-center gap-3 py-1.5 px-2 rounded-md hover:bg-muted/40 cursor-pointer transition-colors group"
+                    className="flex items-center gap-3 py-1.5 px-2 rounded-md hover:bg-muted/40 transition-colors group"
                   >
                     <input
                       type="checkbox"
@@ -398,16 +510,24 @@ const TeamTasksTab = ({
                       onChange={() => updateFabricaBrief(project.id, b.id, { checked: !b.checked })}
                       className="h-4 w-4 rounded border-muted-foreground/40 text-primary focus:ring-primary/30"
                     />
-                    <span
-                      className={`text-sm flex-1 transition-all ${
+                    <button
+                      onClick={() => {
+                        setDeliverableBrief(b);
+                        setDeliverableContent(b.deliverableContent ?? '');
+                        setDeliverableAttachments(b.deliverableAttachments ?? []);
+                      }}
+                      className={`text-sm flex-1 text-left transition-all ${
                         b.checked
                           ? 'line-through text-muted-foreground/50'
                           : 'text-foreground/80'
-                      }`}
+                      } hover:text-factory`}
                     >
                       {b.tarea}
-                    </span>
-                  </label>
+                    </button>
+                    {b.deliverableSubmittedAt && (
+                      <span className="text-[10px] text-state-done shrink-0">Entregado</span>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -447,6 +567,68 @@ const TeamTasksTab = ({
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddRoleOpen(false)}>Cancelar</Button>
             <Button onClick={handleAddRole} disabled={!newRoleName.trim()}>Agregar rol</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deliverable dialog */}
+      <Dialog open={!!deliverableBrief} onOpenChange={(v) => { if (!v) setDeliverableBrief(null); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span>Entregable: {deliverableBrief?.tarea}</span>
+              {deliverableBrief?.deliverableSubmittedAt && (
+                <span className="text-[10px] font-normal text-state-done bg-state-done/10 px-2 py-0.5 rounded-full">
+                  Entregado {new Date(deliverableBrief.deliverableSubmittedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
+                </span>
+              )}
+            </DialogTitle>
+            {deliverableBrief && (
+              <p className="text-xs text-muted-foreground">
+                Rol: {deliverableBrief.roleLabel}
+              </p>
+            )}
+          </DialogHeader>
+
+          {deliverableBrief && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Contenido del entregable</Label>
+                <RichTextEditor
+                  content={deliverableContent}
+                  onChange={setDeliverableContent}
+                  placeholder="Escribe aquí el contenido del entregable..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Archivos adjuntos</Label>
+                <FileUpload
+                  attachments={deliverableAttachments}
+                  onChange={setDeliverableAttachments}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setDeliverableBrief(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (!deliverableBrief) return;
+                updateFabricaBrief(project.id, deliverableBrief.id, {
+                  deliverableContent,
+                  deliverableAttachments,
+                  deliverableSubmittedAt: deliverableBrief.deliverableSubmittedAt ?? new Date().toISOString(),
+                });
+                setDeliverableBrief(null);
+              }}
+              disabled={!deliverableContent && deliverableAttachments.length === 0}
+            >
+              {deliverableBrief?.deliverableSubmittedAt ? 'Actualizar entregable' : 'Guardar entregable'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
