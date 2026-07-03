@@ -108,10 +108,9 @@ const TaskDetailModal = ({ task, open, onClose, onTaskUpdated }: TaskDetailModal
 
       const isTransitionToReview = previousStatus !== 'in_review' && newStatus === 'in_review';
       if (isTransitionToReview) {
-        console.log('TASK_SENT_TO_REVIEW fired', { taskId: task.id, boardId: task.board, triggeredBy: currentUser.role });
         await sendTaskNotification('task.in_review', { ...task, status: newStatus });
       }
-
+ 
       onTaskUpdated?.();
     } catch (error) {
       console.error('Error updating status:', error);
@@ -154,7 +153,6 @@ const TaskDetailModal = ({ task, open, onClose, onTaskUpdated }: TaskDetailModal
         
         // Send notification for adjustment request
         if (isAdjustmentRequest) {
-          console.log('TASK_ADJUSTMENT_REQUESTED fired', { taskId: task.id, boardId: task.board });
           await sendTaskNotification('task.adjustment', { ...task, status: 'pending' }, comment);
         }
       }
@@ -164,7 +162,6 @@ const TaskDetailModal = ({ task, open, onClose, onTaskUpdated }: TaskDetailModal
         await taskService.updateTaskStatus(task.id, newStatus as TaskStatus, { id: currentUser.userId, name: currentUser.fullName }, task.status);
         
         // Notify when task goes to review
-        console.log('TASK_SENT_TO_REVIEW fired', { taskId: task.id, boardId: task.board });
         await sendTaskNotification('task.in_review', { ...task, status: newStatus as TaskStatus });
         toast.success(isCopysBoard ? 'Tarea enviada a revisión' : 'Tarea enviada a revisión');
       }

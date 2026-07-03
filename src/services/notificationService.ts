@@ -64,8 +64,7 @@ export const sendTaskNotification = async (
     // Skip notification if task is unassigned — there is no encargado to notify,
     // and the resolver fallback would otherwise mis-route to the first copy user.
     if (!task.assignedRole || (task.assignedRole as string) === 'unassigned' || !task.assignedToName) {
-      console.log('NOTIFICATION_SKIPPED_UNASSIGNED', { event, taskId: task.id, boardId: task.board });
-      return;
+        return;
     }
 
     const users = await ensureUsersLoaded();

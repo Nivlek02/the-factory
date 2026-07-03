@@ -263,7 +263,6 @@ const CreateTaskModal = ({ open, onClose, board, onTaskCreated, editingDraft }: 
         const allTasks = await taskService.fetchTasksByBoard(board);
         const createdTask = allTasks.find(t => t.id === draftId);
         if (createdTask) {
-          console.log('TASK_CREATED fired (from draft)', { taskId: createdTask.id, boardId: createdTask.board });
           await sendTaskNotification('task.created', createdTask);
         }
       } else {
@@ -283,7 +282,6 @@ const CreateTaskModal = ({ open, onClose, board, onTaskCreated, editingDraft }: 
           folderUrl: folderUrl.trim() || null,
         });
 
-        console.log('TASK_CREATED fired', { taskId: newTask.id, boardId: newTask.board });
         await sendTaskNotification('task.created', newTask);
       }
 

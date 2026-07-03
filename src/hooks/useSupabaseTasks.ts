@@ -104,7 +104,6 @@ export const useSupabaseTasks = (board?: BoardType) => {
 
     // Notify creator whenever a task moves to review (both boards)
     if (isTransitionToReview) {
-      console.log('TASK_SENT_TO_REVIEW fired', { taskId, boardId: task.board, triggeredBy: currentUser.role });
       await sendTaskNotification('task.in_review', { ...task, status: newStatus });
     }
 
