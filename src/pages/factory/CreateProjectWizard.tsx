@@ -1077,19 +1077,20 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                         placeholder="¿Qué vamos a hacer para mejorar este indicador?"
                                         value={item.mejora ?? ''}
                                         onChange={(e) => updateFabricaLoop(item.id, 'mejora', e.target.value)}
-                                      className="h-7 text-xs"
-                                    />
+                                        className="h-7 text-xs"
+                                      />
+                                    </div>
                                   </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
               <div className="border-t pt-3 flex items-center justify-between text-xs text-muted-foreground">
                 <span>
                   {fabricaBriefs.filter((b) => b.checked).length} de {fabricaBriefs.length} activaciones confirmadas
