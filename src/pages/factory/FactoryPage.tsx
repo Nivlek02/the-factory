@@ -54,7 +54,7 @@ import FileUpload from '@/components/ui/file-upload';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
-  planning:    { label: 'Planning',     cls: 'bg-state-planning-bg text-state-planning' },
+  planning:    { label: 'En planeación', cls: 'bg-state-planning-bg text-state-planning' },
   in_progress: { label: 'En proceso',  cls: 'bg-state-progress-bg text-state-progress' },
   review:      { label: 'En revisión', cls: 'bg-state-review-bg text-state-review' },
   blocked:     { label: 'Bloqueado',   cls: 'bg-state-blocked-bg text-state-blocked' },
@@ -828,7 +828,7 @@ const FactoryPage = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+            <div className="flex-1 overflow-y-auto py-2 px-2 space-y-3">
               {filteredProjects.length === 0 && (
                 <div className="px-3 py-6 text-center">
                   <p className="text-xs text-muted-foreground">
@@ -836,43 +836,60 @@ const FactoryPage = () => {
                   </p>
                 </div>
               )}
-              {filteredProjects.map((p) => {
-                const isActive = p.id === activeProjectId;
-                const progress = projectProgress(p);
-                const pending = p.tasks.filter((t) => t.status !== 'completed').length;
-                const stateDot =
-                  p.state === 'done' ? 'state-done' :
-                  p.state === 'in_progress' ? 'state-progress' :
-                  p.state === 'review' ? 'state-review' :
-                  p.state === 'blocked' ? 'state-blocked' : 'state-planning';
+              {[
+                { label: 'En planeación', states: ['planning'] },
+                { label: 'En proceso', states: ['in_progress', 'review', 'blocked'] },
+                { label: 'Completados', states: ['done'] },
+              ].map((group) => {
+                const groupProjects = filteredProjects.filter((p) => group.states.includes(p.state));
+                if (groupProjects.length === 0) return null;
                 return (
-                  <button
-                    key={p.id}
-                    onClick={() => setActiveProject(p.id)}
-                    className={`w-full text-left px-2.5 py-2 rounded-md transition-colors border ${
-                      isActive
-                        ? 'bg-card border-factory/30 shadow-sm'
-                        : 'border-transparent hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: `hsl(var(--${stateDot}))` }} />
-                      <p className="text-xs font-medium truncate flex-1">{p.name}</p>
-                      <span className={`text-[9px] font-semibold ${PRIORITY_META[p.priority].cls}`}>{p.priority}</span>
+                  <div key={group.label}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2 py-1">
+                      {group.label}
+                    </p>
+                    <div className="space-y-0.5">
+                      {groupProjects.map((p) => {
+                        const isActive = p.id === activeProjectId;
+                        const progress = projectProgress(p);
+                        const pending = p.tasks.filter((t) => t.status !== 'completed').length;
+                        const stateDot =
+                          p.state === 'done' ? 'state-done' :
+                          p.state === 'in_progress' ? 'state-progress' :
+                          p.state === 'review' ? 'state-review' :
+                          p.state === 'blocked' ? 'state-blocked' : 'state-planning';
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => setActiveProject(p.id)}
+                            className={`w-full text-left px-2.5 py-2 rounded-md transition-colors border ${
+                              isActive
+                                ? 'bg-card border-factory/30 shadow-sm'
+                                : 'border-transparent hover:bg-muted/50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: `hsl(var(--${stateDot}))` }} />
+                              <p className="text-xs font-medium truncate flex-1">{p.name}</p>
+                              <span className={`text-[9px] font-semibold ${PRIORITY_META[p.priority].cls}`}>{p.priority}</span>
+                            </div>
+                            {p.client && (
+                              <p className="text-[10px] text-muted-foreground truncate mb-1.5 pl-3.5">{p.client}</p>
+                            )}
+                            <div className="flex items-center gap-2 pl-3.5">
+                              <div className="flex-1 h-0.5 rounded-full bg-border/60 overflow-hidden">
+                                <div className="h-full bg-factory rounded-full" style={{ width: `${progress}%` }} />
+                              </div>
+                              <span className="text-[10px] text-muted-foreground tabular-nums">{progress}%</span>
+                              {pending > 0 && (
+                                <span className="text-[10px] text-muted-foreground tabular-nums">· {pending}p</span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
-                    {p.client && (
-                      <p className="text-[10px] text-muted-foreground truncate mb-1.5 pl-3.5">{p.client}</p>
-                    )}
-                    <div className="flex items-center gap-2 pl-3.5">
-                      <div className="flex-1 h-0.5 rounded-full bg-border/60 overflow-hidden">
-                        <div className="h-full bg-factory rounded-full" style={{ width: `${progress}%` }} />
-                      </div>
-                      <span className="text-[10px] text-muted-foreground tabular-nums">{progress}%</span>
-                      {pending > 0 && (
-                        <span className="text-[10px] text-muted-foreground tabular-nums">· {pending}p</span>
-                      )}
-                    </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
