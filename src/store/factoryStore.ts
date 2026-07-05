@@ -41,6 +41,10 @@ export interface FabricaBriefItem {
   deliverableContent?: string;
   deliverableAttachments?: Array<{name: string; url: string; type: string}>;
   deliverableSubmittedAt?: string | null;
+  /** Delivery tracking for channel plan shipments */
+  deliverableEnviado?: boolean | null;
+  deliverableMotivoNoEnvio?: string;
+  deliverableMetricas?: Record<string, string>;
 }
 
 export type ProjectPriority = 'P0' | 'P1' | 'P2';
@@ -156,7 +160,7 @@ interface FactoryStore {
   deleteStrategyNode: (projectId: string, nodeId: string) => void;
 
   addFabricaBriefs: (projectId: string, briefs: Omit<FabricaBriefItem, 'id' | 'checked'>[]) => void;
-  updateFabricaBrief: (projectId: string, briefId: string, updates: Partial<Pick<FabricaBriefItem, 'checked' | 'metrica' | 'lineaBase' | 'objetivo' | 'mejora'>>) => void;
+  updateFabricaBrief: (projectId: string, briefId: string, updates: Partial<FabricaBriefItem>) => void;
 
   setActiveProject: (id: string | null) => void;
 }

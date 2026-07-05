@@ -419,6 +419,9 @@ const TeamTasksTab = ({
   const [deliverableBrief, setDeliverableBrief] = useState<FabricaBriefItem | null>(null);
   const [deliverableContent, setDeliverableContent] = useState('');
   const [deliverableAttachments, setDeliverableAttachments] = useState<Array<{name: string; url: string; type: string}>>([]);
+  const [deliverableEnviado, setDeliverableEnviado] = useState<boolean | null>(null);
+  const [deliverableMotivoNoEnvio, setDeliverableMotivoNoEnvio] = useState('');
+  const [deliverableMetricas, setDeliverableMetricas] = useState<Record<string, string>>({});
 
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleTareas, setNewRoleTareas] = useState('');
@@ -510,13 +513,16 @@ const TeamTasksTab = ({
                       onChange={() => updateFabricaBrief(project.id, b.id, { checked: !b.checked })}
                       className="h-4 w-4 rounded border-muted-foreground/40 text-primary focus:ring-primary/30"
                     />
-                    <button
-                      onClick={() => {
-                        setDeliverableBrief(b);
-                        setDeliverableContent(b.deliverableContent ?? '');
-                        setDeliverableAttachments(b.deliverableAttachments ?? []);
-                      }}
-                      className={`text-sm flex-1 text-left transition-all ${
+                      <button
+                          onClick={() => {
+                            setDeliverableBrief(b);
+                            setDeliverableContent(b.deliverableContent ?? '');
+                            setDeliverableAttachments(b.deliverableAttachments ?? []);
+                            setDeliverableEnviado(b.deliverableEnviado ?? null);
+                            setDeliverableMotivoNoEnvio(b.deliverableMotivoNoEnvio ?? '');
+                            setDeliverableMetricas(b.deliverableMetricas ?? {});
+                          }}
+                          className={`text-sm flex-1 text-left transition-all ${
                         b.checked
                           ? 'line-through text-muted-foreground/50'
                           : 'text-foreground/80'
@@ -590,26 +596,177 @@ const TeamTasksTab = ({
             )}
           </DialogHeader>
 
-          {deliverableBrief && (
-            <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label>Contenido del entregable</Label>
-                <RichTextEditor
-                  content={deliverableContent}
-                  onChange={setDeliverableContent}
-                  placeholder="Escribe aquí el contenido del entregable..."
-                />
-              </div>
+          {deliverableBrief && (() => {
+            const isCanalBrief = deliverableBrief.tarea.startsWith('Configurar envío por');
+            const canalMatch = deliverableBrief.tarea.match(/Configurar envío por (\w+)/);
+            const canalTipo = canalMatch?.[1] ?? '';
 
-              <div className="space-y-2">
-                <Label>Archivos adjuntos</Label>
-                <FileUpload
-                  attachments={deliverableAttachments}
-                  onChange={setDeliverableAttachments}
-                />
+            if (isCanalBrief) {
+              return (
+                <div className="space-y-4 py-2">
+                  {/* Enviado / No enviado */}
+                  <div className="space-y-2">
+                    <Label>Estado del envío</Label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="envio-estado"
+                          checked={deliverableEnviado === true}
+                          onChange={() => setDeliverableEnviado(true)}
+                          className="h-4 w-4 text-primary"
+                        />
+                        <span className="text-sm">Enviado</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="envio-estado"
+                          checked={deliverableEnviado === false}
+                          onChange={() => setDeliverableEnviado(false)}
+                          className="h-4 w-4 text-primary"
+                        />
+                        <span className="text-sm">No enviado</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Metrics when Enviado */}
+                  {deliverableEnviado === true && (
+                    <div className="space-y-3 border rounded-lg p-4 bg-muted/20">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Métricas del envío
+                      </p>
+                      {canalTipo === 'Correo' && (
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Apertura</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              className="h-8 text-xs"
+                              value={deliverableMetricas.apertura ?? ''}
+                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, apertura: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Correos enviados</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              className="h-8 text-xs"
+                              value={deliverableMetricas.correosEnviados ?? ''}
+                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, correosEnviados: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Clics</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              className="h-8 text-xs"
+                              value={deliverableMetricas.clics ?? ''}
+                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, clics: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {canalTipo === 'WhatsApp' && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs">WhatsApps enviados</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              className="h-8 text-xs"
+                              value={deliverableMetricas.whatsappsEnviados ?? ''}
+                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, whatsappsEnviados: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Clics</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              className="h-8 text-xs"
+                              value={deliverableMetricas.clics ?? ''}
+                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, clics: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {canalTipo === 'SMS' && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs">SMS enviados</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              className="h-8 text-xs"
+                              value={deliverableMetricas.smsEnviados ?? ''}
+                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, smsEnviados: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Clics</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              className="h-8 text-xs"
+                              value={deliverableMetricas.clics ?? ''}
+                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, clics: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Motivo when No enviado */}
+                  {deliverableEnviado === false && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Motivo por el que no se envió</Label>
+                      <Textarea
+                        placeholder="Describe por qué no se realizó el envío..."
+                        value={deliverableMotivoNoEnvio}
+                        onChange={(e) => setDeliverableMotivoNoEnvio(e.target.value)}
+                        className="min-h-[80px] text-sm"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Non-canal brief: show existing WYSIWYG form
+            return (
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label>Contenido del entregable</Label>
+                  <RichTextEditor
+                    content={deliverableContent}
+                    onChange={setDeliverableContent}
+                    placeholder="Escribe aquí el contenido del entregable..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Archivos adjuntos</Label>
+                  <FileUpload
+                    attachments={deliverableAttachments}
+                    onChange={setDeliverableAttachments}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <DialogFooter className="flex gap-2">
             <Button variant="outline" onClick={() => setDeliverableBrief(null)}>
@@ -618,14 +775,30 @@ const TeamTasksTab = ({
             <Button
               onClick={() => {
                 if (!deliverableBrief) return;
-                updateFabricaBrief(project.id, deliverableBrief.id, {
-                  deliverableContent,
-                  deliverableAttachments,
-                  deliverableSubmittedAt: deliverableBrief.deliverableSubmittedAt ?? new Date().toISOString(),
-                });
+                const isCanalBrief = deliverableBrief.tarea.startsWith('Configurar envío por');
+                if (isCanalBrief) {
+                  updateFabricaBrief(project.id, deliverableBrief.id, {
+                    deliverableEnviado,
+                    deliverableMotivoNoEnvio,
+                    deliverableMetricas,
+                    deliverableSubmittedAt: (deliverableEnviado !== null || deliverableMotivoNoEnvio.trim())
+                      ? (deliverableBrief.deliverableSubmittedAt ?? new Date().toISOString())
+                      : deliverableBrief.deliverableSubmittedAt,
+                  });
+                } else {
+                  updateFabricaBrief(project.id, deliverableBrief.id, {
+                    deliverableContent,
+                    deliverableAttachments,
+                    deliverableSubmittedAt: deliverableBrief.deliverableSubmittedAt ?? new Date().toISOString(),
+                  });
+                }
                 setDeliverableBrief(null);
               }}
-              disabled={!deliverableContent && deliverableAttachments.length === 0}
+              disabled={
+                deliverableBrief?.tarea.startsWith('Configurar envío por')
+                  ? deliverableEnviado === null
+                  : (!deliverableContent && deliverableAttachments.length === 0)
+              }
             >
               {deliverableBrief?.deliverableSubmittedAt ? 'Actualizar entregable' : 'Guardar entregable'}
             </Button>
