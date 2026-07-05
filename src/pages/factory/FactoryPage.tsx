@@ -95,8 +95,9 @@ function roleColor(index: number) {
 }
 
 function projectProgress(project: FactoryProject): number {
-  if (!project.tasks.length) return 0;
-  return Math.round((project.tasks.filter((t) => t.status === 'completed').length / project.tasks.length) * 100);
+  const briefs = project.fabricaBriefs ?? [];
+  if (!briefs.length) return 0;
+  return Math.round((briefs.filter((b) => b.checked).length / briefs.length) * 100);
 }
 
 // ─── Empty States ─────────────────────────────────────────────────────────────
@@ -202,10 +203,11 @@ const TaskCard = ({
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 const OverviewTab = ({ project }: { project: FactoryProject }) => {
+  const briefs = project.fabricaBriefs ?? [];
   const progress = projectProgress(project);
   const totalMembers = project.roleGroups.reduce((s, g) => s + g.members.length, 0);
-  const doneTasks = project.tasks.filter((t) => t.status === 'completed').length;
-  const inProgress = project.tasks.filter((t) => t.status === 'in_progress').length;
+  const doneTasks = briefs.filter((b) => b.checked).length;
+  const inProgress = briefs.filter((b) => !b.checked).length;
 
   return (
     <div className="space-y-4">
@@ -217,14 +219,14 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
               <Progress value={progress} className="h-2 flex-1" />
               <span className="text-sm font-semibold">{progress}%</span>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">{doneTasks} de {project.tasks.length} tareas</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{doneTasks} de {briefs.length} tareas</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm">
           <CardContent className="p-4">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">En proceso</p>
             <p className="font-display text-2xl font-semibold text-state-progress mt-1">{inProgress}</p>
-            <p className="text-[10px] text-muted-foreground">tareas activas</p>
+            <p className="text-[10px] text-muted-foreground">tareas pendientes</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm">
