@@ -471,16 +471,33 @@ export const LoopTab = ({ project }: Props) => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Loop metrics (blank until actual action tracking data exists) ──────
+  // ── Loop metrics: computed from canal delivery metrics briefs ──────
   const loopMetrics = useMemo(() => {
-    // No hay datos de métricas reales aún — todo en blanco
+    const metricsBriefs = (project.fabricaBriefs ?? []).filter(
+      (b) => b.tarea.startsWith('Recolectar métricas de') && b.deliverableMetricas
+    );
+
+    let totalAlcance = 0;
+    let totalClics = 0;
+
+    for (const b of metricsBriefs) {
+      const m = b.deliverableMetricas!;
+      const enviados = parseInt(m.correosEnviados ?? '0') +
+        parseInt(m.whatsappsEnviados ?? '0') +
+        parseInt(m.smsEnviados ?? '0');
+      totalAlcance += enviados;
+      totalClics += parseInt(m.clics ?? '0');
+    }
+
+    const fmt = (n: number) => n > 0 ? n.toLocaleString('es-CO') : '—';
+
     return {
-      alcance: { value: '—', delta: '0%' },
-      clis: { value: '—', delta: '0%' },
-      leads: { value: '—', delta: '0%' },
-      inversion: { value: '—', delta: '0%' },
+      alcance: { value: fmt(totalAlcance), delta: '—' },
+      clis: { value: fmt(totalClics), delta: '—' },
+      leads: { value: '—', delta: '—' },
+      inversion: { value: '—', delta: '—' },
     };
-  }, []);
+  }, [project.fabricaBriefs]);
 
 
   return (

@@ -598,13 +598,13 @@ const TeamTasksTab = ({
 
           {deliverableBrief && (() => {
             const isCanalBrief = deliverableBrief.tarea.startsWith('Configurar envío por');
-            const canalMatch = deliverableBrief.tarea.match(/Configurar envío por (\w+)/);
+            const isMetricsBrief = deliverableBrief.tarea.startsWith('Recolectar métricas de');
+            const canalMatch = deliverableBrief.tarea.match(/(?:Configurar envío por|Recolectar métricas de) (\w+)/);
             const canalTipo = canalMatch?.[1] ?? '';
 
             if (isCanalBrief) {
               return (
                 <div className="space-y-4 py-2">
-                  {/* Enviado / No enviado */}
                   <div className="space-y-2">
                     <Label>Estado del envío</Label>
                     <div className="flex gap-4">
@@ -630,106 +630,6 @@ const TeamTasksTab = ({
                       </label>
                     </div>
                   </div>
-
-                  {/* Metrics when Enviado */}
-                  {deliverableEnviado === true && (
-                    <div className="space-y-3 border rounded-lg p-4 bg-muted/20">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Métricas del envío
-                      </p>
-                      {canalTipo === 'Correo' && (
-                        <div className="grid grid-cols-3 gap-3">
-                          <div className="space-y-1">
-                            <Label className="text-xs">Apertura</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              placeholder="0"
-                              className="h-8 text-xs"
-                              value={deliverableMetricas.apertura ?? ''}
-                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, apertura: e.target.value }))}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Correos enviados</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              placeholder="0"
-                              className="h-8 text-xs"
-                              value={deliverableMetricas.correosEnviados ?? ''}
-                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, correosEnviados: e.target.value }))}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Clics</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              placeholder="0"
-                              className="h-8 text-xs"
-                              value={deliverableMetricas.clics ?? ''}
-                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, clics: e.target.value }))}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {canalTipo === 'WhatsApp' && (
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <Label className="text-xs">WhatsApps enviados</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              placeholder="0"
-                              className="h-8 text-xs"
-                              value={deliverableMetricas.whatsappsEnviados ?? ''}
-                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, whatsappsEnviados: e.target.value }))}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Clics</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              placeholder="0"
-                              className="h-8 text-xs"
-                              value={deliverableMetricas.clics ?? ''}
-                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, clics: e.target.value }))}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {canalTipo === 'SMS' && (
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <Label className="text-xs">SMS enviados</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              placeholder="0"
-                              className="h-8 text-xs"
-                              value={deliverableMetricas.smsEnviados ?? ''}
-                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, smsEnviados: e.target.value }))}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Clics</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              placeholder="0"
-                              className="h-8 text-xs"
-                              value={deliverableMetricas.clics ?? ''}
-                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, clics: e.target.value }))}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Motivo when No enviado */}
                   {deliverableEnviado === false && (
                     <div className="space-y-1.5">
                       <Label className="text-xs">Motivo por el que no se envió</Label>
@@ -741,6 +641,107 @@ const TeamTasksTab = ({
                       />
                     </div>
                   )}
+                </div>
+              );
+            }
+
+            if (isMetricsBrief) {
+              return (
+                <div className="space-y-4 py-2">
+                  <div className="space-y-3 border rounded-lg p-4 bg-muted/20">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Métricas del envío
+                    </p>
+                    {canalTipo === 'Correo' && (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Apertura</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            className="h-8 text-xs"
+                            value={deliverableMetricas.apertura ?? ''}
+                            onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, apertura: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Correos enviados</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            className="h-8 text-xs"
+                            value={deliverableMetricas.correosEnviados ?? ''}
+                            onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, correosEnviados: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Clics</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            className="h-8 text-xs"
+                            value={deliverableMetricas.clics ?? ''}
+                            onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, clics: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {canalTipo === 'WhatsApp' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">WhatsApps enviados</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            className="h-8 text-xs"
+                            value={deliverableMetricas.whatsappsEnviados ?? ''}
+                            onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, whatsappsEnviados: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Clics</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            className="h-8 text-xs"
+                            value={deliverableMetricas.clics ?? ''}
+                            onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, clics: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {canalTipo === 'SMS' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">SMS enviados</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            className="h-8 text-xs"
+                            value={deliverableMetricas.smsEnviados ?? ''}
+                            onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, smsEnviados: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Clics</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            className="h-8 text-xs"
+                            value={deliverableMetricas.clics ?? ''}
+                            onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, clics: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             }
@@ -776,14 +777,37 @@ const TeamTasksTab = ({
               onClick={() => {
                 if (!deliverableBrief) return;
                 const isCanalBrief = deliverableBrief.tarea.startsWith('Configurar envío por');
+                const isMetricsBrief = deliverableBrief.tarea.startsWith('Recolectar métricas de');
                 if (isCanalBrief) {
-                  updateFabricaBrief(project.id, deliverableBrief.id, {
+                  const canalMatch = deliverableBrief.tarea.match(/Configurar envío por (\w+)/);
+                  const canalTipo = canalMatch?.[1] ?? '';
+                  const updates: Partial<FabricaBriefItem> = {
                     deliverableEnviado,
                     deliverableMotivoNoEnvio,
-                    deliverableMetricas,
+                    checked: true,
                     deliverableSubmittedAt: (deliverableEnviado !== null || deliverableMotivoNoEnvio.trim())
                       ? (deliverableBrief.deliverableSubmittedAt ?? new Date().toISOString())
                       : deliverableBrief.deliverableSubmittedAt,
+                  };
+                  updateFabricaBrief(project.id, deliverableBrief.id, updates);
+                  // Auto-create metrics brief if Enviado and doesn't exist yet
+                  if (deliverableEnviado === true && canalTipo) {
+                    const alreadyHasMetrics = project.fabricaBriefs.some(
+                      (b) => b.tarea === `Recolectar métricas de ${canalTipo}`
+                    );
+                    if (!alreadyHasMetrics) {
+                      addFabricaBriefs(project.id, [{
+                        roleId: deliverableBrief.roleId,
+                        roleLabel: deliverableBrief.roleLabel,
+                        tarea: `Recolectar métricas de ${canalTipo}`,
+                      }]);
+                    }
+                  }
+                } else if (isMetricsBrief) {
+                  updateFabricaBrief(project.id, deliverableBrief.id, {
+                    deliverableMetricas,
+                    checked: true,
+                    deliverableSubmittedAt: deliverableBrief.deliverableSubmittedAt ?? new Date().toISOString(),
                   });
                 } else {
                   updateFabricaBrief(project.id, deliverableBrief.id, {
@@ -797,7 +821,9 @@ const TeamTasksTab = ({
               disabled={
                 deliverableBrief?.tarea.startsWith('Configurar envío por')
                   ? deliverableEnviado === null
-                  : (!deliverableContent && deliverableAttachments.length === 0)
+                  : deliverableBrief?.tarea.startsWith('Recolectar métricas de')
+                    ? false
+                    : (!deliverableContent && deliverableAttachments.length === 0)
               }
             >
               {deliverableBrief?.deliverableSubmittedAt ? 'Actualizar entregable' : 'Guardar entregable'}
