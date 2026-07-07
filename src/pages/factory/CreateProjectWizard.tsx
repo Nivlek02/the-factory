@@ -28,6 +28,7 @@ const STEPS = [
 ] as const;
 
 const SEGMENTOS_LABEL: Record<string, string> = {
+  todos: 'Segmento General',
   afiliado: 'Afiliado',
   renovado: 'Renovados',
   matriculado: 'Matriculado',
@@ -206,19 +207,21 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   useEffect(() => {
     if (!open || isEditing) return;
     const timer = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({
-        data,
-        audiencia,
-        canalesRows,
-        loopsRows,
-        requerimientos,
-        formularioConfig,
-        attachments,
-        step,
-      }));
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          data,
+          audiencia,
+          canalesRows,
+          loopsRows,
+          requerimientos,
+          formularioConfig,
+          attachments,
+          step,
+        }));
+      } catch { /* QuotaExceededError — draft not persisted, data stays in state */ }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [open, isEditing, data, audiencia, canalesRows, loopsRows, requerimientos, step]);
+  }, [open, isEditing, data, audiencia, canalesRows, loopsRows, requerimientos, formularioConfig, attachments, step]);
 
   const clearDraft = () => {
     try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
@@ -425,7 +428,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     if (!isEditing) setTimeout(reset, 300);
   };
 
-  const canNext = step === 0 ? data.name.trim().length > 0 : true;
+  const canNext = step === 0
+    ? data.name.trim().length > 0
+    : step === 2 && requerimientos.includes('formulario')
+    ? formularioConfig.basico !== null
+    : true;
   const isLast = step === STEPS.length - 1;
 
   const handleCreate = () => {

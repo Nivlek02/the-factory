@@ -97,7 +97,7 @@ function roleColor(index: number) {
 function projectProgress(project: FactoryProject): number {
   const briefs = project.fabricaBriefs ?? [];
   if (!briefs.length) return 0;
-  return Math.round((briefs.filter((b) => b.deliverableSubmittedAt).length / briefs.length) * 100);
+  return Math.round((briefs.filter((b) => b.deliverableSubmittedAt || b.checked).length / briefs.length) * 100);
 }
 
 // ─── Empty States ─────────────────────────────────────────────────────────────
@@ -206,8 +206,8 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
   const briefs = project.fabricaBriefs ?? [];
   const progress = projectProgress(project);
   const totalMembers = project.roleGroups.reduce((s, g) => s + g.members.length, 0);
-  const doneTasks = briefs.filter((b) => b.deliverableSubmittedAt).length;
-  const inProgress = briefs.filter((b) => !b.deliverableSubmittedAt).length;
+  const doneTasks = briefs.filter((b) => b.deliverableSubmittedAt || b.checked).length;
+  const inProgress = briefs.filter((b) => !b.deliverableSubmittedAt && !b.checked).length;
 
   return (
     <div className="space-y-4">
@@ -506,7 +506,7 @@ const TeamTasksTab = ({
                   {roleLabel}
                 </h4>
                 <span className="text-[10px] text-muted-foreground">
-                  {items.filter((b) => b.checked).length}/{items.length}
+                  {items.filter((b) => b.deliverableSubmittedAt || b.checked).length}/{items.length}
                 </span>
               </div>
               <div className="p-2">
@@ -752,15 +752,16 @@ const TeamTasksTab = ({
                   updateFabricaBrief(project.id, deliverableBrief.id, {
                     deliverableEnviado,
                     deliverableMotivoNoEnvio,
-                    deliverableSubmittedAt: (deliverableEnviado !== null || deliverableMotivoNoEnvio.trim())
+                    deliverableSubmittedAt: deliverableEnviado === true
                       ? (deliverableBrief.deliverableSubmittedAt ?? now)
                       : deliverableBrief.deliverableSubmittedAt,
                   });
                   // Auto-crear tarea de métricas al marcar como Enviado
                   if (deliverableEnviado === true && canalTipo) {
-                    const alreadyHasMetrics = project.fabricaBriefs.some(
+                    const liveProject = useFactoryStore.getState().projects.find((p) => p.id === project.id);
+                    const alreadyHasMetrics = liveProject?.fabricaBriefs.some(
                       (b) => b.tarea === `Recolectar métricas de ${canalTipo}`
-                    );
+                    ) ?? false;
                     if (!alreadyHasMetrics) {
                       addFabricaBriefs(project.id, [{
                         roleId: deliverableBrief.roleId,

@@ -204,7 +204,7 @@ const rowToProject = (row: any): FactoryProject => {
     description: row.description ?? '',
     client: row.client ?? '',
     state: row.state as ProjectState,
-    priority: row.priority as ProjectPriority,
+    priority: (['P0', 'P1', 'P2'] as const).includes(row.priority) ? row.priority as ProjectPriority : 'P2',
     startDate: data.startDate ?? null,
     dueDate: row.due_date,
     createdAt: row.created_at,
