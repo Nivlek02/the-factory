@@ -104,6 +104,18 @@ export interface StrategyNode {
 }
 
 
+export interface FormularioConfig {
+  basico: boolean | null;
+  camposAdicionales: string;
+  cuadroTexto: string;
+}
+
+export interface ProjectAttachment {
+  name: string;
+  type: string;
+  data: string; // base64
+}
+
 export interface FactoryProject {
   id: string;
   name: string;
@@ -126,6 +138,8 @@ export interface FactoryProject {
   segmentLink: string;
   eventCategory: string;
   promocionarEn: string[];
+  formularioConfig: FormularioConfig;
+  attachments: ProjectAttachment[];
 }
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -137,8 +151,8 @@ interface FactoryStore {
 
   hydrate: () => Promise<void>;
 
-  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn'>) => string;
-  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn'>>) => void;
+  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn' | 'formularioConfig' | 'attachments'>) => string;
+  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn' | 'formularioConfig' | 'attachments'>>) => void;
   deleteProject: (id: string) => void;
 
   addRoleGroup: (projectId: string, roleId: string, roleLabel: string) => void;
@@ -202,6 +216,8 @@ const rowToProject = (row: any): FactoryProject => {
     segmentLink: data.segmentLink ?? '',
     eventCategory: data.eventCategory ?? '',
     promocionarEn: data.promocionarEn ?? [],
+    formularioConfig: data.formularioConfig ?? { basico: null, camposAdicionales: '', cuadroTexto: '' },
+    attachments: data.attachments ?? [],
   };
 };
 
@@ -227,6 +243,8 @@ const projectToRow = (p: FactoryProject) => ({
       segmentLink: p.segmentLink,
       eventCategory: p.eventCategory,
       promocionarEn: p.promocionarEn,
+      formularioConfig: p.formularioConfig,
+      attachments: p.attachments,
     },
 });
 
@@ -296,6 +314,8 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       segmentLink: data.segmentLink ?? '',
       eventCategory: data.eventCategory ?? '',
       promocionarEn: data.promocionarEn ?? [],
+      formularioConfig: data.formularioConfig ?? { basico: null, camposAdicionales: '', cuadroTexto: '' },
+      attachments: data.attachments ?? [],
       id,
       createdAt: new Date().toISOString(),
       roleGroups: [],

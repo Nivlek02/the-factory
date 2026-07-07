@@ -163,6 +163,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   const [requerimientos, setRequerimientos] = useState<string[]>(
     editProject?.requerimientos ?? []
   );
+  const [formularioConfig, setFormularioConfig] = useState({
+    basico: editProject?.formularioConfig?.basico ?? null as boolean | null,
+    camposAdicionales: editProject?.formularioConfig?.camposAdicionales ?? '',
+    cuadroTexto: editProject?.formularioConfig?.cuadroTexto ?? '',
+  });
+  const [attachments, setAttachments] = useState<{ name: string; type: string; data: string }[]>(
+    editProject?.attachments ?? []
+  );
   const [fabricaBriefs, setFabricaBriefs] = useState<FabricaBriefItem[]>(
     editProject?.fabricaBriefs?.map((b) => ({ ...b })) ?? []
   );
@@ -183,6 +191,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           if (parsed.canalesRows) setCanalesRows(parsed.canalesRows);
           if (parsed.loopsRows) setLoopsRows(parsed.loopsRows);
           if (parsed.requerimientos) setRequerimientos(parsed.requerimientos);
+          if (parsed.formularioConfig) setFormularioConfig(parsed.formularioConfig);
+          if (parsed.attachments) setAttachments(parsed.attachments);
           if (parsed.step !== undefined) setStep(parsed.step);
         }
       } catch { /* ignore invalid draft */ }
@@ -199,6 +209,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         canalesRows,
         loopsRows,
         requerimientos,
+        formularioConfig,
+        attachments,
         step,
       }));
     }, 2000);
@@ -217,6 +229,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     setCanalesRows([]);
     setLoopsRows([]);
     setRequerimientos([]);
+    setFormularioConfig({ basico: null, camposAdicionales: '', cuadroTexto: '' });
+    setAttachments([]);
     setFabricaBriefs([]);
   };
 
@@ -422,6 +436,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         segmentLink: data.segmentLink.trim(),
         eventCategory: data.eventCategory,
         promocionarEn: data.promocionarEn,
+        formularioConfig,
+        attachments,
       });
       onCreated(editProject.id);
       close();
@@ -451,6 +467,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       loops: loopsRows,
       fabricaBriefs: fabricaBriefs,
       requerimientos,
+      formularioConfig,
+      attachments,
     });
     onCreated(id);
     close();
@@ -637,6 +655,51 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   )}
                 </div>
               )}
+
+              {/* ─── Archivos adjuntos ─── */}
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block">
+                  Archivos adjuntos
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Adjunta archivos de referencia (briefs, imágenes, PDFs, etc.).
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {attachments.map((file, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/60 bg-card text-xs">
+                      <span className="truncate max-w-[160px]">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer mt-1">
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Adjuntar archivo</span>
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      const newFiles = await Promise.all(
+                        files.map((f) => new Promise<{ name: string; type: string; data: string }>((resolve) => {
+                          const reader = new FileReader();
+                          reader.onload = () => resolve({ name: f.name, type: f.type, data: reader.result as string });
+                          reader.readAsDataURL(f);
+                        }))
+                      );
+                      setAttachments((prev) => [...prev, ...newFiles]);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
             </div>
           )}
 
@@ -748,7 +811,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                       value={audiencia.bigIdea}
                       onChange={(e) => setAudiencia((a) => ({ ...a, bigIdea: e.target.value }))}
                     />
-                  </div>
+                   </div>
                 </div>
               </div>
             </div>
@@ -990,6 +1053,70 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                     );
                   })}
                 </div>
+
+                {/* ─── Formulario básico? (solo cuando está seleccionado Formulario de inscripción) ─── */}
+                {requerimientos.includes('formulario') && (
+                  <div className="mt-4 p-4 rounded-lg border border-border/60 bg-card/50 space-y-3">
+                    <Label className="text-sm font-semibold block">
+                      ¿Formulario básico?
+                    </Label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormularioConfig((prev) => ({ ...prev, basico: true }))}
+                        className={`px-4 py-2 rounded-lg text-xs font-medium border transition-all ${
+                          formularioConfig.basico === true
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                        }`}
+                      >
+                        Sí
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormularioConfig((prev) => ({ ...prev, basico: false }))}
+                        className={`px-4 py-2 rounded-lg text-xs font-medium border transition-all ${
+                          formularioConfig.basico === false
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                        }`}
+                      >
+                        No
+                      </button>
+                    </div>
+
+                    {formularioConfig.basico === true && (
+                      <p className="text-xs text-muted-foreground italic">
+                        Se creará la tarea de "Formulario de inscripción básico" para el gestor de canales.
+                      </p>
+                    )}
+
+                    {formularioConfig.basico === false && (
+                      <div className="space-y-3 border-t border-border/40 pt-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Campos adicionales del formulario</Label>
+                          <textarea
+                            rows={2}
+                            placeholder="Ej: Teléfono, cargo, empresa, ciudad…"
+                            value={formularioConfig.camposAdicionales}
+                            onChange={(e) => setFormularioConfig((prev) => ({ ...prev, camposAdicionales: e.target.value }))}
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-factory/40 resize-none"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Cuadro de texto</Label>
+                          <textarea
+                            rows={3}
+                            placeholder="Información adicional a solicitar…"
+                            value={formularioConfig.cuadroTexto}
+                            onChange={(e) => setFormularioConfig((prev) => ({ ...prev, cuadroTexto: e.target.value }))}
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-factory/40 resize-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
