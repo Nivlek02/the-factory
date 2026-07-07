@@ -28,12 +28,17 @@ const STEPS = [
 ] as const;
 
 const SEGMENTOS_LABEL: Record<string, string> = {
-  afiliado: 'Afiliado activo',
+  afiliado: 'Afiliado',
+  renovado: 'Renovados',
   matriculado: 'Matriculado',
   potencial: 'Potencial',
   no_renovado: 'No renovado',
   vip: 'VIP / Alta dirección',
-  cluster: 'Cluster sectorial',
+  cluster_energia: 'Energía',
+  cluster_espacios: 'Espacios Habitables',
+  cluster_salud: 'Salud',
+  cluster_turismo: 'Turismo de Eventos y Negocios',
+  cluster_alimentos: 'Alimentos y Agroindustrias',
   mercado_medio: 'Mercado medio',
 };
 
@@ -712,7 +717,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                 </Label>
                 <div className="flex flex-wrap gap-2">
                   {(() => {
-                    const ALL_SEGMENTS = ['afiliado', 'matriculado', 'potencial', 'no_renovado', 'vip', 'cluster', 'mercado_medio'];
+                    const ALL_SEGMENTS = ['afiliado', 'renovado', 'matriculado', 'potencial', 'no_renovado', 'vip', 'cluster_energia', 'cluster_espacios', 'cluster_salud', 'cluster_turismo', 'cluster_alimentos', 'mercado_medio'];
                     const allSelected = ALL_SEGMENTS.every((s) => audiencia.segmentos.includes(s));
                     return (
                       <>
@@ -734,12 +739,17 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                         </button>
                         {ALL_SEGMENTS.map((segId) => {
                           const seg = { id: segId, label: ({
-                            afiliado: 'Afiliado activo',
+                            afiliado: 'Afiliado',
+                            renovado: 'Renovados',
                             matriculado: 'Matriculado',
                             potencial: 'Potencial',
                             no_renovado: 'No renovado',
                             vip: 'VIP / Alta dirección',
-                            cluster: 'Cluster sectorial',
+                            cluster_energia: 'Energía',
+                            cluster_espacios: 'Espacios Habitables',
+                            cluster_salud: 'Salud',
+                            cluster_turismo: 'Turismo de Eventos y Negocios',
+                            cluster_alimentos: 'Alimentos y Agroindustrias',
                             mercado_medio: 'Mercado medio',
                           } as Record<string, string>)[segId] };
                           const active = audiencia.segmentos.includes(seg.id);
@@ -1054,67 +1064,19 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   })}
                 </div>
 
-                {/* ─── Formulario básico? (solo cuando está seleccionado Formulario de inscripción) ─── */}
+                {/* ─── Campos adicionales (solo cuando está seleccionado Formulario de inscripción) ─── */}
                 {requerimientos.includes('formulario') && (
                   <div className="mt-4 p-4 rounded-lg border border-border/60 bg-card/50 space-y-3">
-                    <Label className="text-sm font-semibold block">
-                      ¿Formulario básico?
-                    </Label>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFormularioConfig((prev) => ({ ...prev, basico: true }))}
-                        className={`px-4 py-2 rounded-lg text-xs font-medium border transition-all ${
-                          formularioConfig.basico === true
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
-                        }`}
-                      >
-                        Sí
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormularioConfig((prev) => ({ ...prev, basico: false }))}
-                        className={`px-4 py-2 rounded-lg text-xs font-medium border transition-all ${
-                          formularioConfig.basico === false
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
-                        }`}
-                      >
-                        No
-                      </button>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Campos adicionales del formulario</Label>
+                      <textarea
+                        rows={2}
+                        placeholder="Ej: Teléfono, cargo, empresa, ciudad…"
+                        value={formularioConfig.camposAdicionales}
+                        onChange={(e) => setFormularioConfig((prev) => ({ ...prev, camposAdicionales: e.target.value }))}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-factory/40 resize-none"
+                      />
                     </div>
-
-                    {formularioConfig.basico === true && (
-                      <p className="text-xs text-muted-foreground italic">
-                        Se creará la tarea de "Formulario de inscripción básico" para el gestor de canales.
-                      </p>
-                    )}
-
-                    {formularioConfig.basico === false && (
-                      <div className="space-y-3 border-t border-border/40 pt-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Campos adicionales del formulario</Label>
-                          <textarea
-                            rows={2}
-                            placeholder="Ej: Teléfono, cargo, empresa, ciudad…"
-                            value={formularioConfig.camposAdicionales}
-                            onChange={(e) => setFormularioConfig((prev) => ({ ...prev, camposAdicionales: e.target.value }))}
-                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-factory/40 resize-none"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Cuadro de texto</Label>
-                          <textarea
-                            rows={3}
-                            placeholder="Información adicional a solicitar…"
-                            value={formularioConfig.cuadroTexto}
-                            onChange={(e) => setFormularioConfig((prev) => ({ ...prev, cuadroTexto: e.target.value }))}
-                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-factory/40 resize-none"
-                          />
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
