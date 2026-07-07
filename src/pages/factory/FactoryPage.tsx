@@ -97,7 +97,7 @@ function roleColor(index: number) {
 function projectProgress(project: FactoryProject): number {
   const briefs = project.fabricaBriefs ?? [];
   if (!briefs.length) return 0;
-  return Math.round((briefs.filter((b) => b.checked).length / briefs.length) * 100);
+  return Math.round((briefs.filter((b) => b.deliverableSubmittedAt).length / briefs.length) * 100);
 }
 
 // ─── Empty States ─────────────────────────────────────────────────────────────
@@ -206,8 +206,8 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
   const briefs = project.fabricaBriefs ?? [];
   const progress = projectProgress(project);
   const totalMembers = project.roleGroups.reduce((s, g) => s + g.members.length, 0);
-  const doneTasks = briefs.filter((b) => b.checked).length;
-  const inProgress = briefs.filter((b) => !b.checked).length;
+  const doneTasks = briefs.filter((b) => b.deliverableSubmittedAt).length;
+  const inProgress = briefs.filter((b) => !b.deliverableSubmittedAt).length;
 
   return (
     <div className="space-y-4">
@@ -429,6 +429,7 @@ const TeamTasksTab = ({
   const [deliverableEnviado, setDeliverableEnviado] = useState<boolean | null>(null);
   const [deliverableMotivoNoEnvio, setDeliverableMotivoNoEnvio] = useState('');
   const [deliverableMetricas, setDeliverableMetricas] = useState<Record<string, string>>({});
+  const [deliverableComentarios, setDeliverableComentarios] = useState('');
 
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleTareas, setNewRoleTareas] = useState('');
@@ -522,6 +523,7 @@ const TeamTasksTab = ({
                             setDeliverableEnviado(b.deliverableEnviado ?? null);
                             setDeliverableMotivoNoEnvio(b.deliverableMotivoNoEnvio ?? '');
                             setDeliverableMetricas(b.deliverableMetricas ?? {});
+                            setDeliverableComentarios(b.comentarios ?? '');
                           }}
                           className="text-sm flex-1 text-left text-foreground/80 hover:text-factory transition-colors"
                     >
@@ -595,8 +597,11 @@ const TeamTasksTab = ({
 
           {deliverableBrief && (() => {
             const isCanalBrief = deliverableBrief.tarea.startsWith('Configurar envío por');
-            const canalMatch = deliverableBrief.tarea.match(/Configurar envío por (\w+)/);
+            const isMetricsBrief = deliverableBrief.tarea.startsWith('Recolectar métricas de');
+            const canalMatch = deliverableBrief.tarea.match(/(?:Configurar envío por|Recolectar métricas de) (\w+)/);
             const canalTipo = canalMatch?.[1] ?? '';
+            const isUrlBrief = deliverableBrief.tarea.includes('Landing') || deliverableBrief.tarea.includes('Formulario de inscripción');
+            const isCopyBrief = deliverableBrief.roleId === 'copy';
 
             if (isCanalBrief) {
               return (
@@ -605,23 +610,13 @@ const TeamTasksTab = ({
                     <Label>Estado del envío</Label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="envio-estado"
-                          checked={deliverableEnviado === true}
-                          onChange={() => setDeliverableEnviado(true)}
-                          className="h-4 w-4 text-primary"
-                        />
+                        <input type="radio" name="envio-estado" checked={deliverableEnviado === true}
+                          onChange={() => setDeliverableEnviado(true)} className="h-4 w-4 text-primary" />
                         <span className="text-sm">Enviado</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="envio-estado"
-                          checked={deliverableEnviado === false}
-                          onChange={() => setDeliverableEnviado(false)}
-                          className="h-4 w-4 text-primary"
-                        />
+                        <input type="radio" name="envio-estado" checked={deliverableEnviado === false}
+                          onChange={() => setDeliverableEnviado(false)} className="h-4 w-4 text-primary" />
                         <span className="text-sm">No enviado</span>
                       </label>
                     </div>
@@ -629,45 +624,111 @@ const TeamTasksTab = ({
                   {deliverableEnviado === false && (
                     <div className="space-y-1.5">
                       <Label className="text-xs">Motivo por el que no se envió</Label>
-                      <Textarea
-                        placeholder="Describe por qué no se realizó el envío..."
-                        value={deliverableMotivoNoEnvio}
-                        onChange={(e) => setDeliverableMotivoNoEnvio(e.target.value)}
-                        className="min-h-[80px] text-sm"
-                      />
+                      <Textarea placeholder="Describe por qué no se realizó el envío..."
+                        value={deliverableMotivoNoEnvio} onChange={(e) => setDeliverableMotivoNoEnvio(e.target.value)}
+                        className="min-h-[80px] text-sm" />
                     </div>
                   )}
                 </div>
               );
             }
 
-            // Non-canal brief: show existing WYSIWYG form
+            if (isMetricsBrief) {
+              return (
+                <div className="space-y-4 py-2">
+                  <div className="space-y-3 border rounded-lg p-4 bg-muted/20">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Métricas del envío
+                    </p>
+                    {canalTipo === 'Correo' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          { key: 'baseTotal', label: 'Base total' },
+                          { key: 'enviados', label: 'Enviados' },
+                          { key: 'apertura', label: 'Apertura' },
+                          { key: 'clics', label: 'Clics' },
+                        ].map(({ key, label }) => (
+                          <div key={key} className="space-y-1">
+                            <Label className="text-xs">{label}</Label>
+                            <Input type="number" min="0" placeholder="0" className="h-8 text-xs"
+                              value={deliverableMetricas[key] ?? ''}
+                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, [key]: e.target.value }))} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(canalTipo === 'WhatsApp' || canalTipo === 'SMS') && (
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          { key: 'baseTotal', label: 'Base total' },
+                          { key: 'clics', label: 'Clics' },
+                        ].map(({ key, label }) => (
+                          <div key={key} className="space-y-1">
+                            <Label className="text-xs">{label}</Label>
+                            <Input type="number" min="0" placeholder="0" className="h-8 text-xs"
+                              value={deliverableMetricas[key] ?? ''}
+                              onChange={(e) => setDeliverableMetricas((prev) => ({ ...prev, [key]: e.target.value }))} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            if (isUrlBrief) {
+              return (
+                <div className="space-y-4 py-2">
+                  {deliverableBrief.briefNotes && (
+                    <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Campos adicionales</p>
+                      <p className="text-sm text-foreground/80 whitespace-pre-wrap">{deliverableBrief.briefNotes}</p>
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label>URL del entregable</Label>
+                    <Input
+                      type="url"
+                      placeholder="https://…"
+                      value={deliverableContent}
+                      onChange={(e) => setDeliverableContent(e.target.value)}
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+              );
+            }
+
+            // Default: rich text + attachments + optional comments for Copy
             return (
               <div className="space-y-4 py-2">
                 {deliverableBrief.briefNotes && (
                   <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-                      Campos adicionales
-                    </p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Campos adicionales</p>
                     <p className="text-sm text-foreground/80 whitespace-pre-wrap">{deliverableBrief.briefNotes}</p>
                   </div>
                 )}
                 <div className="space-y-2">
                   <Label>Contenido del entregable</Label>
-                  <RichTextEditor
-                    content={deliverableContent}
-                    onChange={setDeliverableContent}
-                    placeholder="Escribe aquí el contenido del entregable..."
-                  />
+                  <RichTextEditor content={deliverableContent} onChange={setDeliverableContent}
+                    placeholder="Escribe aquí el contenido del entregable..." />
                 </div>
-
                 <div className="space-y-2">
                   <Label>Archivos adjuntos</Label>
-                  <FileUpload
-                    attachments={deliverableAttachments}
-                    onChange={setDeliverableAttachments}
-                  />
+                  <FileUpload attachments={deliverableAttachments} onChange={setDeliverableAttachments} />
                 </div>
+                {isCopyBrief && (
+                  <div className="space-y-1.5 border-t border-border/40 pt-3">
+                    <Label className="text-xs">Comentarios</Label>
+                    <Textarea
+                      placeholder="Agrega notas o comentarios sobre este entregable…"
+                      value={deliverableComentarios}
+                      onChange={(e) => setDeliverableComentarios(e.target.value)}
+                      className="min-h-[80px] text-sm"
+                    />
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -680,20 +741,50 @@ const TeamTasksTab = ({
               onClick={() => {
                 if (!deliverableBrief) return;
                 const isCanalBrief = deliverableBrief.tarea.startsWith('Configurar envío por');
+                const isMetricsBrief = deliverableBrief.tarea.startsWith('Recolectar métricas de');
+                const isUrlBrief = deliverableBrief.tarea.includes('Landing') || deliverableBrief.tarea.includes('Formulario de inscripción');
+                const isCopyBrief = deliverableBrief.roleId === 'copy';
+                const now = new Date().toISOString();
+
                 if (isCanalBrief) {
-                  const updates: Partial<FabricaBriefItem> = {
+                  const canalMatch = deliverableBrief.tarea.match(/Configurar envío por (\w+)/);
+                  const canalTipo = canalMatch?.[1] ?? '';
+                  updateFabricaBrief(project.id, deliverableBrief.id, {
                     deliverableEnviado,
                     deliverableMotivoNoEnvio,
                     deliverableSubmittedAt: (deliverableEnviado !== null || deliverableMotivoNoEnvio.trim())
-                      ? (deliverableBrief.deliverableSubmittedAt ?? new Date().toISOString())
+                      ? (deliverableBrief.deliverableSubmittedAt ?? now)
                       : deliverableBrief.deliverableSubmittedAt,
-                  };
-                  updateFabricaBrief(project.id, deliverableBrief.id, updates);
+                  });
+                  // Auto-crear tarea de métricas al marcar como Enviado
+                  if (deliverableEnviado === true && canalTipo) {
+                    const alreadyHasMetrics = project.fabricaBriefs.some(
+                      (b) => b.tarea === `Recolectar métricas de ${canalTipo}`
+                    );
+                    if (!alreadyHasMetrics) {
+                      addFabricaBriefs(project.id, [{
+                        roleId: deliverableBrief.roleId,
+                        roleLabel: deliverableBrief.roleLabel,
+                        tarea: `Recolectar métricas de ${canalTipo}`,
+                      }]);
+                    }
+                  }
+                } else if (isMetricsBrief) {
+                  updateFabricaBrief(project.id, deliverableBrief.id, {
+                    deliverableMetricas,
+                    deliverableSubmittedAt: deliverableBrief.deliverableSubmittedAt ?? now,
+                  });
+                } else if (isUrlBrief) {
+                  updateFabricaBrief(project.id, deliverableBrief.id, {
+                    deliverableContent,
+                    deliverableSubmittedAt: deliverableBrief.deliverableSubmittedAt ?? now,
+                  });
                 } else {
                   updateFabricaBrief(project.id, deliverableBrief.id, {
                     deliverableContent,
                     deliverableAttachments,
-                    deliverableSubmittedAt: deliverableBrief.deliverableSubmittedAt ?? new Date().toISOString(),
+                    comentarios: isCopyBrief ? deliverableComentarios : undefined,
+                    deliverableSubmittedAt: deliverableBrief.deliverableSubmittedAt ?? now,
                   });
                 }
                 setDeliverableBrief(null);
@@ -701,6 +792,10 @@ const TeamTasksTab = ({
               disabled={
                 deliverableBrief?.tarea.startsWith('Configurar envío por')
                   ? deliverableEnviado === null
+                  : deliverableBrief?.tarea.startsWith('Recolectar métricas de')
+                  ? false
+                  : deliverableBrief?.tarea.includes('Landing') || deliverableBrief?.tarea.includes('Formulario de inscripción')
+                  ? !deliverableContent.trim()
                   : (!deliverableContent && deliverableAttachments.length === 0)
               }
             >

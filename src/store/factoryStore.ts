@@ -39,6 +39,8 @@ export interface FabricaBriefItem {
   mejora?: string;
   /** Nota de contexto pre-cargada al abrir el deliverable (ej: campos adicionales del formulario) */
   briefNotes?: string;
+  /** Comentarios editables (habilitados para el rol Copy) */
+  comentarios?: string;
   /** Deliverable del Copy — contenido WYSIWYG */
   deliverableContent?: string;
   deliverableAttachments?: Array<{name: string; url: string; type: string}>;

@@ -477,25 +477,26 @@ export const LoopTab = ({ project }: Props) => {
       (b) => b.tarea.startsWith('Recolectar métricas de') && b.deliverableMetricas
     );
 
-    let totalAlcance = 0;
+    let totalBase = 0;
+    let totalEnviados = 0;
+    let totalApertura = 0;
     let totalClics = 0;
 
     for (const b of metricsBriefs) {
       const m = b.deliverableMetricas!;
-      const enviados = parseInt(m.correosEnviados ?? '0') +
-        parseInt(m.whatsappsEnviados ?? '0') +
-        parseInt(m.smsEnviados ?? '0');
-      totalAlcance += enviados;
-      totalClics += parseInt(m.clics ?? '0');
+      totalBase     += parseInt(m.baseTotal ?? '0');
+      totalEnviados += parseInt(m.enviados  ?? '0');
+      totalApertura += parseInt(m.apertura  ?? '0');
+      totalClics    += parseInt(m.clics     ?? '0');
     }
 
     const fmt = (n: number) => n > 0 ? n.toLocaleString('es-CO') : '—';
 
     return {
-      alcance: { value: fmt(totalAlcance), delta: '—' },
-      clis: { value: fmt(totalClics), delta: '—' },
-      leads: { value: '—', delta: '—' },
-      inversion: { value: '—', delta: '—' },
+      base:     { value: fmt(totalBase),     delta: '—' },
+      enviados: { value: fmt(totalEnviados), delta: '—' },
+      apertura: { value: fmt(totalApertura), delta: '—' },
+      clics:    { value: fmt(totalClics),    delta: '—' },
     };
   }, [project.fabricaBriefs]);
 
@@ -515,10 +516,10 @@ export const LoopTab = ({ project }: Props) => {
 
         {/* Metric cards */}
         <div className="md:col-span-3 grid grid-cols-2 gap-3">
-          <LoopMetric label="Alcance" value={loopMetrics.alcance.value} delta={loopMetrics.alcance.delta} icon={<Users className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Clics" value={loopMetrics.clis.value} delta={loopMetrics.clis.delta} icon={<Target className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Leads" value={loopMetrics.leads.value} delta={loopMetrics.leads.delta} icon={<TrendingUp className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Inversión" value={loopMetrics.inversion.value} delta={loopMetrics.inversion.delta} icon={<DollarSign className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Base total" value={loopMetrics.base.value} delta={loopMetrics.base.delta} icon={<Users className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Enviados" value={loopMetrics.enviados.value} delta={loopMetrics.enviados.delta} icon={<TrendingUp className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Apertura" value={loopMetrics.apertura.value} delta={loopMetrics.apertura.delta} icon={<Target className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Clics" value={loopMetrics.clics.value} delta={loopMetrics.clics.delta} icon={<DollarSign className="h-3.5 w-3.5" />} />
         </div>
       </div>
 

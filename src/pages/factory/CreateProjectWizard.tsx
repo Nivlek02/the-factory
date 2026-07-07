@@ -897,18 +897,21 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                         onChange={(e) => updateCanalRow(row.id, 'copy', e.target.value)}
                         className="text-xs bg-transparent border-none outline-none w-full"
                       />
-                      <select
-                        value={row.segmento || 'todos'}
-                        onChange={(e) => updateCanalRow(row.id, 'segmento', e.target.value)}
-                        className="text-xs bg-transparent border-none outline-none w-full min-w-0 overflow-hidden cursor-pointer"
-                      >
-                        <option value="todos">Segmento General</option>
-                        {audiencia.segmentos.map((segId) => (
-                          <option key={segId} value={segId}>
-                            {SEGMENTOS_LABEL[segId] ?? segId}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="min-w-0 overflow-hidden" title={SEGMENTOS_LABEL[row.segmento] ?? 'Segmento General'}>
+                        <select
+                          value={row.segmento || 'todos'}
+                          onChange={(e) => updateCanalRow(row.id, 'segmento', e.target.value)}
+                          className="text-xs bg-transparent border-none outline-none w-full max-w-full cursor-pointer truncate"
+                          style={{ textOverflow: 'ellipsis' }}
+                        >
+                          <option value="todos">Segmento General</option>
+                          {audiencia.segmentos.map((segId) => (
+                            <option key={segId} value={segId}>
+                              {SEGMENTOS_LABEL[segId] ?? segId}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <button
                         onClick={() => removeCanalRow(row.id)}
                         className="text-muted-foreground hover:text-destructive transition-colors"

@@ -7,10 +7,7 @@ import {
   Wrench,
   Factory,
   Sparkles,
-  Sun,
-  Moon,
 } from 'lucide-react';
-import { useTheme } from 'next-themes';
 import { NavLink } from '@/components/NavLink';
 import { useAuthStore, ROLE_LABELS } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
@@ -78,7 +75,6 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
   };
 
   const isMercadeo = currentUser?.role === 'mercadeo';
-  const { theme, setTheme } = useTheme();
 
   return (
     <aside
@@ -154,17 +150,6 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
               Demo · {currentUser ? ROLE_LABELS[currentUser.role] : ''}
             </p>
           </div>
-          {!collapsed && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            >
-              <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-            </Button>
-          )}
         </div>
       </div>
     </aside>
