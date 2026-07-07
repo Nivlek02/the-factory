@@ -644,6 +644,14 @@ const TeamTasksTab = ({
             // Non-canal brief: show existing WYSIWYG form
             return (
               <div className="space-y-4 py-2">
+                {deliverableBrief.briefNotes && (
+                  <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                      Campos adicionales
+                    </p>
+                    <p className="text-sm text-foreground/80 whitespace-pre-wrap">{deliverableBrief.briefNotes}</p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>Contenido del entregable</Label>
                   <RichTextEditor

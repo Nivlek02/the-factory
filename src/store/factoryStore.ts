@@ -37,6 +37,8 @@ export interface FabricaBriefItem {
   lineaBase?: string;
   objetivo?: string;
   mejora?: string;
+  /** Nota de contexto pre-cargada al abrir el deliverable (ej: campos adicionales del formulario) */
+  briefNotes?: string;
   /** Deliverable del Copy — contenido WYSIWYG */
   deliverableContent?: string;
   deliverableAttachments?: Array<{name: string; url: string; type: string}>;

@@ -58,9 +58,7 @@ const REQ_ROLE_TAREAS: Record<ReqId, Record<string, string[]>> = {
     gestor_canales: ['Landing'],
     produccion: ['Landing page'],
   },
-  formulario: {
-    gestor_canales: ['Formulario de inscripción'],
-  },
+  formulario: {},
   pauta_digital: {
     social: [],
   },
@@ -240,7 +238,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   };
 
   const addCanalRow = () => {
-    setCanalesRows((prev) => [...prev, { id: uid(), canal: 'Correo', dia: '', copy: '', segmento: '' }]);
+    setCanalesRows((prev) => [...prev, { id: uid(), canal: 'Correo', dia: '', copy: '', segmento: 'todos' }]);
   };
   const removeCanalRow = (id: string) => setCanalesRows((prev) => prev.filter((r) => r.id !== id));
   const updateCanalRow = (id: string, field: string, value: string) =>
@@ -273,10 +271,10 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   };
 
   // ─── Auto-populate Fábrica briefs from canales + loops ───
-  const buildFabricaBriefs = (canales: typeof canalesRows, loops: typeof loopsRows, reqs: string[]): FabricaBriefItem[] => {
+  const buildFabricaBriefs = (canales: typeof canalesRows, loops: typeof loopsRows, reqs: string[], fConfig: typeof formularioConfig): FabricaBriefItem[] => {
     const items: FabricaBriefItem[] = [];
-    const addItem = (roleId: string, roleLabel: string, tarea: string) => {
-      items.push({ id: uid(), roleId, roleLabel, tarea, checked: false });
+    const addItem = (roleId: string, roleLabel: string, tarea: string, extra?: Partial<FabricaBriefItem>) => {
+      items.push({ id: uid(), roleId, roleLabel, tarea, checked: false, ...extra });
     };
     const addRoleTareasFiltered = (roleId: string, roleLabel: string, roleTareas: string[]) => {
       const filtered = filterTareasByRequerimientos(roleId, roleTareas, reqs);
@@ -378,6 +376,17 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       }
     }
 
+    // ─── Tarea de formulario de inscripción ───
+    if (reqs.includes('formulario') && fConfig.basico !== null) {
+      if (fConfig.basico === true) {
+        addItem('gestor_canales', 'Gestor de canales', 'Formulario de inscripción básico');
+      } else {
+        addItem('gestor_canales', 'Gestor de canales', 'Formulario de inscripción con campos adicionales', {
+          briefNotes: fConfig.camposAdicionales || undefined,
+        });
+      }
+    }
+
     return items;
   };
 
@@ -393,14 +402,16 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     return map[canal]?.includes(roleId) ?? false;
   };
 
-  // Rebuild when canales, loops or requerimientos change
+  // Rebuild when canales, loops, requerimientos or formularioConfig change
   useEffect(() => {
-    if (canalesRows.length > 0 || loopsRows.some((l) => l.responsable)) {
-      setFabricaBriefs(buildFabricaBriefs(canalesRows, loopsRows, requerimientos));
+    const hasFormulario = requerimientos.includes('formulario') && formularioConfig.basico !== null;
+    const hasContent = canalesRows.length > 0 || loopsRows.some((l) => l.responsable) || hasFormulario;
+    if (hasContent) {
+      setFabricaBriefs(buildFabricaBriefs(canalesRows, loopsRows, requerimientos, formularioConfig));
     } else {
       setFabricaBriefs([]);
     }
-  }, [canalesRows, loopsRows, requerimientos]);
+  }, [canalesRows, loopsRows, requerimientos, formularioConfig]);
 
   const toggleFabricaBrief = (id: string) =>
     setFabricaBriefs((prev) => prev.map((b) => (b.id === id ? { ...b, checked: !b.checked } : b)));
@@ -837,17 +848,17 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                 </Label>
                 <div className="space-y-2">
                   {/* Header */}
-                  <div className="grid grid-cols-[100px_minmax(50px,70px)_1fr_minmax(80px,100px)] gap-2 px-2">
+                  <div className="grid grid-cols-[90px_60px_1fr_minmax(0,140px)] gap-2 px-2">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Canal</span>
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
                       <span className="hidden sm:inline">Día</span>
                     </span>
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Copy / Ángulo del toque</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-right">Segmento</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Segmento</span>
                   </div>
                   {canalesRows.map((row) => (
-                    <div key={row.id} className="grid grid-cols-[100px_minmax(50px,70px)_1fr_minmax(80px,100px)_24px] gap-2 items-center rounded-lg border border-border/60 bg-card p-2">
+                    <div key={row.id} className="grid grid-cols-[90px_60px_1fr_minmax(0,140px)_24px] gap-2 items-center rounded-lg border border-border/60 bg-card p-2">
                       <select
                         value={row.canal}
                         onChange={(e) => updateCanalRow(row.id, 'canal', e.target.value)}
@@ -887,11 +898,10 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                         className="text-xs bg-transparent border-none outline-none w-full"
                       />
                       <select
-                        value={row.segmento}
+                        value={row.segmento || 'todos'}
                         onChange={(e) => updateCanalRow(row.id, 'segmento', e.target.value)}
-                        className="text-xs bg-transparent border-none outline-none w-full text-left cursor-pointer"
+                        className="text-xs bg-transparent border-none outline-none w-full min-w-0 overflow-hidden cursor-pointer"
                       >
-                        <option value="">Segmento</option>
                         <option value="todos">Segmento General</option>
                         {audiencia.segmentos.map((segId) => (
                           <option key={segId} value={segId}>
@@ -1064,19 +1074,53 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   })}
                 </div>
 
-                {/* ─── Campos adicionales (solo cuando está seleccionado Formulario de inscripción) ─── */}
+                {/* ─── Formulario básico? (solo cuando está seleccionado Formulario de inscripción) ─── */}
                 {requerimientos.includes('formulario') && (
                   <div className="mt-4 p-4 rounded-lg border border-border/60 bg-card/50 space-y-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Campos adicionales del formulario</Label>
-                      <textarea
-                        rows={2}
-                        placeholder="Ej: Teléfono, cargo, empresa, ciudad…"
-                        value={formularioConfig.camposAdicionales}
-                        onChange={(e) => setFormularioConfig((prev) => ({ ...prev, camposAdicionales: e.target.value }))}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-factory/40 resize-none"
-                      />
+                    <Label className="text-sm font-semibold block">¿Formulario básico?</Label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormularioConfig((prev) => ({ ...prev, basico: true }))}
+                        className={`px-4 py-2 rounded-lg text-xs font-medium border transition-all ${
+                          formularioConfig.basico === true
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                        }`}
+                      >
+                        Sí
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormularioConfig((prev) => ({ ...prev, basico: false }))}
+                        className={`px-4 py-2 rounded-lg text-xs font-medium border transition-all ${
+                          formularioConfig.basico === false
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                        }`}
+                      >
+                        No
+                      </button>
                     </div>
+
+                    {formularioConfig.basico === true && (
+                      <p className="text-xs text-muted-foreground italic">
+                        Se creará la tarea "Formulario de inscripción básico" para el gestor de canales.
+                      </p>
+                    )}
+
+                    {formularioConfig.basico === false && (
+                      <div className="space-y-1.5 border-t border-border/40 pt-3">
+                        <Label className="text-xs">Campos adicionales del formulario</Label>
+                        <textarea
+                          rows={2}
+                          placeholder="Ej: Teléfono, cargo, empresa, ciudad…"
+                          value={formularioConfig.camposAdicionales}
+                          onChange={(e) => setFormularioConfig((prev) => ({ ...prev, camposAdicionales: e.target.value }))}
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-factory/40 resize-none"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1108,69 +1152,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                           <h4 className="text-xs font-semibold uppercase tracking-wider text-factory mb-2">
                             {roleLabel}
                           </h4>
-                          <div className="space-y-2">
+                          <div className="space-y-1">
                             {items.map((item) => (
-                              <div key={item.id}>
-                                <label className="flex items-start gap-2.5 p-1.5 rounded-md hover:bg-muted/40 cursor-pointer transition-colors">
-                                  <input
-                                    type="checkbox"
-                                    checked={item.checked}
-                                    onChange={() => toggleFabricaBrief(item.id)}
-                                    className="mt-0.5 h-4 w-4 rounded border-muted-foreground text-factory focus:ring-factory"
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <span className={`text-sm ${item.checked ? 'line-through text-muted-foreground' : ''}`}>
-                                      {item.tarea}
-                                    </span>
-                                  </div>
-                                </label>
-
-                                {/* ─── Loop strategy form (visible when activated) ─── */}
-                                {item.checked && (
-                                  <div className="ml-7 mt-1 mb-2 p-3 rounded-md bg-muted/30 border border-border/40 space-y-2">
-                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                      Estrategia de mejora continua
-                                    </p>
-                                    <div className="grid grid-cols-3 gap-2">
-                                      <div className="space-y-0.5">
-                                        <Label className="text-[10px] text-muted-foreground">Métrica / KPI</Label>
-                                        <Input
-                                          placeholder="Ej: Tasa de apertura"
-                                          value={item.metrica ?? ''}
-                                          onChange={(e) => updateFabricaLoop(item.id, 'metrica', e.target.value)}
-                                          className="h-7 text-xs"
-                                        />
-                                      </div>
-                                      <div className="space-y-0.5">
-                                        <Label className="text-[10px] text-muted-foreground">Línea base</Label>
-                                        <Input
-                                          placeholder="Ej: 15%"
-                                          value={item.lineaBase ?? ''}
-                                          onChange={(e) => updateFabricaLoop(item.id, 'lineaBase', e.target.value)}
-                                          className="h-7 text-xs"
-                                        />
-                                      </div>
-                                      <div className="space-y-0.5">
-                                        <Label className="text-[10px] text-muted-foreground">Objetivo</Label>
-                                        <Input
-                                          placeholder="Ej: 25%"
-                                          value={item.objetivo ?? ''}
-                                          onChange={(e) => updateFabricaLoop(item.id, 'objetivo', e.target.value)}
-                                          className="h-7 text-xs"
-                                        />
-                                      </div>
-                                    </div>
-                                    <div className="space-y-0.5">
-                                      <Label className="text-[10px] text-muted-foreground">Estrategia de mejora</Label>
-                                      <Input
-                                        placeholder="¿Qué vamos a hacer para mejorar este indicador?"
-                                        value={item.mejora ?? ''}
-                                        onChange={(e) => updateFabricaLoop(item.id, 'mejora', e.target.value)}
-                                        className="h-7 text-xs"
-                                      />
-                                    </div>
-                                  </div>
-                                )}
+                              <div key={item.id} className="flex items-start gap-2 px-1.5 py-1 rounded-md text-sm text-foreground/80">
+                                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+                                <span>{item.tarea}</span>
                               </div>
                             ))}
                           </div>
@@ -1180,10 +1166,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   </div>
                 )}
               </div>
-              <div className="border-t pt-3 flex items-center justify-between text-xs text-muted-foreground">
-                <span>
-                  {fabricaBriefs.filter((b) => b.checked).length} de {fabricaBriefs.length} activaciones confirmadas
-                </span>
+              <div className="border-t pt-3 text-xs text-muted-foreground">
+                {fabricaBriefs.length} {fabricaBriefs.length === 1 ? 'tarea' : 'tareas'} generadas
               </div>
             </div>
           )}
