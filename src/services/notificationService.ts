@@ -42,8 +42,8 @@ const stripHtmlTags = (html: string): string => {
   return html.replace(/<[^>]*>/g, '').trim();
 };
 
-const resolveAssignedRole = (assignedRole: string): 'copy' | 'disenador' => {
-  return assignedRole.startsWith('designer') ? 'disenador' : 'copy';
+const resolveAssignedRole = (assignedRole: string): 'copy' | 'diseno' => {
+  return assignedRole.startsWith('designer') ? 'diseno' : 'copy';
 };
 
 const ensureUsersLoaded = async (): Promise<AppUser[]> => {
@@ -69,8 +69,7 @@ export const sendTaskNotification = async (
 
     const users = await ensureUsersLoaded();
 
-    const creator = users.find((u) => u.fullName === task.creatorName && u.role === 'mercadeo')
-      || users.find((u) => u.fullName === task.creatorName);
+    const creator = users.find((u) => u.fullName === task.creatorName);
 
     const requiredAssignedRole = resolveAssignedRole(task.assignedRole);
     const assignedUser = (task.assignedToName
@@ -86,7 +85,7 @@ export const sendTaskNotification = async (
       nombre_creador: creator?.fullName || task.creatorName,
       correo_encargado: assignedUser?.email || 'desconocido@email.com',
       nombre_encargado: assignedUser?.fullName || task.assignedToName || 'Sin asignar',
-      rol_encargado: requiredAssignedRole === 'disenador' ? 'diseñador' : 'copy',
+      rol_encargado: requiredAssignedRole === 'diseno' ? 'diseñador' : 'copy',
       accion: action,
       nota_ajuste: event === 'task.adjustment' ? stripHtmlTags(adjustmentNote || '') : '',
       tarea: {

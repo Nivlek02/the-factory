@@ -10,14 +10,14 @@ import {
 export type { AppUser, AppRole };
 export { ROLE_LABELS };
 
-// Demo user for client demo — full admin (mercadeo) access
+// Demo user for client demo — el rol ya es solo informativo, no restringe acceso.
 const DEMO_USER: AppUser = {
   id: 'demo-user',
   userId: 'demo-user',
   username: 'demo',
   email: 'demo@thefactory.com',
   fullName: 'Usuario Demo',
-  role: 'mercadeo',
+  role: 'estratega',
   createdAt: new Date().toISOString(),
 };
 

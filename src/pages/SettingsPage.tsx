@@ -52,7 +52,7 @@ const SettingsPage = () => {
   const [newPassword, setNewPassword] = useState('');
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState<AppRole>('disenador');
+  const [newRole, setNewRole] = useState<AppRole>('copy');
   const [showPassword, setShowPassword] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showNewUserDialog, setShowNewUserDialog] = useState(false);
@@ -71,7 +71,7 @@ const SettingsPage = () => {
   const [editUsername, setEditUsername] = useState('');
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
-  const [editRole, setEditRole] = useState<AppRole>('disenador');
+  const [editRole, setEditRole] = useState<AppRole>('copy');
   const [isSaving, setIsSaving] = useState(false);
   const [editPassword, setEditPassword] = useState('');
   const [showEditPassword, setShowEditPassword] = useState(false);
@@ -116,7 +116,7 @@ const SettingsPage = () => {
       setNewPassword('');
       setNewName('');
       setNewEmail('');
-      setNewRole('disenador');
+      setNewRole('copy');
       setShowNewUserDialog(false);
     } else {
       toast({
@@ -190,15 +190,9 @@ const SettingsPage = () => {
     });
   };
 
-  const getRoleBadgeColor = (role: AppRole) => {
-    return role === 'mercadeo'
-      ? 'bg-primary text-primary-foreground'
-      : 'bg-muted text-muted-foreground';
-  };
+  const getRoleBadgeColor = (_role: AppRole) => 'bg-muted text-muted-foreground';
 
-  const getRoleLabel = (role: AppRole) => {
-    return role === 'mercadeo' ? 'Mercadeo' : 'Miembro';
-  };
+  const getRoleLabel = (role: AppRole) => ROLE_LABELS[role] ?? role;
 
   return (
     <Layout>
@@ -266,16 +260,17 @@ const SettingsPage = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="newRole">Rol de acceso *</Label>
+                      <Label htmlFor="newRole">Rol *</Label>
                       <Select value={newRole} onValueChange={(value) => setNewRole(value as AppRole)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="mercadeo">Mercadeo — Administrador completo</SelectItem>
-                          <SelectItem value="disenador">Miembro del equipo</SelectItem>
+                          {Object.entries(ROLE_LABELS).map(([id, label]) => (
+                            <SelectItem key={id} value={id}>{label}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        Todos los miembros del equipo tienen los mismos permisos de acceso.
+                        Solo informativo — todos los usuarios tienen los mismos permisos de acceso.
                       </p>
                     </div>
                     <DialogFooter>
@@ -490,18 +485,19 @@ const SettingsPage = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="editRole">Rol de acceso *</Label>
+              <Label htmlFor="editRole">Rol *</Label>
               <Select value={editRole} onValueChange={(value) => setEditRole(value as AppRole)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="mercadeo">Mercadeo — Administrador completo</SelectItem>
-                  <SelectItem value="disenador">Miembro del equipo</SelectItem>
+                  {Object.entries(ROLE_LABELS).map(([id, label]) => (
+                    <SelectItem key={id} value={id}>{label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Todos los miembros del equipo tienen los mismos permisos de acceso.
+                Solo informativo — todos los usuarios tienen los mismos permisos de acceso.
               </p>
             </div>
 

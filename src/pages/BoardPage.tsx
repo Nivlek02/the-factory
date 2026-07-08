@@ -140,15 +140,6 @@ const BoardPage = () => {
   const handleDrop = async (e: React.DragEvent, newStatus: TaskStatus) => {
     e.preventDefault();
     if (draggedTaskId && currentUser) {
-      // Only mercadeo can mark tasks as completed
-      if (newStatus === 'completed') {
-        if (currentUser.role !== 'mercadeo') {
-          toast.error('Solo el equipo de mercadeo puede marcar tareas como completadas');
-          setDraggedTaskId(null);
-          setDragOverStatus(null);
-          return;
-        }
-      }
       await updateTaskStatus(draggedTaskId, newStatus, currentUser);
     }
     setDraggedTaskId(null);
@@ -283,8 +274,8 @@ const BoardPage = () => {
               status={status}
               tasks={getTasksByStatus(status)}
               onTaskClick={handleTaskClick}
-              onDeleteTask={currentUser?.role === 'mercadeo' ? handleDeleteTask : undefined}
-              onAddTask={status === 'pending' && (currentUser?.role === 'mercadeo' || (currentUser?.role === 'seo' && board.id === 'seo')) ? () => setIsCreateOpen(true) : undefined}
+              onDeleteTask={handleDeleteTask}
+              onAddTask={status === 'pending' ? () => setIsCreateOpen(true) : undefined}
               showThumbnail={board.id === 'design' || board.id === 'social_media' || board.id === 'seo'}
               onDragOver={(e) => handleDragOver(e, status)}
               onDrop={handleDrop}

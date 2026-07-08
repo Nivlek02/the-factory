@@ -84,8 +84,9 @@ const TaskDetailModal = ({ task, open, onClose, onTaskUpdated }: TaskDetailModal
 
   if (!task) return null;
 
-  const isDesignerOrCopy = currentUser?.role === 'disenador' || currentUser?.role === 'copy';
-  const isMercadeo = currentUser?.role === 'mercadeo';
+  // El acceso a tableros ya no se restringe por rol — el rol es solo informativo.
+  const isDesignerOrCopy = false;
+  const isMercadeo = true;
   const isCopysBoard = task.board === 'copys';
   const isTaskAssignee = !!currentUser?.fullName && !!task.assignedToName &&
     currentUser.fullName.trim().toLowerCase() === task.assignedToName.trim().toLowerCase();
@@ -259,17 +260,15 @@ const TaskDetailModal = ({ task, open, onClose, onTaskUpdated }: TaskDetailModal
                 <History className="h-4 w-4" />
                 Historial
               </TabsTrigger>
-              {currentUser?.role === 'mercadeo' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1.5"
-                  onClick={() => setShowDeleteDialog(true)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Eliminar
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1.5"
+                onClick={() => setShowDeleteDialog(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Eliminar
+              </Button>
             </TabsList>
 
             <TabsContent value="details" className="mt-4 space-y-6">
@@ -482,11 +481,11 @@ const TaskDetailModal = ({ task, open, onClose, onTaskUpdated }: TaskDetailModal
                       Asignado a
                     </h4>
                     {(() => {
-                      const canReassignDesign = task.board === 'design' && (isMercadeo || currentUser?.role === 'disenador');
-                      const canReassignSeo = task.board === 'seo' && (isMercadeo || currentUser?.role === 'seo');
-                      
+                      const canReassignDesign = task.board === 'design';
+                      const canReassignSeo = task.board === 'seo';
+
                       if (canReassignDesign) {
-                        const boardUsers = users.filter(u => u.role === 'disenador');
+                        const boardUsers = users;
                         return (
                           <Select
                             value={task.assignedToName || 'unassigned'}
@@ -526,7 +525,7 @@ const TaskDetailModal = ({ task, open, onClose, onTaskUpdated }: TaskDetailModal
                       }
                       
                       if (canReassignSeo) {
-                        const boardUsers = users.filter(u => u.role === 'seo' || u.role === 'mercadeo');
+                        const boardUsers = users;
                         return (
                           <Select
                             value={task.assignedToName || 'unassigned'}

@@ -205,11 +205,13 @@ interface FactoryStore {
   setActiveProject: (id: string | null) => void;
 }
 
-/** Default pipeline creado para cada proyecto nuevo: Copy escribe → Diseño hace la pieza →
- *  Gestor de canales envía. La aprobación ya no es una etapa aparte: cada entregable pasa por
- *  revisión dentro de su propia tarea (ver `hasApprovalStage` en StrategyBriefPanels).
- *  Users can branch/extend it further from "Construir estrategia". */
-const buildDefaultStrategyNodes = (): StrategyNode[] => {
+/** Default pipeline creado para cada proyecto nuevo: rama central Copys → Diseño → Envíos,
+ *  más ramas independientes según los requerimientos elegidos en el wizard:
+ *  Landing/Formulario (rama superior, rol Gestor de canales) y Pauta en redes sociales
+ *  (rama inferior, rol Social Media). La aprobación ya no es una etapa aparte: cada
+ *  entregable pasa por revisión dentro de su propia tarea (ver `hasApprovalStage` en
+ *  StrategyBriefPanels). Users can branch/extend it further from "Construir estrategia". */
+const buildDefaultStrategyNodes = (requerimientos: string[] = []): StrategyNode[] => {
   const node = (
     id: string,
     stageType: StrategyStageType,
@@ -225,11 +227,23 @@ const buildDefaultStrategyNodes = (): StrategyNode[] => {
   const disenoId = `node-${uid()}`;
   const enviosId = `node-${uid()}`;
 
-  return [
+  const nodes: StrategyNode[] = [
     node(copyId, 'copys', 'Copys', 'Copywriter', []),
     node(disenoId, 'diseno', 'Diseño de piezas', 'Diseñador', [copyId]),
     node(enviosId, 'envios', 'Envío de acciones', 'Gestor de canales', [disenoId]),
   ];
+
+  if (requerimientos.includes('landing')) {
+    nodes.push(node(`node-${uid()}`, 'landing', 'Landing', 'Gestor de canales', []));
+  }
+  if (requerimientos.includes('formulario')) {
+    nodes.push(node(`node-${uid()}`, 'formulario', 'Formulario de inscripción', 'Gestor de canales', []));
+  }
+  if (requerimientos.includes('pauta_digital')) {
+    nodes.push(node(`node-${uid()}`, 'pauta', 'Pauta en redes sociales', 'Social Media', []));
+  }
+
+  return nodes;
 };
 
 /** Migración en lectura: los proyectos creados antes de este cambio pueden traer nodos
@@ -395,7 +409,7 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       createdAt: new Date().toISOString(),
       roleGroups: [],
       tasks: [],
-      strategyNodes: buildDefaultStrategyNodes(),
+      strategyNodes: buildDefaultStrategyNodes(data.requerimientos),
     };
     set((s) => ({ projects: [project, ...s.projects], activeProjectId: id }));
     syncProject(project);

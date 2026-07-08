@@ -32,18 +32,10 @@ const TASKS_PER_PAGE = 5;
 const Index = () => {
   const { tasks, loading } = useSupabaseTasks();
   const [recentPage, setRecentPage] = useState(1);
-  const { currentUser, canAccessBoard } = useAuthStore();
+  const { currentUser } = useAuthStore();
 
-  // Filter tasks by role: designers see only design, copy see only copys, mercadeo sees all
-  const filteredTasks = tasks.filter((t) => {
-    if (!currentUser) return true;
-    if (currentUser.role === 'mercadeo') return true;
-    if (currentUser.role === 'disenador') return t.board === 'design';
-    if (currentUser.role === 'copy') return t.board === 'copys';
-    if (currentUser.role === 'manager') return t.board === 'social_media';
-    if (currentUser.role === 'seo') return t.board === 'seo';
-    return true;
-  });
+  // El acceso a tableros ya no se restringe por rol — el rol es solo informativo.
+  const filteredTasks = tasks;
 
   // Stats
   const pendingCount = filteredTasks.filter((t) => t.status === 'pending').length;
@@ -178,7 +170,7 @@ const Index = () => {
           {/* Boards */}
           <div className="lg:col-span-1 space-y-2">
             <h2 className="text-base font-semibold text-foreground">Tableros</h2>
-            {BOARDS.filter((board) => canAccessBoard(board.id)).map((board) => {
+            {BOARDS.map((board) => {
               const boardTasks = filteredTasks.filter((t) => t.board === board.id);
               const boardPending = boardTasks.filter((t) => t.status === 'pending').length;
               const boardProgress = boardTasks.filter((t) => t.status === 'in_progress').length;

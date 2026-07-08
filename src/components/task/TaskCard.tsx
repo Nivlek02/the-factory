@@ -3,7 +3,6 @@ import { Calendar, MessageSquare, RotateCcw, User, Paperclip, Trash2, Flag, Fold
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { getThumbnailUrl } from '@/services/storageService';
 
@@ -18,8 +17,6 @@ interface TaskCardProps {
 }
 
 const TaskCard = ({ task, onClick, onDelete, showThumbnail = false, draggable = true, onDragStart, onDragEnd }: TaskCardProps) => {
-  const { currentUser } = useAuthStore();
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft':
@@ -105,7 +102,7 @@ const TaskCard = ({ task, onClick, onDelete, showThumbnail = false, draggable = 
                 <span>{task.reopenedCount}</span>
               </div>
             )}
-            {currentUser?.role === 'mercadeo' && onDelete && (
+            {onDelete && (
               <Button
                 variant="ghost"
                 size="icon"

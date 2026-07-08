@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
-  Plus, MoreVertical, Trash2, Workflow, Rocket, ArrowRight, ChevronDown,
+  Plus, MoreVertical, Trash2, Workflow, Rocket, ArrowRight,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   Target, TrendingUp, Users, DollarSign, RefreshCw,
 } from 'lucide-react';
@@ -51,7 +51,7 @@ const STAGES: StageMeta[] = [
   { type: 'landing',    label: 'Landing',            short: 'Landing',  icon: LayoutPanelTop,  color: 'hsl(var(--team-design))',     suggestRole: ['Diseñador', 'SEO'] },
   { type: 'copys',      label: 'Copys',              short: 'Copys',    icon: PenLine,         color: 'hsl(var(--team-copy))',       suggestRole: ['Copy'] },
   { type: 'diseno',     label: 'Diseño de piezas',   short: 'Diseño',   icon: Palette,         color: 'hsl(var(--team-design))',     suggestRole: ['Diseñador'] },
-  { type: 'pauta',      label: 'Pauta',              short: 'Pauta',    icon: Megaphone,       color: 'hsl(var(--team-production))', suggestRole: ['Mercadeo', 'Manager'] },
+  { type: 'pauta',      label: 'Pauta en redes sociales', short: 'Pauta', icon: Megaphone,      color: 'hsl(var(--team-social))',      suggestRole: ['Social Media'] },
   { type: 'envios',     label: 'Envíos masivos',     short: 'Envíos',   icon: Send,            color: 'hsl(var(--team-social))',     suggestRole: ['Mercadeo', 'Social'] },
 ];
 
@@ -69,38 +69,64 @@ const STATUS_META: Record<StrategyNode['status'], { label: string; cls: string }
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// Columns: group nodes by topological depth (longest path from a root) so the
-// board can render them left-to-right as a responsive, wrapping row of columns.
+// Lanes: agrupa los nodos en cadenas lineales por rama (cada raíz —sin
+// dependsOn— inicia una rama que sigue a su único dependiente). Las tres
+// ramas que genera este proyecto son: Landing/Formulario (arriba),
+// Copys → Diseño → Envíos (centro) y Pauta en redes sociales (abajo). Un nodo
+// con varios dependientes abre una rama nueva por cada uno.
 // ───────────────────────────────────────────────────────────────────────────
 
-function computeColumns(nodes: StrategyNode[]): StrategyNode[][] {
-  const depth = new Map<string, number>();
-  const visiting = new Set<string>();
+/** Orden visual de las ramas: Landing/Formulario arriba, la cadena de
+ *  contenido al centro, Pauta abajo. Cualquier otra rama (p.ej. loops
+ *  encadenados desde envíos) queda con la cadena central. */
+const LANE_RANK: Partial<Record<StrategyStageType, number>> = {
+  formulario: 0,
+  landing: 0,
+  copys: 1,
+  diseno: 1,
+  envios: 1,
+  custom: 1,
+  pauta: 2,
+};
+
+function computeLanes(nodes: StrategyNode[]): StrategyNode[][] {
   const byId = new Map(nodes.map((n) => [n.id, n] as const));
-
-  const dfs = (id: string): number => {
-    if (depth.has(id)) return depth.get(id)!;
-    if (visiting.has(id)) return 0;
-    visiting.add(id);
-    const n = byId.get(id);
-    const d = !n || n.dependsOn.length === 0
-      ? 1
-      : 1 + Math.max(0, ...n.dependsOn.filter((p) => byId.has(p)).map(dfs));
-    visiting.delete(id);
-    depth.set(id, d);
-    return d;
-  };
-
-  nodes.forEach((n) => dfs(n.id));
-
-  const cols = new Map<number, StrategyNode[]>();
+  const childrenOf = new Map<string, StrategyNode[]>();
   nodes.forEach((n) => {
-    const c = depth.get(n.id) ?? 1;
-    if (!cols.has(c)) cols.set(c, []);
-    cols.get(c)!.push(n);
+    n.dependsOn.forEach((pid) => {
+      if (!byId.has(pid)) return;
+      if (!childrenOf.has(pid)) childrenOf.set(pid, []);
+      childrenOf.get(pid)!.push(n);
+    });
   });
 
-  return Array.from(cols.entries()).sort((a, b) => a[0] - b[0]).map(([, ns]) => ns);
+  const visited = new Set<string>();
+  const lanes: StrategyNode[][] = [];
+
+  const buildLane = (start: StrategyNode) => {
+    if (visited.has(start.id)) return;
+    const lane: StrategyNode[] = [];
+    let current: StrategyNode | undefined = start;
+    const extraStarts: StrategyNode[] = [];
+    while (current && !visited.has(current.id)) {
+      lane.push(current);
+      visited.add(current.id);
+      const kids = (childrenOf.get(current.id) ?? []).filter((k) => !visited.has(k.id));
+      current = kids[0];
+      for (let i = 1; i < kids.length; i++) extraStarts.push(kids[i]);
+    }
+    lanes.push(lane);
+    extraStarts.forEach(buildLane);
+  };
+
+  // Raíces reales (sin dependsOn) o "huérfanas" (dependsOn a nodos borrados).
+  nodes
+    .filter((n) => n.dependsOn.length === 0 || !n.dependsOn.some((p) => byId.has(p)))
+    .forEach(buildLane);
+  // Cualquier nodo restante (ciclo inesperado) — no debería pasar, pero por robustez.
+  nodes.filter((n) => !visited.has(n.id)).forEach(buildLane);
+
+  return lanes.sort((a, b) => (LANE_RANK[a[0].stageType] ?? 1) - (LANE_RANK[b[0].stageType] ?? 1));
 }
 
 // ─── Loop phases ──────────────────────────────────────────────────────────────
@@ -250,7 +276,8 @@ export const WorkflowTab = ({ project }: Props) => {
   } = useFactoryStore();
 
   const nodes = project.strategyNodes ?? [];
-  const columns = useMemo(() => computeColumns(nodes), [nodes]);
+  const lanes = useMemo(() => computeLanes(nodes), [nodes]);
+  const maxLaneLength = Math.max(1, ...lanes.map((l) => l.length));
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tasksNodeId, setTasksNodeId] = useState<string | null>(null);
@@ -397,32 +424,66 @@ export const WorkflowTab = ({ project }: Props) => {
           </p>
         </div>
       ) : (
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="w-full sm:w-36 shrink-0 min-h-[64px] rounded-lg shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-3 py-2.5">
-            <Rocket className="h-4 w-4 mb-1" />
-            <p className="text-xs font-semibold leading-tight">Inicia el proyecto</p>
-            <p className="text-[10px] opacity-80 truncate max-w-full">{project.name}</p>
+        <div className="flex items-center gap-0 w-full">
+          {/* Nodo de inicio, centrado verticalmente respecto a todas las ramas */}
+          <div className="shrink-0 pr-1.5">
+            <div className="w-24 sm:w-28 rounded-lg shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-2 py-2.5">
+              <Rocket className="h-4 w-4 mb-1" />
+              <p className="text-[11px] font-semibold leading-tight">Inicia el proyecto</p>
+              <p className="text-[9px] opacity-80 truncate max-w-full">{project.name}</p>
+            </div>
           </div>
 
-          {columns.map((col, i) => (
-            <div key={i} className="flex flex-col items-center sm:flex-row sm:items-start gap-3 w-full sm:w-auto">
-              <ArrowRight className="hidden sm:block h-5 w-5 text-muted-foreground/50 shrink-0 mt-12" />
-              <ChevronDown className="sm:hidden h-5 w-5 text-muted-foreground/50 shrink-0" />
-              <div className="flex flex-col gap-3 w-full sm:w-60 shrink-0">
-                {col.map((n) => (
-                  <NodeCard
-                    key={n.id}
-                    node={n}
-                    taskCounts={tasksByNodeId.get(n.id)}
-                    onOpenTasks={() => setTasksNodeId(n.id)}
-                    onEdit={() => setEditingId(n.id)}
-                    onStatus={(s) => updateStrategyNode(project.id, n.id, { status: s })}
-                    onDelete={() => deleteStrategyNode(project.id, n.id)}
-                  />
+          {lanes.length <= 1 ? (
+            <ArrowRight className="h-5 w-5 text-muted-foreground/40 shrink-0 mx-1" />
+          ) : (
+            <div className="relative shrink-0 self-stretch" style={{ width: 26 }}>
+              <svg
+                className="absolute inset-0 h-full w-full pointer-events-none"
+                viewBox="0 0 26 100"
+                preserveAspectRatio="none"
+              >
+                {lanes.map((lane, i) => {
+                  const y = ((i + 0.5) / lanes.length) * 100;
+                  return (
+                    <path
+                      key={lane[0].id}
+                      d={`M 0 50 C 13 50, 13 ${y}, 26 ${y}`}
+                      stroke="hsl(var(--border))"
+                      strokeWidth="2"
+                      fill="none"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  );
+                })}
+              </svg>
+            </div>
+          )}
+
+          {/* Ramas: cada una es una cadena horizontal de nodos con flechas entre ellos */}
+          <div className="flex-1 min-w-0 flex flex-col gap-3">
+            {lanes.map((lane) => (
+              <div key={lane[0].id} className="flex items-center">
+                {lane.map((n, j) => (
+                  <div key={n.id} className="flex items-center min-w-0" style={{ width: `${(100 / maxLaneLength).toFixed(4)}%` }}>
+                    <div className="flex-1 min-w-0">
+                      <NodeCard
+                        node={n}
+                        taskCounts={tasksByNodeId.get(n.id)}
+                        onOpenTasks={() => setTasksNodeId(n.id)}
+                        onEdit={() => setEditingId(n.id)}
+                        onStatus={(s) => updateStrategyNode(project.id, n.id, { status: s })}
+                        onDelete={() => deleteStrategyNode(project.id, n.id)}
+                      />
+                    </div>
+                    {j < lane.length - 1 && (
+                      <ArrowRight className="h-4 w-4 text-muted-foreground/40 shrink-0 mx-1" />
+                    )}
+                  </div>
                 ))}
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 

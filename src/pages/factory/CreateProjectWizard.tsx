@@ -46,7 +46,7 @@ const SEGMENTOS_LABEL: Record<string, string> = {
 const REQUERIMIENTOS = [
   { id: 'landing', label: 'Landing' },
   { id: 'formulario', label: 'Formulario de inscripción' },
-  { id: 'pauta_digital', label: 'Pauta digital' },
+  { id: 'pauta_digital', label: 'Pauta en redes sociales' },
   { id: 'piezas', label: 'Piezas' },
 ] as const;
 

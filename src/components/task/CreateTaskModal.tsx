@@ -99,29 +99,20 @@ const CreateTaskModal = ({ open, onClose, board, onTaskCreated, editingDraft }: 
     }
   }, [open, editingDraft]); // 'users' excluded: use usersRef to avoid resetting form mid-edit
 
-  // Build assigned role from selected user
+  // Build assigned role (board slot) from the selected user's position in the list.
+  // El rol de acceso ya no determina el tablero/slot — es solo informativo.
   const getAssignedRole = useCallback((userId: string, usersList: AppUser[]): Role | 'unassigned' => {
     if (userId === 'unassigned' || !userId) return 'unassigned';
-    const selectedUser = usersList.find(u => u.userId === userId);
-    if (!selectedUser) return 'unassigned';
-    
-    if (selectedUser.role === 'disenador') {
-      const designUsers = usersList.filter(u => u.role === 'disenador');
-      const idx = designUsers.findIndex(u => u.userId === selectedUser.userId);
-      return idx <= 0 ? 'designer_1' : 'designer_2';
-    } else if (selectedUser.role === 'manager' || (selectedUser.role === 'mercadeo' && board === 'social_media')) {
-      const smUsers = usersList.filter(u => u.role === 'manager' || u.role === 'mercadeo');
-      const idx = smUsers.findIndex(u => u.userId === selectedUser.userId);
-      return idx <= 0 ? 'sm_1' : 'sm_2';
-    } else if (selectedUser.role === 'seo' || (selectedUser.role === 'mercadeo' && board === 'seo')) {
-      const seoUsers = usersList.filter(u => u.role === 'seo' || u.role === 'mercadeo');
-      const idx = seoUsers.findIndex(u => u.userId === selectedUser.userId);
-      return idx <= 0 ? 'seo_1' : 'seo_2';
-    } else {
-      const copyUsers = usersList.filter(u => u.role === 'copy');
-      const idx = copyUsers.findIndex(u => u.userId === selectedUser.userId);
-      return idx <= 0 ? 'copy_1' : 'copy_2';
-    }
+    const idx = usersList.findIndex(u => u.userId === userId);
+    if (idx === -1) return 'unassigned';
+    const slotsByBoard: Record<string, [Role, Role]> = {
+      design: ['designer_1', 'designer_2'],
+      copys: ['copy_1', 'copy_2'],
+      social_media: ['sm_1', 'sm_2'],
+      seo: ['seo_1', 'seo_2'],
+    };
+    const [slotA, slotB] = slotsByBoard[board] ?? slotsByBoard.copys;
+    return idx % 2 === 0 ? slotA : slotB;
   }, [board]);
 
   // Auto-save draft to DB (debounced)
@@ -196,18 +187,8 @@ const CreateTaskModal = ({ open, onClose, board, onTaskCreated, editingDraft }: 
     };
   }, [saveDraftToDb]);
 
-  // Filter users by board type
-  const availableUsers = useMemo(() => {
-    if (board === 'social_media') {
-      return users.filter(u => u.role === 'manager' || u.role === 'mercadeo');
-    }
-    if (board === 'seo') {
-      return users.filter(u => u.role === 'seo' || u.role === 'mercadeo');
-    }
-    const roleMap: Record<string, string> = { design: 'disenador', copys: 'copy' };
-    const roleForBoard = roleMap[board] || 'copy';
-    return users.filter(u => u.role === roleForBoard);
-  }, [users, board]);
+  // El rol ya no filtra quién puede asignarse a cada tablero — todos los usuarios están disponibles.
+  const availableUsers = useMemo(() => users, [users]);
 
   // Set default selected user when board changes or modal opens
   useEffect(() => {

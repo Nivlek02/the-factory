@@ -39,12 +39,9 @@ const ReportsPage = () => {
   const { tasks, loading } = useSupabaseTasks();
   const { users } = useAuthStore();
 
-  // Filtrar usuarios por rol
-  const designersAndCopys = useMemo(() => 
-    users.filter(u => u.role === 'disenador' || u.role === 'copy'), [users]);
-  
-  const marketingUsers = useMemo(() => 
-    users.filter(u => u.role === 'mercadeo'), [users]);
+  // El rol ya no filtra estas listas — son solo informativas.
+  const designersAndCopys = users;
+  const marketingUsers = users;
   
   // Filters
   const [dateFrom, setDateFrom] = useState<Date>();

@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
-export type AppRole = 'mercadeo' | 'disenador' | 'copy' | 'manager' | 'seo';
+/** Rol de equipo — puramente informativo, ya no controla acceso a tableros ni RLS. */
+export type AppRole = 'copy' | 'diseno' | 'gestor_canales' | 'estratega' | 'soporte';
 
 export interface AppUser {
   id: string;
@@ -13,11 +14,11 @@ export interface AppUser {
 }
 
 export const ROLE_LABELS: Record<AppRole, string> = {
-  mercadeo: 'Mercadeo',
-  disenador: 'Diseñador',
-  copy: 'Copy',
-  manager: 'Manager',
-  seo: 'SEO',
+  copy: 'Copywriter',
+  diseno: 'Diseñador',
+  gestor_canales: 'Gestor de canales',
+  estratega: 'Estratega',
+  soporte: 'Soporte',
 };
 
 // Fetch user profile with role
@@ -49,7 +50,7 @@ export const fetchUserProfile = async (userId: string): Promise<AppUser | null> 
     username: profile.username,
     email: profile.email,
     fullName: profile.full_name,
-    role: (roleData?.role as AppRole) || 'mercadeo',
+    role: (roleData?.role as AppRole) || 'soporte',
     createdAt: profile.created_at,
   };
 };
@@ -82,7 +83,7 @@ export const fetchAllUsers = async (): Promise<AppUser[]> => {
     username: profile.username,
     email: profile.email,
     fullName: profile.full_name,
-    role: roleMap.get(profile.user_id) || 'mercadeo',
+    role: roleMap.get(profile.user_id) || 'soporte',
     createdAt: profile.created_at,
   }));
 };
@@ -137,9 +138,14 @@ export const createUser = async (
   }
 
   // Explicitly upsert the intended role (do not rely on the trigger default).
+  // NOTA: la columna `user_roles.role` en Supabase sigue siendo el enum viejo
+  // (mercadeo/disenador/copy/manager/seo) — falta una migración para ampliarlo
+  // a los 5 roles nuevos. Esta función hoy es inalcanzable desde la UI
+  // (SettingsPage llama a addUser, que no existe en authStore), así que el
+  // `as any` no tiene efecto práctico todavía.
   const { error: roleError } = await supabase
     .from('user_roles')
-    .upsert({ user_id: userId, role }, { onConflict: 'user_id' });
+    .upsert({ user_id: userId, role: role as any }, { onConflict: 'user_id' });
 
   if (roleError) {
     console.error('Error setting role:', roleError);
@@ -190,9 +196,10 @@ export const updateUserRole = async (
   userId: string,
   role: AppRole
 ): Promise<{ success: boolean; error?: string }> => {
+  // NOTA: ver comentario en createUser sobre el enum `user_roles.role` pendiente de migrar.
   const { error } = await supabase
     .from('user_roles')
-    .update({ role })
+    .update({ role: role as any })
     .eq('user_id', userId);
 
   if (error) {

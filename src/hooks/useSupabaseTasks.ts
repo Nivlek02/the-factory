@@ -131,8 +131,8 @@ export const useSupabaseTasks = (board?: BoardType) => {
     const task = tasks.find((t) => t.id === taskId);
     const comment = await taskService.addComment(taskId, content, isAdjustmentRequest, { id: currentUser.userId, name: currentUser.fullName });
     
-    // Notify assigned copy/diseñador when mercadeo requests adjustment
-    if (isAdjustmentRequest && task && currentUser.role === 'mercadeo') {
+    // Notify assigned copy/diseñador when se solicita un ajuste
+    if (isAdjustmentRequest && task) {
       await sendTaskNotification('task.adjustment', { ...task, status: 'pending' }, content);
     }
 

@@ -74,8 +74,6 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
     );
   };
 
-  const isMercadeo = currentUser?.role === 'mercadeo';
-
   return (
     <aside
       className={`${
