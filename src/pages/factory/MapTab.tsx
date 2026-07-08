@@ -1028,7 +1028,7 @@ const NodeTasksDialog = ({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={isBriefDriven ? 'sm:max-w-2xl max-h-[85vh] overflow-y-auto' : 'sm:max-w-lg'}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span

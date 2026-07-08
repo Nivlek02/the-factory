@@ -60,11 +60,11 @@ const BriefRow = ({
 }) => (
   <button
     onClick={onClick}
-    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md border border-border/60 bg-card/60 hover:bg-muted/40 text-left transition-colors"
+    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md border border-border/60 bg-card/60 hover:bg-muted/40 text-left transition-colors"
   >
-    <span className="text-xs flex-1 truncate">{brief.tarea}</span>
+    <span className="text-sm flex-1 truncate">{brief.tarea}</span>
     {hasUnresolvedCorrection(brief) && (
-      <MessageSquare className="h-3 w-3 text-state-blocked shrink-0" aria-label="Con corrección pendiente" />
+      <MessageSquare className="h-3.5 w-3.5 text-state-blocked shrink-0" aria-label="Con corrección pendiente" />
     )}
     {badge ?? <BriefStatusBadge brief={brief} />}
   </button>
@@ -83,12 +83,12 @@ const BriefGroup = ({
   if (hideIfEmpty && items.length === 0) return null;
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
         {title} ({items.length})
       </p>
-      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
         {items.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic px-1 py-2">{emptyLabel}</p>
+          <p className="text-sm text-muted-foreground italic px-1 py-2">{emptyLabel}</p>
         ) : items.map((b) => (
           <BriefRow key={b.id} brief={b} onClick={() => onOpen(b)} badge={badge?.(b)} />
         ))}
@@ -305,9 +305,9 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
 
   const handleAdd = () => {
     const t = newTitle.trim();
-    if (!t || !node.roleId || !node.roleLabel) return;
+    if (!t || !node.roleLabel) return;
     addFabricaBriefs(project.id, [{
-      roleId: node.roleId,
+      roleId: node.roleId ?? node.roleLabel,
       roleLabel: node.roleLabel,
       tarea: t,
       currentNodeId: node.id,
@@ -320,31 +320,31 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
     <div className="space-y-3">
       {node.stageType === 'diseno' && (
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'tareas' | 'adjuntos')}>
-          <TabsList className="h-8">
-            <TabsTrigger value="tareas" className="text-xs h-6">Tareas</TabsTrigger>
-            <TabsTrigger value="adjuntos" className="text-xs h-6">Adjuntos</TabsTrigger>
+          <TabsList className="h-9">
+            <TabsTrigger value="tareas" className="text-sm h-7">Tareas</TabsTrigger>
+            <TabsTrigger value="adjuntos" className="text-sm h-7">Adjuntos</TabsTrigger>
           </TabsList>
         </Tabs>
       )}
 
       {activeTab === 'adjuntos' && node.stageType === 'diseno' ? (
         <AttachmentsByDate briefs={briefs} />
-      ) : !node.roleId || !node.roleLabel ? (
-        <p className="text-xs text-muted-foreground py-4">Asigna un rol a esta etapa para poder crear tareas.</p>
+      ) : !node.roleLabel ? (
+        <p className="text-sm text-muted-foreground py-4">Asigna un rol a esta etapa para poder crear tareas.</p>
       ) : (
         <>
           <div className="space-y-1.5">
-            <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Nueva tarea</Label>
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Nueva tarea</Label>
             <div className="flex gap-1.5">
               <Input
                 placeholder="¿Qué hay que crear?"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                className="h-8 text-xs"
+                className="h-9 text-sm"
               />
-              <Button size="sm" className="h-8" onClick={handleAdd} disabled={!newTitle.trim()}>
-                <Plus className="h-3.5 w-3.5" />
+              <Button size="sm" className="h-9" onClick={handleAdd} disabled={!newTitle.trim()}>
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -569,8 +569,8 @@ export const DeliveryBriefPanel = ({ project, node }: { project: FactoryProject;
   const briefs = briefsForNode(project, node).filter((b) => isCanalBrief(b.tarea));
   const [editingBrief, setEditingBrief] = useState<FabricaBriefItem | null>(null);
 
-  if (!node.roleId || !node.roleLabel) {
-    return <p className="text-xs text-muted-foreground py-4">Asigna un rol a esta etapa para ver los envíos.</p>;
+  if (!node.roleLabel) {
+    return <p className="text-sm text-muted-foreground py-4">Asigna un rol a esta etapa para ver los envíos.</p>;
   }
 
   return (
