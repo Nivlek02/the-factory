@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
-  Plus, MoreVertical, Trash2, Workflow, Rocket, ArrowRight, ChevronDown,
+  Plus, MoreVertical, Trash2, Workflow, Rocket, ArrowRight,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   Target, TrendingUp, Users, DollarSign, RefreshCw,
 } from 'lucide-react';
@@ -281,38 +281,6 @@ export const WorkflowTab = ({ project }: Props) => {
 
 
 
-  const handleAddStage = (stage: StageMeta) => {
-    // Suggest role + member from project roleGroups
-    let role = stage.suggestRole
-      ? project.roleGroups.find((g) => stage.suggestRole!.some((s) => g.roleLabel.toLowerCase().includes(s.toLowerCase())))
-      : undefined;
-    if (!role) role = project.roleGroups[0];
-    const member = role?.members[0];
-
-    // Auto-link suggested chain: copys → diseno → envios
-    let dependsOn: string[] = [];
-    if (stage.type === 'diseno') {
-      const copys = nodes.find((n) => n.stageType === 'copys');
-      if (copys) dependsOn = [copys.id];
-    } else if (stage.type === 'envios') {
-      const diseno = nodes.find((n) => n.stageType === 'diseno');
-      const copys = nodes.find((n) => n.stageType === 'copys');
-      if (diseno) dependsOn = [diseno.id];
-      else if (copys) dependsOn = [copys.id];
-    }
-
-    addStrategyNode(project.id, {
-      stageType: stage.type,
-      label: stage.label,
-      roleId: role?.roleId ?? null,
-      roleLabel: role?.roleLabel ?? null,
-      memberId: member?.id ?? null,
-      memberName: member?.name ?? null,
-      status: 'pending',
-      dependsOn,
-    });
-  };
-
   const dottedBg = {
     backgroundImage: 'radial-gradient(circle, hsl(var(--border) / 0.55) 1px, transparent 1px)',
     backgroundSize: '18px 18px',
@@ -414,54 +382,32 @@ export const WorkflowTab = ({ project }: Props) => {
 
   return (
     <div className="space-y-4">
-      {/* Stage palette */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card/70 p-2.5 shadow-sm">
-        <div className="flex items-center gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          <Workflow className="h-3.5 w-3.5" />
-          Construir estrategia
-        </div>
-        <div className="h-5 w-px bg-border/60" />
-        {STAGES.map((s) => {
-          const Icon = s.icon;
-          return (
-            <Button
-              key={s.type}
-              size="sm"
-              variant="outline"
-              className="h-7 text-[11px] gap-1.5 hover:border-current"
-              style={{ color: s.color }}
-              onClick={() => handleAddStage(s)}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              <span className="text-foreground">{s.label}</span>
-              <Plus className="h-3 w-3 opacity-60" />
-            </Button>
-          );
-        })}
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Workflow className="h-3.5 w-3.5" />
+        Flujo de trabajo
       </div>
 
       {nodes.length === 0 ? (
         <div className="border-2 border-dashed border-border rounded-xl p-12 text-center" style={dottedBg}>
           <Rocket className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm font-medium mb-1">Inicia tu estrategia de mercadeo</p>
+          <p className="text-sm font-medium mb-1">Preparando tu estrategia de mercadeo</p>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-            Agrega etapas desde el panel superior. Cada una aparece como una columna del flujo,
-            en el orden en que dependen unas de otras (por ejemplo: Copys → Diseño → Envíos).
+            Las etapas (Copys, Diseño, Envíos, etc.) se generan automáticamente a partir de los
+            canales y loops definidos al crear el proyecto.
           </p>
         </div>
       ) : (
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="w-full sm:w-60 shrink-0 min-h-[112px] rounded-xl shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-4 py-5">
-            <Rocket className="h-6 w-6 mb-1.5" />
-            <p className="text-base font-semibold leading-tight">Inicia el proyecto</p>
-            <p className="text-xs opacity-80 truncate max-w-full">{project.name}</p>
+        <div className="flex items-start gap-3 overflow-x-auto pb-2">
+          <div className="w-36 shrink-0 min-h-[64px] rounded-lg shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-3 py-2.5">
+            <Rocket className="h-4 w-4 mb-1" />
+            <p className="text-xs font-semibold leading-tight">Inicia el proyecto</p>
+            <p className="text-[10px] opacity-80 truncate max-w-full">{project.name}</p>
           </div>
 
           {columns.map((col, i) => (
-            <div key={i} className="flex flex-col items-center sm:flex-row sm:items-start gap-3 w-full sm:w-auto">
-              <ArrowRight className="hidden sm:block h-5 w-5 text-muted-foreground/50 shrink-0 mt-12" />
-              <ChevronDown className="sm:hidden h-5 w-5 text-muted-foreground/50 shrink-0" />
-              <div className="flex flex-col gap-3 w-full sm:w-60 shrink-0">
+            <div key={i} className="flex items-start gap-3 shrink-0">
+              <ArrowRight className="h-5 w-5 text-muted-foreground/50 shrink-0 mt-12" />
+              <div className="flex flex-col gap-3 w-60 shrink-0">
                 {col.map((n) => (
                   <NodeCard
                     key={n.id}
@@ -676,7 +622,7 @@ const NodeCard = ({
         )}
       </div>
 
-      {node.memberName ? (
+      {node.memberName && (
         <div className="flex items-center gap-1.5 mt-2">
           <div
             className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
@@ -686,8 +632,6 @@ const NodeCard = ({
           </div>
           <span className="text-xs text-foreground/80 truncate">{node.memberName}</span>
         </div>
-      ) : (
-        <p className="text-xs text-muted-foreground italic mt-2">Sin asignar</p>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 import { BriefWorkflowStatus, FabricaBriefItem } from '@/store/factoryStore';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { FileText, Link2, MessageSquare } from 'lucide-react';
+import { FileText, Link2, MessageSquare, History } from 'lucide-react';
 
 export const BRIEF_STATUS_META: Record<BriefWorkflowStatus, { label: string; cls: string }> = {
   pending: { label: 'Pendiente', cls: 'bg-muted text-muted-foreground' },
@@ -148,25 +148,33 @@ export const DeliverableSummary = ({ brief }: { brief: FabricaBriefItem }) => {
       {(comments.length > 0 || brief.comentarios) && (
         <div className="space-y-1.5 border-t border-border/40 pt-3">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-            <MessageSquare className="h-3 w-3" /> Comentarios
+            <MessageSquare className="h-3 w-3" /> Comentarios e historial
           </p>
           <div className="space-y-2">
             {comments.map((c) => (
-              <div
-                key={c.id}
-                className={cn(
-                  'rounded-md px-3 py-2 text-sm',
-                  c.isAdjustmentRequest ? 'bg-state-blocked-bg/60 text-foreground' : 'bg-muted/30 text-foreground/90',
-                )}
-              >
-                <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <span className="text-[10px] font-semibold text-muted-foreground">
-                    {c.author}{c.isAdjustmentRequest ? ' · corrección' : ''}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">{formatDateTime(c.createdAt)}</span>
+              c.isSystemEvent ? (
+                <div key={c.id} className="flex items-center gap-1.5 text-xs text-muted-foreground py-0.5">
+                  <History className="h-3.5 w-3.5 shrink-0" />
+                  <span className="flex-1">{c.content}</span>
+                  <span className="text-[10px] shrink-0">{c.author} · {formatDateTime(c.createdAt)}</span>
                 </div>
-                <p className="whitespace-pre-wrap">{c.content}</p>
-              </div>
+              ) : (
+                <div
+                  key={c.id}
+                  className={cn(
+                    'rounded-md px-3 py-2 text-sm',
+                    c.isAdjustmentRequest ? 'bg-state-blocked-bg/60 text-foreground' : 'bg-muted/30 text-foreground/90',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      {c.author}{c.isAdjustmentRequest ? ' · corrección' : ''}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{formatDateTime(c.createdAt)}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap">{c.content}</p>
+                </div>
+              )
             ))}
             {comments.length === 0 && brief.comentarios && (
               <p className="text-sm text-foreground/80 whitespace-pre-wrap">{brief.comentarios}</p>

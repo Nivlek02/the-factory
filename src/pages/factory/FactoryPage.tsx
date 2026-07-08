@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -47,7 +46,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup, CanalRow, FabricaBriefItem } from '@/store/factoryStore';
-import { useRolesStore } from '@/store/rolesStore';
+import { useRolesStore, ASSIGNABLE_ROLE_IDS } from '@/store/rolesStore';
 import CreateProjectWizard from './CreateProjectWizard';
 import { WorkflowTab, MetricsDashboardTab, LoopTab } from './MapTab';
 import { DeliverableSummary, BriefStatusBadge, isMetricsBrief, isUrlBrief } from '@/components/factory/DeliverableSummary';
@@ -260,9 +259,6 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
                   <span className="text-xs text-muted-foreground flex-1">
                     {g.members.map(m => m.name).join(', ') || 'Sin personas'}
                   </span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {g.requirements.length} req.
-                  </span>
                 </div>
               ))}
             </div>
@@ -421,34 +417,23 @@ const TeamTasksTab = ({
 }: {
   project: FactoryProject;
 }) => {
-  const { addRole } = useRolesStore();
-  const { addRoleGroup, addFabricaBriefs, updateFabricaBrief } = useFactoryStore();
+  const { roles } = useRolesStore();
+  const { addRoleGroup, updateFabricaBrief } = useFactoryStore();
   const [addRoleOpen, setAddRoleOpen] = useState(false);
   const [deliverableBrief, setDeliverableBrief] = useState<FabricaBriefItem | null>(null);
   const [deliverableContent, setDeliverableContent] = useState('');
   const [deliverableMetricas, setDeliverableMetricas] = useState<Record<string, string>>({});
 
-  const [newRoleName, setNewRoleName] = useState('');
-  const [newRoleTareas, setNewRoleTareas] = useState('');
+  const [selectedRoleId, setSelectedRoleId] = useState('');
+  const availableRoles = roles.filter(
+    (r) => ASSIGNABLE_ROLE_IDS.includes(r.id) && !project.roleGroups.some((g) => g.roleId === r.id)
+  );
 
   const handleAddRole = () => {
-    const name = newRoleName.trim();
-    if (!name) return;
-    const tareas = newRoleTareas
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-    const roleId = `role-${Date.now()}`;
-    addRole(name, tareas);
-    addRoleGroup(project.id, roleId, name);
-    if (tareas.length > 0) {
-      addFabricaBriefs(
-        project.id,
-        tareas.map((t) => ({ roleId, roleLabel: name, tarea: t }))
-      );
-    }
-    setNewRoleName('');
-    setNewRoleTareas('');
+    const role = roles.find((r) => r.id === selectedRoleId);
+    if (!role) return;
+    addRoleGroup(project.id, role.id, role.label);
+    setSelectedRoleId('');
     setAddRoleOpen(false);
   };
 
@@ -539,30 +524,24 @@ const TeamTasksTab = ({
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label>Nombre del rol</Label>
-              <Input
-                placeholder="Ej: Diseñador UX"
-                value={newRoleName}
-                onChange={(e) => setNewRoleName(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Responsabilidades</Label>
-              <p className="text-[10px] text-muted-foreground">
-                Una por línea. Estas serán las tareas del rol.
-              </p>
-              <Textarea
-                placeholder={`Ej: Diseñar piezas gráficas\nCrear prototipos\nRevisar briefs creativos`}
-                value={newRoleTareas}
-                onChange={(e) => setNewRoleTareas(e.target.value)}
-                className="min-h-[120px] text-sm"
-              />
+              <Label>Rol</Label>
+              {availableRoles.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Ya agregaste todos los roles disponibles.</p>
+              ) : (
+                <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
+                  <SelectTrigger autoFocus><SelectValue placeholder="Selecciona un rol" /></SelectTrigger>
+                  <SelectContent>
+                    {availableRoles.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddRoleOpen(false)}>Cancelar</Button>
-            <Button onClick={handleAddRole} disabled={!newRoleName.trim()}>Agregar rol</Button>
+            <Button onClick={handleAddRole} disabled={!selectedRoleId}>Agregar rol</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -680,7 +659,7 @@ const TABS = [
   { key: 'flujo',    label: 'Flujo de trabajo',      icon: <Workflow className="h-3.5 w-3.5" /> },
   { key: 'metrics',  label: 'Dashboard de métricas',  icon: <BarChart3 className="h-3.5 w-3.5" /> },
   { key: 'loop',     label: 'Loop',                   icon: <RefreshCw className="h-3.5 w-3.5" /> },
-  { key: 'overview', label: 'Overview',                icon: <Flag className="h-3.5 w-3.5" /> },
+  { key: 'overview', label: 'Descripción general',      icon: <Flag className="h-3.5 w-3.5" /> },
   { key: 'equipo',   label: 'Equipo',                  icon: <Users className="h-3.5 w-3.5" /> },
 ] as const;
 

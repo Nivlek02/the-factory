@@ -32,6 +32,9 @@ export interface TaskComment {
   author: string;
   content: string;
   isAdjustmentRequest: boolean;
+  /** Entrada generada por el sistema (enviado a revisión / aprobado) para el historial de cambios,
+   *  a diferencia de un comentario escrito por una persona. */
+  isSystemEvent?: boolean;
   createdAt: string;
 }
 

@@ -39,7 +39,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, RefreshCw, Tag, Plus, X, ListChecks } from 'lucide-react';
+import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, RefreshCw, Tag, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAppVersion } from '@/hooks/useAppVersion';
@@ -47,17 +47,12 @@ import { useRolesStore } from '@/store/rolesStore';
 
 const SettingsPage = () => {
   const { users, currentUser, addUser, updateUser, deleteUser, loadUsers } = useAuthStore();
-  const { roles, addRole, updateRole, removeRole, addTarea, removeTarea } = useRolesStore();
+  const { roles, updateRole, removeRole } = useRolesStore();
   const { toast } = useToast();
 
-  const [newRoleName, setNewRoleName] = useState('');
-  const [isAddingRole, setIsAddingRole] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [editingRoleLabel, setEditingRoleLabel] = useState('');
   const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
-
-  const [tareaAddingRoleId, setTareaAddingRoleId] = useState<string | null>(null);
-  const [newTareaText, setNewTareaText] = useState('');
 
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -487,133 +482,6 @@ const SettingsPage = () => {
                   </div>
                 ))}
               </div>
-              {isAddingRole ? (
-                <div className="flex items-center gap-2 max-w-sm">
-                  <Input
-                    placeholder="Nombre del rol…"
-                    value={newRoleName}
-                    onChange={(e) => setNewRoleName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newRoleName.trim()) {
-                        addRole(newRoleName);
-                        setNewRoleName('');
-                        setIsAddingRole(false);
-                        toast({ title: 'Rol creado', description: `El rol "${newRoleName.trim()}" ha sido creado` });
-                      }
-                      if (e.key === 'Escape') { setIsAddingRole(false); setNewRoleName(''); }
-                    }}
-                    autoFocus
-                  />
-                  <Button
-                    size="sm"
-                    disabled={!newRoleName.trim()}
-                    onClick={() => {
-                      addRole(newRoleName);
-                      toast({ title: 'Rol creado', description: `El rol "${newRoleName.trim()}" ha sido creado` });
-                      setNewRoleName('');
-                      setIsAddingRole(false);
-                    }}
-                  >
-                    Crear
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setIsAddingRole(false); setNewRoleName(''); }}>
-                    Cancelar
-                  </Button>
-                </div>
-              ) : (
-                <Button size="sm" variant="outline" onClick={() => setIsAddingRole(true)}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Nuevo rol
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Role Responsabilities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ListChecks className="h-5 w-5" />
-                Responsabilidades por rol
-              </CardTitle>
-              <CardDescription>
-                Define las tareas que cada rol debe asumir por defecto en los proyectos.
-                Estas tareas se agregarán automáticamente en la hoja de fábrica.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {roles.map((role) => (
-                <div key={role.id} className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold">{role.label}</span>
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                      {role.tareas.length} tarea{role.tareas.length !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {role.tareas.map((t, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-background border border-border text-xs"
-                      >
-                        <span>{t}</span>
-                        <button
-                          onClick={() => {
-                            removeTarea(role.id, i);
-                            toast({ title: 'Tarea eliminada', description: `"${t}" eliminada de ${role.label}` });
-                          }}
-                          className="text-muted-foreground hover:text-destructive transition-colors"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                    {role.tareas.length === 0 && (
-                      <span className="text-xs text-muted-foreground italic">Sin tareas asignadas</span>
-                    )}
-                  </div>
-                  {tareaAddingRoleId === role.id ? (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="Nombre de la tarea…"
-                        value={newTareaText}
-                        onChange={(e) => setNewTareaText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && newTareaText.trim()) {
-                            addTarea(role.id, newTareaText);
-                            toast({ title: 'Tarea agregada', description: `"${newTareaText.trim()}" añadida a ${role.label}` });
-                            setNewTareaText('');
-                            setTareaAddingRoleId(null);
-                          }
-                          if (e.key === 'Escape') { setTareaAddingRoleId(null); setNewTareaText(''); }
-                        }}
-                        className="h-8 text-sm flex-1"
-                        autoFocus
-                      />
-                      <Button
-                        size="sm"
-                        disabled={!newTareaText.trim()}
-                        onClick={() => {
-                          addTarea(role.id, newTareaText);
-                          toast({ title: 'Tarea agregada', description: `"${newTareaText.trim()}" añadida a ${role.label}` });
-                          setNewTareaText('');
-                          setTareaAddingRoleId(null);
-                        }}
-                      >
-                        Agregar
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => { setTareaAddingRoleId(null); setNewTareaText(''); }}>
-                        Cancelar
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => { setTareaAddingRoleId(role.id); setNewTareaText(''); }}>
-                      <Plus className="h-3.5 w-3.5 mr-1" />
-                      Agregar tarea
-                    </Button>
-                  )}
-                </div>
-              ))}
             </CardContent>
           </Card>
 

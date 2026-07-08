@@ -19,13 +19,43 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, MessageSquare, FileText, Image as ImageIcon } from 'lucide-react';
+import { Plus, MessageSquare, FileText, Image as ImageIcon, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import RichTextEditor from '@/components/ui/rich-text-editor';
 import FileUpload, { Attachment } from '@/components/ui/file-upload';
 
 const genId = () => `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const authorName = () => useAuthStore.getState().currentUser?.fullName ?? 'Usuario';
+
+const formatDateTime = (iso: string) =>
+  new Date(iso).toLocaleDateString('es-CO', {
+    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+
+/** Etapas de contenido genérico (comparten el mismo panel de tareas/entregables). */
+const CONTENT_STAGE_TYPES: StrategyNode['stageType'][] = ['copys', 'diseno'];
+
+/** Al aprobar un entregable, activa automáticamente una tarea pendiente para el siguiente rol
+ *  de la cadena (ej: Copys aprobado → nueva tarea para Diseño). El entregable original no se
+ *  mueve — el historial de aprobación queda en su propia tarea (ver `briefsForNode`). */
+const activateNextStage = (project: FactoryProject, brief: FabricaBriefItem) => {
+  if (!brief.currentNodeId) return;
+  const nodes = project.strategyNodes ?? [];
+  const nextNodes = nodes.filter(
+    (n) => n.dependsOn.includes(brief.currentNodeId!) && CONTENT_STAGE_TYPES.includes(n.stageType) && n.roleLabel
+  );
+  if (nextNodes.length === 0) return;
+  useFactoryStore.getState().addFabricaBriefs(
+    project.id,
+    nextNodes.map((n) => ({
+      roleId: n.roleId ?? n.roleLabel!,
+      roleLabel: n.roleLabel!,
+      tarea: brief.tarea,
+      currentNodeId: n.id,
+      workflowStatus: 'pending' as const,
+    }))
+  );
+};
 
 /** Entregables que viven en un nodo: por currentNodeId (fijo desde su creación), o por roleLabel
  *  si aún no lo tienen (datos legados). El entregable nunca "se mueve" de nodo — solo cambia su
@@ -143,12 +173,25 @@ const BriefDialog = ({
       deliverableAttachments: attachments,
       workflowStatus: hasApprovalStage ? 'in_review' : 'completed',
       deliverableSubmittedAt: now,
+      comments: [...priorComments, {
+        id: genId(), author: authorName(),
+        content: hasApprovalStage ? 'Entregable enviado a revisión' : 'Entregable marcado como completado',
+        isAdjustmentRequest: false, isSystemEvent: true, createdAt: now,
+      }],
     });
     onClose();
   };
 
   const handleApprove = () => {
-    updateFabricaBrief(project.id, brief.id, { workflowStatus: 'completed' });
+    const now = new Date().toISOString();
+    updateFabricaBrief(project.id, brief.id, {
+      workflowStatus: 'completed',
+      comments: [...priorComments, {
+        id: genId(), author: authorName(), content: 'Entregable aprobado',
+        isAdjustmentRequest: false, isSystemEvent: true, createdAt: now,
+      }],
+    });
+    activateNextStage(project, brief);
     advanceOrClose();
   };
 
@@ -209,19 +252,30 @@ const BriefDialog = ({
             </div>
 
             <div className="space-y-2 border-t border-border/40 pt-3">
-              <Label className="text-xs flex items-center gap-1"><MessageSquare className="h-3 w-3" /> Comentarios</Label>
+              <Label className="text-xs flex items-center gap-1"><MessageSquare className="h-3 w-3" /> Comentarios e historial</Label>
               {priorComments.length > 0 && (
                 <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
                   {priorComments.map((c) => (
-                    <div
-                      key={c.id}
-                      className={cn('rounded-md px-2.5 py-1.5 text-xs', c.isAdjustmentRequest ? 'bg-state-blocked-bg/50' : 'bg-muted/40')}
-                    >
-                      <p className="text-[10px] text-muted-foreground mb-0.5">
-                        {c.author}{c.isAdjustmentRequest ? ' · corrección' : ''}
-                      </p>
-                      <p className="whitespace-pre-wrap">{c.content}</p>
-                    </div>
+                    c.isSystemEvent ? (
+                      <div key={c.id} className="flex items-center gap-1.5 text-[10px] text-muted-foreground py-0.5">
+                        <History className="h-3 w-3 shrink-0" />
+                        <span className="flex-1">{c.content}</span>
+                        <span className="shrink-0">{c.author} · {formatDateTime(c.createdAt)}</span>
+                      </div>
+                    ) : (
+                      <div
+                        key={c.id}
+                        className={cn('rounded-md px-2.5 py-1.5 text-xs', c.isAdjustmentRequest ? 'bg-state-blocked-bg/50' : 'bg-muted/40')}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                          <span className="text-[10px] text-muted-foreground">
+                            {c.author}{c.isAdjustmentRequest ? ' · corrección' : ''}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">{formatDateTime(c.createdAt)}</span>
+                        </div>
+                        <p className="whitespace-pre-wrap">{c.content}</p>
+                      </div>
+                    )
                   ))}
                 </div>
               )}
