@@ -41,13 +41,15 @@ import {
   UserPlus,
   ChevronRight,
   X,
-  GitBranch,
+  Workflow,
+  BarChart3,
+  RefreshCw,
   Pencil,
 } from 'lucide-react';
 import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup, CanalRow, FabricaBriefItem } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
 import CreateProjectWizard from './CreateProjectWizard';
-import { LoopTab } from './MapTab';
+import { WorkflowTab, MetricsDashboardTab, LoopTab } from './MapTab';
 import { DeliverableSummary, BriefStatusBadge, isMetricsBrief, isUrlBrief } from '@/components/factory/DeliverableSummary';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -675,13 +677,15 @@ const TeamTasksTab = ({
 // ─── Project Workspace ────────────────────────────────────────────────────────
 
 const TABS = [
-  { key: 'loop',     label: 'Loop',      icon: <GitBranch className="h-3.5 w-3.5" /> },
-  { key: 'overview', label: 'Overview',  icon: <Flag className="h-3.5 w-3.5" /> },
-  { key: 'equipo',   label: 'Equipo',    icon: <Users className="h-3.5 w-3.5" /> },
+  { key: 'flujo',    label: 'Flujo de trabajo',      icon: <Workflow className="h-3.5 w-3.5" /> },
+  { key: 'metrics',  label: 'Dashboard de métricas',  icon: <BarChart3 className="h-3.5 w-3.5" /> },
+  { key: 'loop',     label: 'Loop',                   icon: <RefreshCw className="h-3.5 w-3.5" /> },
+  { key: 'overview', label: 'Overview',                icon: <Flag className="h-3.5 w-3.5" /> },
+  { key: 'equipo',   label: 'Equipo',                  icon: <Users className="h-3.5 w-3.5" /> },
 ] as const;
 
 const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
-  const [activeTab, setActiveTab] = useState<'loop' | 'overview' | 'equipo'>('loop');
+  const [activeTab, setActiveTab] = useState<'flujo' | 'metrics' | 'loop' | 'overview' | 'equipo'>('flujo');
   const { addTask, updateTask, deleteTask, deleteProject, setActiveProject } = useFactoryStore();
 
   const [editWizardOpen, setEditWizardOpen] = useState(false);
@@ -773,6 +777,8 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-6">
+        {activeTab === 'flujo' && <WorkflowTab project={project} />}
+        {activeTab === 'metrics' && <MetricsDashboardTab project={project} />}
         {activeTab === 'loop' && <LoopTab project={project} />}
         {activeTab === 'overview' && <OverviewTab project={project} />}
         {activeTab === 'equipo' && (

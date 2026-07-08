@@ -27,17 +27,6 @@ import FileUpload, { Attachment } from '@/components/ui/file-upload';
 const genId = () => `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const authorName = () => useAuthStore.getState().currentUser?.fullName ?? 'Usuario';
 
-// ───────────────────────────────────────────────────────────────────────────
-// Graph helpers — resolve the approval node downstream of a content node,
-// and the content node upstream of an approval node, via `dependsOn`.
-// ───────────────────────────────────────────────────────────────────────────
-
-export const findApprovalNodeFor = (nodes: StrategyNode[], contentNodeId: string) =>
-  nodes.find((n) => n.stageType === 'aprobacion' && n.dependsOn.includes(contentNodeId));
-
-export const findContentNodeFor = (nodes: StrategyNode[], approvalNode: StrategyNode) =>
-  nodes.find((n) => n.id === approvalNode.dependsOn[0]);
-
 /** Entregables que viven en un nodo: por currentNodeId (fijo desde su creación), o por roleLabel
  *  si aún no lo tienen (datos legados). El entregable nunca "se mueve" de nodo — solo cambia su
  *  `workflowStatus`, así que aprobar/corregir siempre se hace desde la misma tarea. */
@@ -348,12 +337,13 @@ const AttachmentsByDate = ({ briefs }: { briefs: FabricaBriefItem[] }) => {
 
 export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; node: StrategyNode }) => {
   const { addFabricaBriefs } = useFactoryStore();
-  const nodes = project.strategyNodes ?? [];
   const briefs = briefsForNode(project, node);
   const pending = briefs.filter((b) => getBriefStatus(b) === 'pending');
   const inReview = briefs.filter((b) => getBriefStatus(b) === 'in_review');
   const completed = briefs.filter((b) => getBriefStatus(b) === 'completed');
-  const hasApprovalStage = !!findApprovalNodeFor(nodes, node.id);
+  // La aprobación ya no es un nodo aparte: todo entregable pasa a revisión y se
+  // aprueba/corrige desde el mismo diálogo de la tarea (ver BriefDialog).
+  const hasApprovalStage = true;
 
   const [newTitle, setNewTitle] = useState('');
   const [openBrief, setOpenBrief] = useState<FabricaBriefItem | null>(null);
@@ -417,39 +407,6 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
           brief={openBrief}
           hasApprovalStage={hasApprovalStage}
           queue={inReview}
-          onClose={() => setOpenBrief(null)}
-          onAdvance={setOpenBrief}
-        />
-      )}
-    </div>
-  );
-};
-
-// ───────────────────────────────────────────────────────────────────────────
-// Aprobación — cola de revisión que agrega los entregables "en revisión" del
-// nodo de contenido del que depende (los entregables nunca se mueven aquí).
-// ───────────────────────────────────────────────────────────────────────────
-
-export const ApprovalQueuePanel = ({ project, node }: { project: FactoryProject; node: StrategyNode }) => {
-  const nodes = project.strategyNodes ?? [];
-  const contentNode = findContentNodeFor(nodes, node);
-  const briefs = contentNode ? briefsForNode(project, contentNode) : [];
-  const queue = briefs.filter((b) => getBriefStatus(b) === 'in_review');
-  const done = briefs.filter((b) => getBriefStatus(b) === 'completed');
-
-  const [openBrief, setOpenBrief] = useState<FabricaBriefItem | null>(null);
-
-  return (
-    <div className="space-y-3">
-      <BriefGroup title="Pendientes de revisión" items={queue} onOpen={setOpenBrief} emptyLabel="Sin entregables por revisar." />
-      <BriefGroup title="Aprobadas" items={done} onOpen={setOpenBrief} hideIfEmpty />
-
-      {openBrief && (
-        <BriefDialog
-          project={project}
-          brief={openBrief}
-          hasApprovalStage
-          queue={queue}
           onClose={() => setOpenBrief(null)}
           onAdvance={setOpenBrief}
         />

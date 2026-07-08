@@ -13,7 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   Plus, MoreVertical, Trash2, Workflow, Rocket, ArrowRight, ChevronDown,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
-  Target, TrendingUp, Users, DollarSign, RefreshCw, CheckCircle2,
+  Target, TrendingUp, Users, DollarSign, RefreshCw,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -29,7 +29,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  ContentBriefPanel, ApprovalQueuePanel, DeliveryBriefPanel, briefsForNode,
+  ContentBriefPanel, DeliveryBriefPanel, briefsForNode,
 } from './StrategyBriefPanels';
 import { getBriefStatus } from '@/components/factory/DeliverableSummary';
 
@@ -50,7 +50,6 @@ const STAGES: StageMeta[] = [
   { type: 'formulario', label: 'Formulario',         short: 'Form',     icon: FileText,        color: 'hsl(var(--team-seo))',        suggestRole: ['Diseñador', 'SEO', 'Mercadeo'] },
   { type: 'landing',    label: 'Landing',            short: 'Landing',  icon: LayoutPanelTop,  color: 'hsl(var(--team-design))',     suggestRole: ['Diseñador', 'SEO'] },
   { type: 'copys',      label: 'Copys',              short: 'Copys',    icon: PenLine,         color: 'hsl(var(--team-copy))',       suggestRole: ['Copy'] },
-  { type: 'aprobacion', label: 'Aprobación',         short: 'Aprueba',  icon: CheckCircle2,    color: 'hsl(var(--factory))',         suggestRole: ['Estratega'] },
   { type: 'diseno',     label: 'Diseño de piezas',   short: 'Diseño',   icon: Palette,         color: 'hsl(var(--team-design))',     suggestRole: ['Diseñador'] },
   { type: 'pauta',      label: 'Pauta',              short: 'Pauta',    icon: Megaphone,       color: 'hsl(var(--team-production))', suggestRole: ['Mercadeo', 'Manager'] },
   { type: 'envios',     label: 'Envíos masivos',     short: 'Envíos',   icon: Send,            color: 'hsl(var(--team-social))',     suggestRole: ['Mercadeo', 'Social'] },
@@ -58,8 +57,9 @@ const STAGES: StageMeta[] = [
 
 const STAGE_BY_TYPE = Object.fromEntries(STAGES.map((s) => [s.type, s])) as Record<StrategyStageType, StageMeta>;
 
-/** Etapas cuyo panel de tareas gestiona entregables (FabricaBriefItem) en vez del todo-list simple. */
-const BRIEF_DRIVEN_STAGES: StrategyStageType[] = ['copys', 'diseno', 'aprobacion', 'envios'];
+/** Etapas cuyo panel de tareas gestiona entregables (FabricaBriefItem) en vez del todo-list simple.
+ *  La aprobación de cada entregable vive dentro de su propia tarea (ver StrategyBriefPanels). */
+const BRIEF_DRIVEN_STAGES: StrategyStageType[] = ['copys', 'diseno', 'envios'];
 
 const STATUS_META: Record<StrategyNode['status'], { label: string; cls: string }> = {
   pending:     { label: 'Pendiente',   cls: 'bg-muted text-muted-foreground' },
@@ -241,7 +241,9 @@ interface Props {
   project: FactoryProject;
 }
 
-export const LoopTab = ({ project }: Props) => {
+// ─── Flujo de trabajo — el tablero de "Construir estrategia" ────────────────
+
+export const WorkflowTab = ({ project }: Props) => {
   const {
     addStrategyNode, updateStrategyNode, deleteStrategyNode,
     addTask, updateTask, deleteTask,
@@ -410,58 +412,8 @@ export const LoopTab = ({ project }: Props) => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Loop metrics: computed from canal delivery metrics briefs ──────
-  const loopMetrics = useMemo(() => {
-    const metricsBriefs = (project.fabricaBriefs ?? []).filter(
-      (b) => b.tarea.startsWith('Recolectar métricas de') && b.deliverableMetricas
-    );
-
-    let totalBase = 0;
-    let totalEnviados = 0;
-    let totalApertura = 0;
-    let totalClics = 0;
-
-    for (const b of metricsBriefs) {
-      const m = b.deliverableMetricas!;
-      totalBase     += parseInt(m.baseTotal ?? '0');
-      totalEnviados += parseInt(m.enviados  ?? '0');
-      totalApertura += parseInt(m.apertura  ?? '0');
-      totalClics    += parseInt(m.clics     ?? '0');
-    }
-
-    const fmt = (n: number) => n > 0 ? n.toLocaleString('es-CO') : '—';
-
-    return {
-      base:     { value: fmt(totalBase),     delta: '—' },
-      enviados: { value: fmt(totalEnviados), delta: '—' },
-      apertura: { value: fmt(totalApertura), delta: '—' },
-      clics:    { value: fmt(totalClics),    delta: '—' },
-    };
-  }, [project.fabricaBriefs]);
-
-
   return (
     <div className="space-y-4">
-      {/* ── Loop Diagram + Metrics ─────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {/* Loop phases diagram */}
-        <div className="md:col-span-2 rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-2">
-            <RefreshCw className="h-3 w-3" />
-            Ciclo Loop
-          </h3>
-          <LoopDiagram />
-        </div>
-
-        {/* Metric cards */}
-        <div className="md:col-span-3 grid grid-cols-2 gap-3">
-          <LoopMetric label="Base total" value={loopMetrics.base.value} delta={loopMetrics.base.delta} icon={<Users className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Enviados" value={loopMetrics.enviados.value} delta={loopMetrics.enviados.delta} icon={<TrendingUp className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Apertura" value={loopMetrics.apertura.value} delta={loopMetrics.apertura.delta} icon={<Target className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Clics" value={loopMetrics.clics.value} delta={loopMetrics.clics.delta} icon={<DollarSign className="h-3.5 w-3.5" />} />
-        </div>
-      </div>
-
       {/* Stage palette */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card/70 p-2.5 shadow-sm">
         <div className="flex items-center gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -494,7 +446,7 @@ export const LoopTab = ({ project }: Props) => {
           <p className="text-sm font-medium mb-1">Inicia tu estrategia de mercadeo</p>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto">
             Agrega etapas desde el panel superior. Cada una aparece como una columna del flujo,
-            en el orden en que dependen unas de otras (por ejemplo: Copys → Aprobación → Diseño → Envíos).
+            en el orden en que dependen unas de otras (por ejemplo: Copys → Diseño → Envíos).
           </p>
         </div>
       ) : (
@@ -555,6 +507,92 @@ export const LoopTab = ({ project }: Props) => {
           />
         );
       })()}
+    </div>
+  );
+};
+
+// ─── Dashboard de métricas ────────────────────────────────────────────────
+
+export const MetricsDashboardTab = ({ project }: Props) => {
+  const loopMetrics = useMemo(() => {
+    const metricsBriefs = (project.fabricaBriefs ?? []).filter(
+      (b) => b.tarea.startsWith('Recolectar métricas de') && b.deliverableMetricas
+    );
+
+    let totalBase = 0;
+    let totalEnviados = 0;
+    let totalApertura = 0;
+    let totalClics = 0;
+
+    for (const b of metricsBriefs) {
+      const m = b.deliverableMetricas!;
+      totalBase     += parseInt(m.baseTotal ?? '0');
+      totalEnviados += parseInt(m.enviados  ?? '0');
+      totalApertura += parseInt(m.apertura  ?? '0');
+      totalClics    += parseInt(m.clics     ?? '0');
+    }
+
+    const fmt = (n: number) => n > 0 ? n.toLocaleString('es-CO') : '—';
+
+    return {
+      base:     { value: fmt(totalBase),     delta: '—' },
+      enviados: { value: fmt(totalEnviados), delta: '—' },
+      apertura: { value: fmt(totalApertura), delta: '—' },
+      clics:    { value: fmt(totalClics),    delta: '—' },
+    };
+  }, [project.fabricaBriefs]);
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-3">
+          <TrendingUp className="h-3 w-3" />
+          Dashboard de métricas
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <LoopMetric label="Base total" value={loopMetrics.base.value} delta={loopMetrics.base.delta} icon={<Users className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Enviados" value={loopMetrics.enviados.value} delta={loopMetrics.enviados.delta} icon={<TrendingUp className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Apertura" value={loopMetrics.apertura.value} delta={loopMetrics.apertura.delta} icon={<Target className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Clics" value={loopMetrics.clics.value} delta={loopMetrics.clics.delta} icon={<DollarSign className="h-3.5 w-3.5" />} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Loop — el ciclo de comportamiento del proyecto ─────────────────────────
+
+export const LoopTab = ({ project }: Props) => {
+  return (
+    <div className="space-y-4">
+      <div className="max-w-md mx-auto w-full rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5 mb-3">
+          <RefreshCw className="h-3 w-3" />
+          Ciclo Loop
+        </h3>
+        <LoopDiagram />
+        <p className="text-xs text-muted-foreground text-center mt-2">{project.name}</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full">
+        {LOOP_PHASES.map((ph) => {
+          const Icon = ph.icon;
+          return (
+            <div key={ph.key} className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-card p-3 shadow-sm">
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `${ph.color}20`, color: ph.color }}
+              >
+                <Icon className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold">{ph.label}</p>
+                <p className="text-[11px] text-muted-foreground">{ph.desc}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -816,8 +854,6 @@ const NodeTasksDialog = ({
 
         {node.stageType === 'copys' || node.stageType === 'diseno' ? (
           <ContentBriefPanel project={project} node={node} />
-        ) : node.stageType === 'aprobacion' ? (
-          <ApprovalQueuePanel project={project} node={node} />
         ) : node.stageType === 'envios' ? (
           <DeliveryBriefPanel project={project} node={node} />
         ) : !node.roleLabel ? (

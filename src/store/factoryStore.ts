@@ -202,8 +202,9 @@ interface FactoryStore {
   setActiveProject: (id: string | null) => void;
 }
 
-/** Default approval-gated pipeline created for every new project:
- *  Copy escribe → Estratega aprueba → Diseño hace la pieza → Estratega aprueba → Gestor de canales envía.
+/** Default pipeline creado para cada proyecto nuevo: Copy escribe → Diseño hace la pieza →
+ *  Gestor de canales envía. La aprobación ya no es una etapa aparte: cada entregable pasa por
+ *  revisión dentro de su propia tarea (ver `hasApprovalStage` en StrategyBriefPanels).
  *  Users can branch/extend it further from "Construir estrategia". */
 const buildDefaultStrategyNodes = (): StrategyNode[] => {
   const node = (
@@ -218,18 +219,36 @@ const buildDefaultStrategyNodes = (): StrategyNode[] => {
   });
 
   const copyId = `node-${uid()}`;
-  const approveCopyId = `node-${uid()}`;
   const disenoId = `node-${uid()}`;
-  const approveDisenoId = `node-${uid()}`;
   const enviosId = `node-${uid()}`;
 
   return [
     node(copyId, 'copys', 'Copys', 'Copy', []),
-    node(approveCopyId, 'aprobacion', 'Aprobación de copy', 'Estratega', [copyId]),
-    node(disenoId, 'diseno', 'Diseño de piezas', 'Diseño', [approveCopyId]),
-    node(approveDisenoId, 'aprobacion', 'Aprobación de diseño', 'Estratega', [disenoId]),
-    node(enviosId, 'envios', 'Envío de acciones', 'Gestor de canales', [approveDisenoId]),
+    node(disenoId, 'diseno', 'Diseño de piezas', 'Diseño', [copyId]),
+    node(enviosId, 'envios', 'Envío de acciones', 'Gestor de canales', [disenoId]),
   ];
+};
+
+/** Migración en lectura: los proyectos creados antes de este cambio pueden traer nodos
+ *  `aprobacion` guardados en Supabase. Los quitamos y re-conectamos sus dependientes al
+ *  nodo del que dependía la aprobación, para no dejar huecos en el flujo. */
+const stripApprovalNodes = (nodes: StrategyNode[]): StrategyNode[] => {
+  const approvalIds = new Set(nodes.filter((n) => n.stageType === 'aprobacion').map((n) => n.id));
+  if (approvalIds.size === 0) return nodes;
+
+  const byId = new Map(nodes.map((n) => [n.id, n] as const));
+  const bridge = (deps: string[]): string[] => {
+    const out: string[] = [];
+    for (const d of deps) {
+      if (approvalIds.has(d)) out.push(...bridge(byId.get(d)?.dependsOn ?? []));
+      else out.push(d);
+    }
+    return Array.from(new Set(out));
+  };
+
+  return nodes
+    .filter((n) => !approvalIds.has(n.id))
+    .map((n) => ({ ...n, dependsOn: bridge(n.dependsOn) }));
 };
 
 const patchProject = (
@@ -259,7 +278,7 @@ const rowToProject = (row: any): FactoryProject => {
     createdAt: row.created_at,
     roleGroups: data.roleGroups ?? [],
     tasks: data.tasks ?? [],
-    strategyNodes: data.strategyNodes ?? [],
+    strategyNodes: stripApprovalNodes(data.strategyNodes ?? []),
     strategistName: data.strategistName ?? '',
     audienciaNarrativa: data.audienciaNarrativa ?? { segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' },
     canales: data.canales ?? [],
