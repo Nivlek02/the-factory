@@ -72,12 +72,12 @@ const STATUS_META: Record<StrategyNode['status'], { label: string; cls: string }
 // Layout: topological depth + vertical stacking per column
 // ───────────────────────────────────────────────────────────────────────────
 
-const COL_W = 240;
-const ROW_H = 130;
+const COL_W = 300;
+const ROW_H = 160;
 const PAD_X = 32;
 const PAD_Y = 32;
-const NODE_W = 200;
-const NODE_H = 96;
+const NODE_W = 260;
+const NODE_H = 128;
 
 interface PositionedNode extends StrategyNode {
   col: number;
@@ -369,7 +369,8 @@ export const LoopTab = ({ project }: Props) => {
   const totalWidth = Math.max(width, 900);
   const totalHeight = Math.max(height, 360);
 
-  // Auto-fit canvas to its container so there are no scrollbars
+  // Fit canvas to the container's height only — width scrolls horizontally instead of
+  // shrinking node cards to illegibility on pipelines with many stages/columns.
   const fitRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const scaleRef = useRef(1);
@@ -378,9 +379,9 @@ export const LoopTab = ({ project }: Props) => {
     const el = fitRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      const { width: w, height: h } = el.getBoundingClientRect();
-      if (w === 0 || h === 0) return;
-      const s = Math.min(w / totalWidth, h / totalHeight, 1);
+      const { height: h } = el.getBoundingClientRect();
+      if (h === 0) return;
+      const s = Math.min(h / totalHeight, 1);
       setScale(s);
     });
     ro.observe(el);
@@ -579,7 +580,7 @@ export const LoopTab = ({ project }: Props) => {
       ) : (
         <div
           ref={fitRef}
-          className="relative overflow-hidden rounded-2xl border border-border/60 bg-background/40"
+          className="relative overflow-x-auto overflow-y-hidden rounded-2xl border border-border/60 bg-background/40"
           style={{ ...dottedBg, height: 'calc(100vh - 340px)', minHeight: 360 }}
         >
           <div
@@ -654,9 +655,9 @@ export const LoopTab = ({ project }: Props) => {
                 height: NODE_H,
               }}
             >
-              <Rocket className="h-5 w-5 mb-1" />
-              <p className="text-sm font-semibold leading-tight">Inicia el proyecto</p>
-              <p className="text-[10px] opacity-80 truncate max-w-full">{project.name}</p>
+              <Rocket className="h-6 w-6 mb-1.5" />
+              <p className="text-base font-semibold leading-tight">Inicia el proyecto</p>
+              <p className="text-xs opacity-80 truncate max-w-full">{project.name}</p>
             </div>
 
             {/* Strategy nodes */}
@@ -776,20 +777,20 @@ const NodeCard = ({
       onClick={() => { if (!draggedRef.current) onOpenTasks(); }}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenTasks(); } }}
       onPointerDown={handlePointerDown}
-      className="absolute rounded-xl bg-card border shadow-sm hover:shadow-lg transition-shadow p-2.5 group cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-factory/40 select-none touch-none"
+      className="absolute rounded-xl bg-card border shadow-sm hover:shadow-lg transition-shadow p-4 group cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-factory/40 select-none touch-none"
       style={{
         left: node.x,
         top: node.y,
         width: NODE_W,
         height: NODE_H,
-        borderLeft: `4px solid ${stage?.color ?? 'hsl(var(--border))'}`,
+        borderLeft: `5px solid ${stage?.color ?? 'hsl(var(--border))'}`,
       }}
     >
 
       {/* pending tasks badge */}
       {taskCounts && taskCounts.pending > 0 && (
         <span
-          className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-factory text-factory-foreground text-[10px] font-bold flex items-center justify-center ring-2 ring-background shadow-sm"
+          className="absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1.5 rounded-full bg-factory text-factory-foreground text-xs font-bold flex items-center justify-center ring-2 ring-background shadow-sm"
           title={`${taskCounts.pending} tareas pendientes`}
         >
           {taskCounts.pending}
@@ -798,18 +799,18 @@ const NodeCard = ({
 
       {/* Input/output ports */}
       <span
-        className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full ring-2 ring-background"
+        className="absolute -left-2 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full ring-2 ring-background"
         style={{ backgroundColor: stage?.color ?? 'hsl(var(--muted-foreground))' }}
       />
       <span
-        className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full ring-2 ring-background opacity-70"
+        className="absolute -right-2 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full ring-2 ring-background opacity-70"
         style={{ backgroundColor: stage?.color ?? 'hsl(var(--muted-foreground))' }}
       />
 
-      <div className="flex items-start justify-between gap-1.5 mb-1">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: stage?.color }} />
-          <p className="text-[12px] font-semibold leading-tight truncate">{node.label}</p>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Icon className="h-5 w-5 shrink-0" style={{ color: stage?.color }} />
+          <p className="text-base font-semibold leading-tight truncate">{node.label}</p>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -819,7 +820,7 @@ const NodeCard = ({
               onClick={(e) => e.stopPropagation()}
               className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity shrink-0"
             >
-              <MoreVertical className="h-3.5 w-3.5" />
+              <MoreVertical className="h-4 w-4" />
             </button>
           </DropdownMenuTrigger>
 
@@ -861,27 +862,27 @@ const NodeCard = ({
         </DropdownMenu>
       </div>
 
-      <div className="flex items-center justify-between mt-1">
-        <Badge variant="outline" className={`text-[9px] px-1.5 h-4 ${statusMeta.cls} border-0`}>
+      <div className="flex items-center justify-between mt-1.5">
+        <Badge variant="outline" className={`text-xs px-2 h-5 ${statusMeta.cls} border-0`}>
           {statusMeta.label}
         </Badge>
         {node.roleLabel && (
-          <span className="text-[9px] text-muted-foreground truncate ml-1">{node.roleLabel}</span>
+          <span className="text-xs text-muted-foreground truncate ml-1">{node.roleLabel}</span>
         )}
       </div>
 
       {node.memberName ? (
-        <div className="flex items-center gap-1 mt-1">
+        <div className="flex items-center gap-1.5 mt-2">
           <div
-            className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
+            className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
             style={{ backgroundColor: stage?.color ?? 'hsl(var(--muted-foreground))' }}
           >
             {node.memberName.charAt(0).toUpperCase()}
           </div>
-          <span className="text-[10px] text-foreground/80 truncate">{node.memberName}</span>
+          <span className="text-xs text-foreground/80 truncate">{node.memberName}</span>
         </div>
       ) : (
-        <p className="text-[10px] text-muted-foreground italic mt-1">Sin asignar</p>
+        <p className="text-xs text-muted-foreground italic mt-2">Sin asignar</p>
       )}
     </div>
   );

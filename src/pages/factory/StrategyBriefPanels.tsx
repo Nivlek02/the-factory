@@ -301,6 +301,7 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
   const [newTitle, setNewTitle] = useState('');
   const [editingBrief, setEditingBrief] = useState<FabricaBriefItem | null>(null);
   const [viewingBrief, setViewingBrief] = useState<FabricaBriefItem | null>(null);
+  const [reviewingBrief, setReviewingBrief] = useState<FabricaBriefItem | null>(null);
   const [activeTab, setActiveTab] = useState<'tareas' | 'adjuntos'>('tareas');
 
   const handleAdd = () => {
@@ -350,7 +351,7 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
           </div>
 
           <BriefGroup title="Pendientes" items={pending} onOpen={setEditingBrief} emptyLabel="Sin tareas pendientes." />
-          <BriefGroup title="En revisión" items={inReview} onOpen={setViewingBrief} hideIfEmpty />
+          <BriefGroup title="En revisión" items={inReview} onOpen={setReviewingBrief} hideIfEmpty />
           <BriefGroup title="Completadas" items={completed} onOpen={setViewingBrief} hideIfEmpty />
         </>
       )}
@@ -359,6 +360,16 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
         <BriefEditDialog project={project} brief={editingBrief} approvalNode={approvalNode} onClose={() => setEditingBrief(null)} />
       )}
       {viewingBrief && <BriefViewDialog brief={viewingBrief} onClose={() => setViewingBrief(null)} />}
+      {reviewingBrief && (
+        <ApprovalReviewDialog
+          project={project}
+          brief={reviewingBrief}
+          queue={inReview}
+          returnToNodeId={node.id}
+          onClose={() => setReviewingBrief(null)}
+          onAdvance={setReviewingBrief}
+        />
+      )}
     </div>
   );
 };
@@ -368,17 +379,17 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
 // ───────────────────────────────────────────────────────────────────────────
 
 const ApprovalReviewDialog = ({
-  project, node, brief, queue, onClose, onAdvance,
+  project, brief, queue, returnToNodeId, onClose, onAdvance,
 }: {
   project: FactoryProject;
-  node: StrategyNode;
   brief: FabricaBriefItem;
   queue: FabricaBriefItem[];
+  /** Nodo de contenido (Copys/Diseño) al que vuelve el entregable si se envía a corrección. */
+  returnToNodeId: string | null;
   onClose: () => void;
   onAdvance: (next: FabricaBriefItem) => void;
 }) => {
   const { updateFabricaBrief } = useFactoryStore();
-  const nodes = project.strategyNodes ?? [];
   const [comment, setComment] = useState('');
 
   const nextInQueue = () => queue.find((b) => b.id !== brief.id) ?? null;
@@ -392,13 +403,12 @@ const ApprovalReviewDialog = ({
   const handleReject = () => {
     const text = comment.trim();
     if (!text) return;
-    const contentNode = findContentNodeFor(nodes, node);
     updateFabricaBrief(project.id, brief.id, {
       comments: [...(brief.comments ?? []), {
         id: genId(), author: authorName(), content: text, isAdjustmentRequest: true,
         createdAt: new Date().toISOString(),
       }],
-      currentNodeId: contentNode?.id ?? brief.currentNodeId ?? null,
+      currentNodeId: returnToNodeId ?? brief.currentNodeId ?? null,
       workflowStatus: 'pending',
       deliverableSubmittedAt: null,
     });
@@ -443,9 +453,11 @@ const ApprovalReviewDialog = ({
 };
 
 export const ApprovalQueuePanel = ({ project, node }: { project: FactoryProject; node: StrategyNode }) => {
+  const nodes = project.strategyNodes ?? [];
   const briefs = briefsForNode(project, node);
   const queue = briefs.filter((b) => getBriefStatus(b) === 'in_review');
   const done = briefs.filter((b) => getBriefStatus(b) === 'completed');
+  const returnToNodeId = findContentNodeFor(nodes, node)?.id ?? null;
 
   const [reviewingBrief, setReviewingBrief] = useState<FabricaBriefItem | null>(null);
   const [viewingBrief, setViewingBrief] = useState<FabricaBriefItem | null>(null);
@@ -458,9 +470,9 @@ export const ApprovalQueuePanel = ({ project, node }: { project: FactoryProject;
       {reviewingBrief && (
         <ApprovalReviewDialog
           project={project}
-          node={node}
           brief={reviewingBrief}
           queue={queue}
+          returnToNodeId={returnToNodeId}
           onClose={() => setReviewingBrief(null)}
           onAdvance={setReviewingBrief}
         />
