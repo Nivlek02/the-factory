@@ -39,20 +39,14 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, RefreshCw, Tag, X } from 'lucide-react';
+import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAppVersion } from '@/hooks/useAppVersion';
-import { useRolesStore } from '@/store/rolesStore';
 
 const SettingsPage = () => {
   const { users, currentUser, addUser, updateUser, deleteUser, loadUsers } = useAuthStore();
-  const { roles, updateRole, removeRole } = useRolesStore();
   const { toast } = useToast();
-
-  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
-  const [editingRoleLabel, setEditingRoleLabel] = useState('');
-  const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
 
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -385,103 +379,6 @@ const SettingsPage = () => {
                   </>
                 );
               })()}
-            </CardContent>
-          </Card>
-
-          {/* Team Roles */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Tag className="h-5 w-5" />
-                Roles del equipo
-              </CardTitle>
-              <CardDescription>
-                Define los roles que pueden usarse en los proyectos de La Fabrica.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {roles.map((role) => (
-                  <div key={role.id}>
-                    {editingRoleId === role.id ? (
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={editingRoleLabel}
-                          onChange={(e) => setEditingRoleLabel(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && editingRoleLabel.trim()) {
-                              updateRole(role.id, editingRoleLabel);
-                              toast({ title: 'Rol actualizado', description: `Rol renombrado a "${editingRoleLabel.trim()}"` });
-                              setEditingRoleId(null);
-                              setEditingRoleLabel('');
-                            }
-                            if (e.key === 'Escape') { setEditingRoleId(null); setEditingRoleLabel(''); }
-                          }}
-                          className="h-8 text-sm max-w-[180px]"
-                          autoFocus
-                        />
-                        <Button
-                          size="sm"
-                          disabled={!editingRoleLabel.trim()}
-                          onClick={() => {
-                            updateRole(role.id, editingRoleLabel);
-                            toast({ title: 'Rol actualizado', description: `Rol renombrado a "${editingRoleLabel.trim()}"` });
-                            setEditingRoleId(null);
-                            setEditingRoleLabel('');
-                          }}
-                        >
-                          Guardar
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => { setEditingRoleId(null); setEditingRoleLabel(''); }}>
-                          Cancelar
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-muted/40 text-sm font-medium">
-                        <button
-                          onClick={() => { setEditingRoleId(role.id); setEditingRoleLabel(role.label); }}
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </button>
-                        <span>{role.label}</span>
-                        <AlertDialog open={deletingRoleId === role.id} onOpenChange={(open) => !open && setDeletingRoleId(null)}>
-                          <AlertDialogTrigger asChild>
-                            <button
-                              onClick={() => setDeletingRoleId(role.id)}
-                              className="text-muted-foreground hover:text-destructive transition-colors"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>¿Eliminar rol?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Esta acción eliminará permanentemente el rol "{role.label}". 
-                                Los proyectos que usen este rol dejarán de tenerlo asociado.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel onClick={() => setDeletingRoleId(null)}>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => {
-                                  removeRole(role.id);
-                                  setDeletingRoleId(null);
-                                  toast({ title: 'Rol eliminado', description: `El rol "${role.label}" ha sido eliminado` });
-                                }}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              >
-                                Eliminar
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
             </CardContent>
           </Card>
 

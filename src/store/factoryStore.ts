@@ -226,8 +226,8 @@ const buildDefaultStrategyNodes = (): StrategyNode[] => {
   const enviosId = `node-${uid()}`;
 
   return [
-    node(copyId, 'copys', 'Copys', 'Copy', []),
-    node(disenoId, 'diseno', 'Diseño de piezas', 'Diseño', [copyId]),
+    node(copyId, 'copys', 'Copys', 'Copywriter', []),
+    node(disenoId, 'diseno', 'Diseño de piezas', 'Diseñador', [copyId]),
     node(enviosId, 'envios', 'Envío de acciones', 'Gestor de canales', [disenoId]),
   ];
 };

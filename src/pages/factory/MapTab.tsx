@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
-  Plus, MoreVertical, Trash2, Workflow, Rocket, ArrowRight,
+  Plus, MoreVertical, Trash2, Workflow, Rocket, ArrowRight, ChevronDown,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   Target, TrendingUp, Users, DollarSign, RefreshCw,
 } from 'lucide-react';
@@ -397,17 +397,18 @@ export const WorkflowTab = ({ project }: Props) => {
           </p>
         </div>
       ) : (
-        <div className="flex items-start gap-3 overflow-x-auto pb-2">
-          <div className="w-36 shrink-0 min-h-[64px] rounded-lg shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-3 py-2.5">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="w-full sm:w-36 shrink-0 min-h-[64px] rounded-lg shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-3 py-2.5">
             <Rocket className="h-4 w-4 mb-1" />
             <p className="text-xs font-semibold leading-tight">Inicia el proyecto</p>
             <p className="text-[10px] opacity-80 truncate max-w-full">{project.name}</p>
           </div>
 
           {columns.map((col, i) => (
-            <div key={i} className="flex items-start gap-3 shrink-0">
-              <ArrowRight className="h-5 w-5 text-muted-foreground/50 shrink-0 mt-12" />
-              <div className="flex flex-col gap-3 w-60 shrink-0">
+            <div key={i} className="flex flex-col items-center sm:flex-row sm:items-start gap-3 w-full sm:w-auto">
+              <ArrowRight className="hidden sm:block h-5 w-5 text-muted-foreground/50 shrink-0 mt-12" />
+              <ChevronDown className="sm:hidden h-5 w-5 text-muted-foreground/50 shrink-0" />
+              <div className="flex flex-col gap-3 w-full sm:w-60 shrink-0">
                 {col.map((n) => (
                   <NodeCard
                     key={n.id}

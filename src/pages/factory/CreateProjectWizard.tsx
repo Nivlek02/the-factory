@@ -309,7 +309,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           }
           addItem('gestor_canales', 'Gestor de canales',
             `Configurar envío por ${row.canal}${ref ? ` — ${ref}` : ''}`);
-          addItem('copy', 'Copy',
+          addItem('copy', 'Copywriter',
             `Redactar copy para ${row.canal}${row.copy ? ` — ${row.copy}` : ''}`);
           const copyRole = roles.find((r) => r.id === 'copy');
           if (copyRole) {
@@ -329,7 +329,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         case 'Call Center': {
           addItem('estratega', 'Estratega',
             `Gestionar Call Center${ref ? ` — ${ref}` : ''}`);
-          addItem('copy', 'Copy',
+          addItem('copy', 'Copywriter',
             `Redactar guion para Call Center${row.copy ? ` — ${row.copy}` : ''}`);
           const copyRole = roles.find((r) => r.id === 'copy');
           if (copyRole) {
