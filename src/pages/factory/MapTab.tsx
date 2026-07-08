@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FactoryProject,
   ProjectTask,
@@ -11,13 +11,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
-  Plus, MoreVertical, Trash2, Workflow, Rocket,
-  FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send, Link2,
+  Plus, MoreVertical, Trash2, Workflow, Rocket, ArrowRight, ChevronDown,
+  FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   Target, TrendingUp, Users, DollarSign, RefreshCw, CheckCircle2,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuCheckboxItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -69,25 +69,11 @@ const STATUS_META: Record<StrategyNode['status'], { label: string; cls: string }
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// Layout: topological depth + vertical stacking per column
+// Columns: group nodes by topological depth (longest path from a root) so the
+// board can render them left-to-right as a responsive, wrapping row of columns.
 // ───────────────────────────────────────────────────────────────────────────
 
-const COL_W = 300;
-const ROW_H = 160;
-const PAD_X = 32;
-const PAD_Y = 32;
-const NODE_W = 260;
-const NODE_H = 128;
-
-interface PositionedNode extends StrategyNode {
-  col: number;
-  row: number;
-  x: number;
-  y: number;
-}
-
-function layout(nodes: StrategyNode[]): { placed: PositionedNode[]; width: number; height: number } {
-  // depth = longest path from a root (no deps) to this node
+function computeColumns(nodes: StrategyNode[]): StrategyNode[][] {
   const depth = new Map<string, number>();
   const visiting = new Set<string>();
   const byId = new Map(nodes.map((n) => [n.id, n] as const));
@@ -107,44 +93,14 @@ function layout(nodes: StrategyNode[]): { placed: PositionedNode[]; width: numbe
 
   nodes.forEach((n) => dfs(n.id));
 
-  // group by column for nodes without a custom position
   const cols = new Map<number, StrategyNode[]>();
   nodes.forEach((n) => {
-    if (n.position) return;
     const c = depth.get(n.id) ?? 1;
     if (!cols.has(c)) cols.set(c, []);
     cols.get(c)!.push(n);
   });
 
-  const placed: PositionedNode[] = nodes.map((n) => {
-    if (n.position) {
-      return { ...n, col: depth.get(n.id) ?? 1, row: 0, x: n.position.x, y: n.position.y };
-    }
-    const c = depth.get(n.id) ?? 1;
-    const list = cols.get(c) ?? [];
-    const i = list.indexOf(n);
-    return {
-      ...n,
-      col: c,
-      row: i,
-      x: PAD_X + c * COL_W,
-      y: PAD_Y + i * ROW_H,
-    };
-  });
-
-  const maxX = placed.length ? Math.max(...placed.map((p) => p.x + NODE_W)) : COL_W;
-  const maxY = placed.length ? Math.max(...placed.map((p) => p.y + NODE_H)) : ROW_H;
-  return { placed, width: maxX + PAD_X, height: maxY + PAD_Y };
-}
-
-
-// ───────────────────────────────────────────────────────────────────────────
-// Bezier path from one node port to another
-// ───────────────────────────────────────────────────────────────────────────
-
-function pathBetween(x1: number, y1: number, x2: number, y2: number) {
-  const dx = Math.max(40, (x2 - x1) / 2);
-  return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+  return Array.from(cols.entries()).sort((a, b) => a[0] - b[0]).map(([, ns]) => ns);
 }
 
 // ─── Loop phases ──────────────────────────────────────────────────────────────
@@ -292,8 +248,7 @@ export const LoopTab = ({ project }: Props) => {
   } = useFactoryStore();
 
   const nodes = project.strategyNodes ?? [];
-  const { placed, width, height } = useMemo(() => layout(nodes), [nodes]);
-  const placedById = useMemo(() => new Map(placed.map((p) => [p.id, p])), [placed]);
+  const columns = useMemo(() => computeColumns(nodes), [nodes]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tasksNodeId, setTasksNodeId] = useState<string | null>(null);
@@ -360,41 +315,6 @@ export const LoopTab = ({ project }: Props) => {
     backgroundImage: 'radial-gradient(circle, hsl(var(--border) / 0.55) 1px, transparent 1px)',
     backgroundSize: '18px 18px',
   } as React.CSSProperties;
-
-  // Root "Inicia el proyecto" node coordinates
-  const startX = 0;
-  const startY = PAD_Y + ((placed.length ? Math.max(...placed.filter((p) => p.col === 1).map((p) => p.y)) : PAD_Y) - PAD_Y) / 2 + NODE_H / 2;
-  const startCenter = { x: startX + NODE_W / 2, y: Math.max(startY, PAD_Y + NODE_H / 2) };
-
-  const totalWidth = Math.max(width, 900);
-  const totalHeight = Math.max(height, 360);
-
-  // Fit canvas to the container's height only — width scrolls horizontally instead of
-  // shrinking node cards to illegibility on pipelines with many stages/columns.
-  const fitRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  const scaleRef = useRef(1);
-  useEffect(() => { scaleRef.current = scale; }, [scale]);
-  useEffect(() => {
-    const el = fitRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      const { height: h } = el.getBoundingClientRect();
-      if (h === 0) return;
-      const s = Math.min(h / totalHeight, 1);
-      setScale(s);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [totalWidth, totalHeight]);
-
-  // Free dragging — clamp inside canvas, divide by scale to undo CSS transform
-  const handleDrag = (nodeId: string, dx: number, dy: number, startX: number, startY: number) => {
-    const s = scaleRef.current || 1;
-    const nx = Math.max(0, startX + dx / s);
-    const ny = Math.max(0, startY + dy / s);
-    updateStrategyNode(project.id, nodeId, { position: { x: nx, y: ny } });
-  };
 
   // ── Auto-build from canales + loops ────────────────────────────────────
   useEffect(() => {
@@ -573,115 +493,37 @@ export const LoopTab = ({ project }: Props) => {
           <Rocket className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
           <p className="text-sm font-medium mb-1">Inicia tu estrategia de mercadeo</p>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-            Agrega etapas desde el panel superior. Cada etapa se conecta al inicio del proyecto y puedes
-            ramificarlas en líneas independientes o secuenciales (por ejemplo: Copys → Diseño → Envíos).
+            Agrega etapas desde el panel superior. Cada una aparece como una columna del flujo,
+            en el orden en que dependen unas de otras (por ejemplo: Copys → Aprobación → Diseño → Envíos).
           </p>
         </div>
       ) : (
-        <div
-          ref={fitRef}
-          className="relative overflow-x-auto overflow-y-hidden rounded-2xl border border-border/60 bg-background/40"
-          style={{ ...dottedBg, height: 'calc(100vh - 340px)', minHeight: 360 }}
-        >
-          <div
-            className="absolute top-0 left-0 origin-top-left"
-            style={{ width: totalWidth, height: totalHeight, transform: `scale(${scale})` }}
-          >
-            {/* SVG connectors layer */}
-            <svg
-              className="absolute inset-0 pointer-events-none"
-              width={totalWidth}
-              height={totalHeight}
-            >
-              <defs>
-                <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--muted-foreground))" />
-                </marker>
-              </defs>
-
-              {/* root → orphan nodes (col 1, no deps) */}
-              {placed.filter((n) => n.dependsOn.length === 0).map((n) => {
-                const x1 = startCenter.x;
-                const y1 = startCenter.y;
-                const x2 = n.x;
-                const y2 = n.y + NODE_H / 2;
-                const stage = STAGE_BY_TYPE[n.stageType];
-                return (
-                  <path
-                    key={`root-${n.id}`}
-                    d={pathBetween(x1, y1, x2, y2)}
-                    stroke={stage?.color ?? 'hsl(var(--border))'}
-                    strokeWidth={2}
-                    strokeDasharray="4 4"
-                    fill="none"
-                    opacity={0.7}
-                    markerEnd="url(#arrow)"
-                  />
-                );
-              })}
-
-              {/* dependency edges */}
-              {placed.flatMap((n) =>
-                n.dependsOn.map((parentId) => {
-                  const p = placedById.get(parentId);
-                  if (!p) return null;
-                  const x1 = p.x + NODE_W;
-                  const y1 = p.y + NODE_H / 2;
-                  const x2 = n.x;
-                  const y2 = n.y + NODE_H / 2;
-                  const stage = STAGE_BY_TYPE[n.stageType];
-                  return (
-                    <path
-                      key={`${parentId}-${n.id}`}
-                      d={pathBetween(x1, y1, x2, y2)}
-                      stroke={stage?.color ?? 'hsl(var(--muted-foreground))'}
-                      strokeWidth={2.2}
-                      fill="none"
-                      opacity={0.85}
-                      markerEnd="url(#arrow)"
-                    />
-                  );
-                })
-              )}
-            </svg>
-
-            {/* Project start node */}
-            <div
-              className="absolute rounded-xl shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-3"
-              style={{
-                left: startX,
-                top: startCenter.y - NODE_H / 2,
-                width: NODE_W,
-                height: NODE_H,
-              }}
-            >
-              <Rocket className="h-6 w-6 mb-1.5" />
-              <p className="text-base font-semibold leading-tight">Inicia el proyecto</p>
-              <p className="text-xs opacity-80 truncate max-w-full">{project.name}</p>
-            </div>
-
-            {/* Strategy nodes */}
-            {placed.map((n) => (
-              <NodeCard
-                key={n.id}
-                node={n}
-                project={project}
-                taskCounts={tasksByNodeId.get(n.id)}
-                onOpenTasks={() => setTasksNodeId(n.id)}
-                onEdit={() => setEditingId(n.id)}
-                onStatus={(s) => updateStrategyNode(project.id, n.id, { status: s })}
-                onDelete={() => deleteStrategyNode(project.id, n.id)}
-                onToggleDep={(parentId) => {
-                  const next = n.dependsOn.includes(parentId)
-                    ? n.dependsOn.filter((p) => p !== parentId)
-                    : [...n.dependsOn, parentId];
-                  updateStrategyNode(project.id, n.id, { dependsOn: next });
-                }}
-                onDrag={(dx, dy, sx, sy) => handleDrag(n.id, dx, dy, sx, sy)}
-              />
-            ))}
-
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="w-full sm:w-60 shrink-0 min-h-[112px] rounded-xl shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-4 py-5">
+            <Rocket className="h-6 w-6 mb-1.5" />
+            <p className="text-base font-semibold leading-tight">Inicia el proyecto</p>
+            <p className="text-xs opacity-80 truncate max-w-full">{project.name}</p>
           </div>
+
+          {columns.map((col, i) => (
+            <div key={i} className="flex flex-col items-center sm:flex-row sm:items-start gap-3 w-full sm:w-auto">
+              <ArrowRight className="hidden sm:block h-5 w-5 text-muted-foreground/50 shrink-0 mt-12" />
+              <ChevronDown className="sm:hidden h-5 w-5 text-muted-foreground/50 shrink-0" />
+              <div className="flex flex-col gap-3 w-full sm:w-60 shrink-0">
+                {col.map((n) => (
+                  <NodeCard
+                    key={n.id}
+                    node={n}
+                    taskCounts={tasksByNodeId.get(n.id)}
+                    onOpenTasks={() => setTasksNodeId(n.id)}
+                    onEdit={() => setEditingId(n.id)}
+                    onStatus={(s) => updateStrategyNode(project.id, n.id, { status: s })}
+                    onDelete={() => deleteStrategyNode(project.id, n.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -720,73 +562,28 @@ export const LoopTab = ({ project }: Props) => {
 // ───────────────────────────────────────────────────────────────────────────
 
 const NodeCard = ({
-  node, project, onEdit, onStatus, onDelete, onToggleDep, onOpenTasks, taskCounts, onDrag,
+  node, onEdit, onStatus, onDelete, onOpenTasks, taskCounts,
 }: {
-  node: PositionedNode;
-  project: FactoryProject;
+  node: StrategyNode;
   onEdit: () => void;
   onStatus: (s: StrategyNode['status']) => void;
   onDelete: () => void;
-  onToggleDep: (parentId: string) => void;
   onOpenTasks: () => void;
   taskCounts?: { total: number; pending: number };
-  onDrag: (dx: number, dy: number, startX: number, startY: number) => void;
 }) => {
-
   const stage = STAGE_BY_TYPE[node.stageType];
   const Icon = stage?.icon ?? FileText;
   const statusMeta = STATUS_META[node.status];
-  const otherNodes = (project.strategyNodes ?? []).filter((n) => n.id !== node.id);
-
-  const draggedRef = useRef(false);
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // ignore drags initiated from interactive controls inside the card
-    if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const startClientX = e.clientX;
-    const startClientY = e.clientY;
-    const startX = node.x;
-    const startY = node.y;
-    draggedRef.current = false;
-
-    const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - startClientX;
-      const dy = ev.clientY - startClientY;
-      if (!draggedRef.current && Math.hypot(dx, dy) > 4) draggedRef.current = true;
-      if (draggedRef.current) onDrag(dx, dy, startX, startY);
-    };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      // swallow the next click if we actually dragged
-      if (draggedRef.current) {
-        const stop = (ev: MouseEvent) => { ev.stopPropagation(); ev.preventDefault(); window.removeEventListener('click', stop, true); };
-        window.addEventListener('click', stop, true);
-      }
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  };
 
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => { if (!draggedRef.current) onOpenTasks(); }}
+      onClick={onOpenTasks}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenTasks(); } }}
-      onPointerDown={handlePointerDown}
-      className="absolute rounded-xl bg-card border shadow-sm hover:shadow-lg transition-shadow p-4 group cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-factory/40 select-none touch-none"
-      style={{
-        left: node.x,
-        top: node.y,
-        width: NODE_W,
-        height: NODE_H,
-        borderLeft: `5px solid ${stage?.color ?? 'hsl(var(--border))'}`,
-      }}
+      className="relative w-full rounded-xl bg-card border shadow-sm hover:shadow-lg transition-shadow p-4 group cursor-pointer focus:outline-none focus:ring-2 focus:ring-factory/40"
+      style={{ borderLeft: `5px solid ${stage?.color ?? 'hsl(var(--border))'}` }}
     >
-
       {/* pending tasks badge */}
       {taskCounts && taskCounts.pending > 0 && (
         <span
@@ -797,26 +594,14 @@ const NodeCard = ({
         </span>
       )}
 
-      {/* Input/output ports */}
-      <span
-        className="absolute -left-2 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full ring-2 ring-background"
-        style={{ backgroundColor: stage?.color ?? 'hsl(var(--muted-foreground))' }}
-      />
-      <span
-        className="absolute -right-2 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full ring-2 ring-background opacity-70"
-        style={{ backgroundColor: stage?.color ?? 'hsl(var(--muted-foreground))' }}
-      />
-
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <Icon className="h-5 w-5 shrink-0" style={{ color: stage?.color }} />
-          <p className="text-base font-semibold leading-tight truncate">{node.label}</p>
+          <p className="text-base font-semibold leading-tight">{node.label}</p>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              data-no-drag
-              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
               className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity shrink-0"
             >
@@ -824,8 +609,7 @@ const NodeCard = ({
             </button>
           </DropdownMenuTrigger>
 
-
-          <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuContent align="end" className="w-56" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={onEdit}>
               <PenLine className="h-3.5 w-3.5 mr-2" /> Editar etapa
             </DropdownMenuItem>
@@ -837,23 +621,6 @@ const NodeCard = ({
                 {STATUS_META[s].label}
               </DropdownMenuItem>
             ))}
-            {otherNodes.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                  <Link2 className="h-3 w-3" /> Depende de
-                </DropdownMenuLabel>
-                {otherNodes.map((other) => (
-                  <DropdownMenuCheckboxItem
-                    key={other.id}
-                    checked={node.dependsOn.includes(other.id)}
-                    onCheckedChange={() => onToggleDep(other.id)}
-                  >
-                    {other.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </>
-            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive" onClick={onDelete}>
               <Trash2 className="h-3.5 w-3.5 mr-2" /> Eliminar
@@ -862,12 +629,12 @@ const NodeCard = ({
         </DropdownMenu>
       </div>
 
-      <div className="flex items-center justify-between mt-1.5">
-        <Badge variant="outline" className={`text-xs px-2 h-5 ${statusMeta.cls} border-0`}>
+      <div className="flex items-center justify-between mt-1.5 gap-2">
+        <Badge variant="outline" className={`text-xs px-2 h-5 shrink-0 ${statusMeta.cls} border-0`}>
           {statusMeta.label}
         </Badge>
         {node.roleLabel && (
-          <span className="text-xs text-muted-foreground truncate ml-1">{node.roleLabel}</span>
+          <span className="text-xs text-muted-foreground truncate">{node.roleLabel}</span>
         )}
       </div>
 

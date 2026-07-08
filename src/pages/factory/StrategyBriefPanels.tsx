@@ -38,7 +38,9 @@ export const findApprovalNodeFor = (nodes: StrategyNode[], contentNodeId: string
 export const findContentNodeFor = (nodes: StrategyNode[], approvalNode: StrategyNode) =>
   nodes.find((n) => n.id === approvalNode.dependsOn[0]);
 
-/** Entregables "en casa" de un nodo: por currentNodeId, o por roleLabel si aún no tienen (datos legados). */
+/** Entregables que viven en un nodo: por currentNodeId (fijo desde su creación), o por roleLabel
+ *  si aún no lo tienen (datos legados). El entregable nunca "se mueve" de nodo — solo cambia su
+ *  `workflowStatus`, así que aprobar/corregir siempre se hace desde la misma tarea. */
 export const briefsForNode = (project: FactoryProject, node: StrategyNode): FabricaBriefItem[] =>
   (project.fabricaBriefs ?? []).filter((b) =>
     b.currentNodeId ? b.currentNodeId === node.id : b.roleLabel === node.roleLabel
@@ -97,40 +99,41 @@ const BriefGroup = ({
   );
 };
 
-const BriefViewDialog = ({ brief, onClose }: { brief: FabricaBriefItem; onClose: () => void }) => (
-  <Dialog open onOpenChange={(v) => !v && onClose()}>
-    <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle>{brief.tarea}</DialogTitle>
-        <p className="text-xs text-muted-foreground">Rol: {brief.roleLabel}</p>
-      </DialogHeader>
-      <DeliverableSummary brief={brief} />
-      <DialogFooter>
-        <Button variant="outline" onClick={onClose}>Cerrar</Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-);
-
 // ───────────────────────────────────────────────────────────────────────────
-// Copys / Diseño — create & edit content deliverables
+// Un solo diálogo por entregable — el cuerpo y los botones cambian según su
+// estado (pending: editar y enviar; in_review: aprobar o corregir; completed:
+// solo lectura), pero nunca hace falta salir de la tarea para actuar sobre ella.
 // ───────────────────────────────────────────────────────────────────────────
 
-const BriefEditDialog = ({
-  project, brief, approvalNode, onClose,
+const BriefDialog = ({
+  project, brief, hasApprovalStage, queue, onClose, onAdvance,
 }: {
   project: FactoryProject;
   brief: FabricaBriefItem;
-  approvalNode?: StrategyNode;
+  /** Si existe una etapa de Aprobación aguas abajo, "enviar" pasa a revisión en vez de completar directo. */
+  hasApprovalStage: boolean;
+  /** Hermanos en la misma lista, para avanzar automáticamente al siguiente tras aprobar/corregir. */
+  queue?: FabricaBriefItem[];
   onClose: () => void;
+  onAdvance?: (next: FabricaBriefItem) => void;
 }) => {
   const { updateFabricaBrief } = useFactoryStore();
+  const status = getBriefStatus(brief);
+  const isEditable = status === 'pending';
+  const isReviewable = status === 'in_review';
+
   const [content, setContent] = useState(brief.deliverableContent ?? '');
   const [attachments, setAttachments] = useState<Attachment[]>(brief.deliverableAttachments ?? []);
   const [newComment, setNewComment] = useState('');
+  const [correctionComment, setCorrectionComment] = useState('');
 
   const priorComments = brief.comments ?? [];
   const lastCorrection = [...priorComments].reverse().find((c) => c.isAdjustmentRequest);
+
+  const advanceOrClose = () => {
+    const next = queue?.find((b) => b.id !== brief.id) ?? null;
+    if (next && onAdvance) onAdvance(next); else onClose();
+  };
 
   const handleAddComment = () => {
     const text = newComment.trim();
@@ -146,95 +149,149 @@ const BriefEditDialog = ({
 
   const handleSubmit = () => {
     const now = new Date().toISOString();
-    updateFabricaBrief(project.id, brief.id, approvalNode ? {
+    updateFabricaBrief(project.id, brief.id, {
       deliverableContent: content,
       deliverableAttachments: attachments,
-      currentNodeId: approvalNode.id,
-      workflowStatus: 'in_review',
-      deliverableSubmittedAt: now,
-    } : {
-      deliverableContent: content,
-      deliverableAttachments: attachments,
-      workflowStatus: 'completed',
+      workflowStatus: hasApprovalStage ? 'in_review' : 'completed',
       deliverableSubmittedAt: now,
     });
     onClose();
+  };
+
+  const handleApprove = () => {
+    updateFabricaBrief(project.id, brief.id, { workflowStatus: 'completed' });
+    advanceOrClose();
+  };
+
+  const handleReject = () => {
+    const text = correctionComment.trim();
+    if (!text) return;
+    updateFabricaBrief(project.id, brief.id, {
+      comments: [...priorComments, {
+        id: genId(), author: authorName(), content: text, isAdjustmentRequest: true,
+        createdAt: new Date().toISOString(),
+      }],
+      workflowStatus: 'pending',
+      deliverableSubmittedAt: null,
+    });
+    advanceOrClose();
   };
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{brief.tarea}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 flex-wrap">
+            <span>{brief.tarea}</span>
+            <BriefStatusBadge brief={brief} />
+          </DialogTitle>
           <p className="text-xs text-muted-foreground">Rol: {brief.roleLabel}</p>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          {lastCorrection && (
-            <div className="rounded-md bg-state-blocked-bg/60 px-3 py-2 text-sm">
-              <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">
-                Corrección de {lastCorrection.author}
-              </p>
-              <p className="whitespace-pre-wrap">{lastCorrection.content}</p>
-            </div>
-          )}
-
-          {brief.briefNotes && (
-            <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Campos adicionales</p>
-              <p className="text-sm text-foreground/80 whitespace-pre-wrap">{brief.briefNotes}</p>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label>Contenido del entregable</Label>
-            <RichTextEditor
-              content={content}
-              onChange={setContent}
-              placeholder="Escribe aquí el contenido del entregable..."
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Archivos adjuntos</Label>
-            <FileUpload attachments={attachments} onChange={setAttachments} taskId={brief.id} />
-          </div>
-
-          <div className="space-y-2 border-t border-border/40 pt-3">
-            <Label className="text-xs flex items-center gap-1"><MessageSquare className="h-3 w-3" /> Comentarios</Label>
-            {priorComments.length > 0 && (
-              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                {priorComments.map((c) => (
-                  <div
-                    key={c.id}
-                    className={cn('rounded-md px-2.5 py-1.5 text-xs', c.isAdjustmentRequest ? 'bg-state-blocked-bg/50' : 'bg-muted/40')}
-                  >
-                    <p className="text-[10px] text-muted-foreground mb-0.5">
-                      {c.author}{c.isAdjustmentRequest ? ' · corrección' : ''}
-                    </p>
-                    <p className="whitespace-pre-wrap">{c.content}</p>
-                  </div>
-                ))}
+        {isEditable ? (
+          <div className="space-y-4 py-2">
+            {lastCorrection && (
+              <div className="rounded-md bg-state-blocked-bg/60 px-3 py-2 text-sm">
+                <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">
+                  Corrección de {lastCorrection.author}
+                </p>
+                <p className="whitespace-pre-wrap">{lastCorrection.content}</p>
               </div>
             )}
-            <div className="flex gap-1.5">
-              <Textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Agregar un comentario…"
-                className="text-xs min-h-[36px]"
+
+            {brief.briefNotes && (
+              <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Campos adicionales</p>
+                <p className="text-sm text-foreground/80 whitespace-pre-wrap">{brief.briefNotes}</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Contenido del entregable</Label>
+              <RichTextEditor
+                content={content}
+                onChange={setContent}
+                placeholder="Escribe aquí el contenido del entregable..."
               />
-              <Button size="sm" variant="outline" className="h-9 shrink-0" onClick={handleAddComment} disabled={!newComment.trim()}>
-                Agregar
-              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label>Archivos adjuntos</Label>
+              <FileUpload attachments={attachments} onChange={setAttachments} taskId={brief.id} />
+            </div>
+
+            <div className="space-y-2 border-t border-border/40 pt-3">
+              <Label className="text-xs flex items-center gap-1"><MessageSquare className="h-3 w-3" /> Comentarios</Label>
+              {priorComments.length > 0 && (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                  {priorComments.map((c) => (
+                    <div
+                      key={c.id}
+                      className={cn('rounded-md px-2.5 py-1.5 text-xs', c.isAdjustmentRequest ? 'bg-state-blocked-bg/50' : 'bg-muted/40')}
+                    >
+                      <p className="text-[10px] text-muted-foreground mb-0.5">
+                        {c.author}{c.isAdjustmentRequest ? ' · corrección' : ''}
+                      </p>
+                      <p className="whitespace-pre-wrap">{c.content}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-1.5">
+                <Textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Agregar un comentario…"
+                  className="text-xs min-h-[36px]"
+                />
+                <Button size="sm" variant="outline" className="h-9 shrink-0" onClick={handleAddComment} disabled={!newComment.trim()}>
+                  Agregar
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="py-2">
+            <DeliverableSummary brief={brief} />
+          </div>
+        )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={handleSubmit} disabled={!content && attachments.length === 0}>
-            {approvalNode ? 'Enviar a aprobación' : 'Marcar como completado'}
-          </Button>
+        {isReviewable && (
+          <div className="space-y-1.5 border-t border-border/40 pt-3">
+            <Label className="text-xs">Comentario (obligatorio para enviar a corrección)</Label>
+            <Textarea
+              value={correctionComment}
+              onChange={(e) => setCorrectionComment(e.target.value)}
+              className="min-h-[70px] text-sm"
+              placeholder="Explica qué hay que corregir…"
+            />
+          </div>
+        )}
+
+        <DialogFooter className="flex gap-2">
+          {isEditable && (
+            <>
+              <Button variant="outline" onClick={onClose}>Cancelar</Button>
+              <Button onClick={handleSubmit} disabled={!content && attachments.length === 0}>
+                {hasApprovalStage ? 'Enviar a aprobación' : 'Marcar como completado'}
+              </Button>
+            </>
+          )}
+          {isReviewable && (
+            <>
+              <Button
+                variant="outline"
+                onClick={handleReject}
+                disabled={!correctionComment.trim()}
+                className="text-state-blocked border-state-blocked/40 hover:bg-state-blocked-bg/40"
+              >
+                Comentar y enviar a corrección
+              </Button>
+              <Button onClick={handleApprove}>Aprobar</Button>
+            </>
+          )}
+          {status === 'completed' && (
+            <Button variant="outline" onClick={onClose}>Cerrar</Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -296,12 +353,10 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
   const pending = briefs.filter((b) => getBriefStatus(b) === 'pending');
   const inReview = briefs.filter((b) => getBriefStatus(b) === 'in_review');
   const completed = briefs.filter((b) => getBriefStatus(b) === 'completed');
-  const approvalNode = findApprovalNodeFor(nodes, node.id);
+  const hasApprovalStage = !!findApprovalNodeFor(nodes, node.id);
 
   const [newTitle, setNewTitle] = useState('');
-  const [editingBrief, setEditingBrief] = useState<FabricaBriefItem | null>(null);
-  const [viewingBrief, setViewingBrief] = useState<FabricaBriefItem | null>(null);
-  const [reviewingBrief, setReviewingBrief] = useState<FabricaBriefItem | null>(null);
+  const [openBrief, setOpenBrief] = useState<FabricaBriefItem | null>(null);
   const [activeTab, setActiveTab] = useState<'tareas' | 'adjuntos'>('tareas');
 
   const handleAdd = () => {
@@ -350,24 +405,20 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
             </div>
           </div>
 
-          <BriefGroup title="Pendientes" items={pending} onOpen={setEditingBrief} emptyLabel="Sin tareas pendientes." />
-          <BriefGroup title="En revisión" items={inReview} onOpen={setReviewingBrief} hideIfEmpty />
-          <BriefGroup title="Completadas" items={completed} onOpen={setViewingBrief} hideIfEmpty />
+          <BriefGroup title="Pendientes" items={pending} onOpen={setOpenBrief} emptyLabel="Sin tareas pendientes." />
+          <BriefGroup title="En revisión" items={inReview} onOpen={setOpenBrief} hideIfEmpty />
+          <BriefGroup title="Completadas" items={completed} onOpen={setOpenBrief} hideIfEmpty />
         </>
       )}
 
-      {editingBrief && (
-        <BriefEditDialog project={project} brief={editingBrief} approvalNode={approvalNode} onClose={() => setEditingBrief(null)} />
-      )}
-      {viewingBrief && <BriefViewDialog brief={viewingBrief} onClose={() => setViewingBrief(null)} />}
-      {reviewingBrief && (
-        <ApprovalReviewDialog
+      {openBrief && (
+        <BriefDialog
           project={project}
-          brief={reviewingBrief}
+          brief={openBrief}
+          hasApprovalStage={hasApprovalStage}
           queue={inReview}
-          returnToNodeId={node.id}
-          onClose={() => setReviewingBrief(null)}
-          onAdvance={setReviewingBrief}
+          onClose={() => setOpenBrief(null)}
+          onAdvance={setOpenBrief}
         />
       )}
     </div>
@@ -375,109 +426,34 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// Aprobación — review queue with approve / send-to-correction
+// Aprobación — cola de revisión que agrega los entregables "en revisión" del
+// nodo de contenido del que depende (los entregables nunca se mueven aquí).
 // ───────────────────────────────────────────────────────────────────────────
-
-const ApprovalReviewDialog = ({
-  project, brief, queue, returnToNodeId, onClose, onAdvance,
-}: {
-  project: FactoryProject;
-  brief: FabricaBriefItem;
-  queue: FabricaBriefItem[];
-  /** Nodo de contenido (Copys/Diseño) al que vuelve el entregable si se envía a corrección. */
-  returnToNodeId: string | null;
-  onClose: () => void;
-  onAdvance: (next: FabricaBriefItem) => void;
-}) => {
-  const { updateFabricaBrief } = useFactoryStore();
-  const [comment, setComment] = useState('');
-
-  const nextInQueue = () => queue.find((b) => b.id !== brief.id) ?? null;
-
-  const handleApprove = () => {
-    updateFabricaBrief(project.id, brief.id, { workflowStatus: 'completed' });
-    const next = nextInQueue();
-    if (next) onAdvance(next); else onClose();
-  };
-
-  const handleReject = () => {
-    const text = comment.trim();
-    if (!text) return;
-    updateFabricaBrief(project.id, brief.id, {
-      comments: [...(brief.comments ?? []), {
-        id: genId(), author: authorName(), content: text, isAdjustmentRequest: true,
-        createdAt: new Date().toISOString(),
-      }],
-      currentNodeId: returnToNodeId ?? brief.currentNodeId ?? null,
-      workflowStatus: 'pending',
-      deliverableSubmittedAt: null,
-    });
-    const next = nextInQueue();
-    if (next) onAdvance(next); else onClose();
-  };
-
-  return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{brief.tarea}</DialogTitle>
-          <p className="text-xs text-muted-foreground">Rol: {brief.roleLabel}</p>
-        </DialogHeader>
-
-        <DeliverableSummary brief={brief} />
-
-        <div className="space-y-1.5 border-t border-border/40 pt-3">
-          <Label className="text-xs">Comentario (obligatorio para enviar a corrección)</Label>
-          <Textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            className="min-h-[70px] text-sm"
-            placeholder="Explica qué hay que corregir…"
-          />
-        </div>
-
-        <DialogFooter className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleReject}
-            disabled={!comment.trim()}
-            className="text-state-blocked border-state-blocked/40 hover:bg-state-blocked-bg/40"
-          >
-            Comentar y enviar a corrección
-          </Button>
-          <Button onClick={handleApprove}>Aprobar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
 
 export const ApprovalQueuePanel = ({ project, node }: { project: FactoryProject; node: StrategyNode }) => {
   const nodes = project.strategyNodes ?? [];
-  const briefs = briefsForNode(project, node);
+  const contentNode = findContentNodeFor(nodes, node);
+  const briefs = contentNode ? briefsForNode(project, contentNode) : [];
   const queue = briefs.filter((b) => getBriefStatus(b) === 'in_review');
   const done = briefs.filter((b) => getBriefStatus(b) === 'completed');
-  const returnToNodeId = findContentNodeFor(nodes, node)?.id ?? null;
 
-  const [reviewingBrief, setReviewingBrief] = useState<FabricaBriefItem | null>(null);
-  const [viewingBrief, setViewingBrief] = useState<FabricaBriefItem | null>(null);
+  const [openBrief, setOpenBrief] = useState<FabricaBriefItem | null>(null);
 
   return (
     <div className="space-y-3">
-      <BriefGroup title="Pendientes de revisión" items={queue} onOpen={setReviewingBrief} emptyLabel="Sin entregables por revisar." />
-      <BriefGroup title="Aprobadas" items={done} onOpen={setViewingBrief} hideIfEmpty />
+      <BriefGroup title="Pendientes de revisión" items={queue} onOpen={setOpenBrief} emptyLabel="Sin entregables por revisar." />
+      <BriefGroup title="Aprobadas" items={done} onOpen={setOpenBrief} hideIfEmpty />
 
-      {reviewingBrief && (
-        <ApprovalReviewDialog
+      {openBrief && (
+        <BriefDialog
           project={project}
-          brief={reviewingBrief}
+          brief={openBrief}
+          hasApprovalStage
           queue={queue}
-          returnToNodeId={returnToNodeId}
-          onClose={() => setReviewingBrief(null)}
-          onAdvance={setReviewingBrief}
+          onClose={() => setOpenBrief(null)}
+          onAdvance={setOpenBrief}
         />
       )}
-      {viewingBrief && <BriefViewDialog brief={viewingBrief} onClose={() => setViewingBrief(null)} />}
     </div>
   );
 };
