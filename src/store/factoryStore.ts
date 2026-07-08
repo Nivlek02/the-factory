@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
+import type { Attachment } from '@/components/ui/file-upload';
 
 export type ProjectState = 'planning' | 'in_progress' | 'review' | 'blocked' | 'done';
 
@@ -26,6 +27,17 @@ export interface LoopRow {
   responsable: string;
 }
 
+export interface TaskComment {
+  id: string;
+  author: string;
+  content: string;
+  isAdjustmentRequest: boolean;
+  createdAt: string;
+}
+
+/** Estado del flujo Copys → Aprobación → Diseño → Aprobación → Envíos para un entregable. */
+export type BriefWorkflowStatus = 'pending' | 'in_review' | 'completed';
+
 export interface FabricaBriefItem {
   id: string;
   roleId: string;
@@ -39,16 +51,22 @@ export interface FabricaBriefItem {
   mejora?: string;
   /** Nota de contexto pre-cargada al abrir el deliverable (ej: campos adicionales del formulario) */
   briefNotes?: string;
-  /** Comentarios editables (habilitados para el rol Copy) */
+  /** Comentarios editables (habilitados para el rol Copy) — legado, ver `comments` */
   comentarios?: string;
   /** Deliverable del Copy — contenido WYSIWYG */
   deliverableContent?: string;
-  deliverableAttachments?: Array<{name: string; url: string; type: string}>;
+  deliverableAttachments?: Attachment[];
   deliverableSubmittedAt?: string | null;
   /** Delivery tracking for channel plan shipments */
   deliverableEnviado?: boolean | null;
   deliverableMotivoNoEnvio?: string;
   deliverableMetricas?: Record<string, string>;
+  /** Nodo de "Construir estrategia" donde vive hoy este entregable (gestión de flujo por-nodo) */
+  currentNodeId?: string | null;
+  /** Estado de flujo dentro de Construir estrategia, independiente de `checked`/`deliverableSubmittedAt` */
+  workflowStatus?: BriefWorkflowStatus;
+  /** Hilo de comentarios (notas y correcciones de aprobación) */
+  comments?: TaskComment[];
 }
 
 export type ProjectPriority = 'P0' | 'P1' | 'P2';

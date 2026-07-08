@@ -28,6 +28,10 @@ import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import {
+  ContentBriefPanel, ApprovalQueuePanel, DeliveryBriefPanel, briefsForNode,
+} from './StrategyBriefPanels';
+import { getBriefStatus } from '@/components/factory/DeliverableSummary';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Stage palette: the strategic building blocks of a marketing project
@@ -53,6 +57,9 @@ const STAGES: StageMeta[] = [
 ];
 
 const STAGE_BY_TYPE = Object.fromEntries(STAGES.map((s) => [s.type, s])) as Record<StrategyStageType, StageMeta>;
+
+/** Etapas cuyo panel de tareas gestiona entregables (FabricaBriefItem) en vez del todo-list simple. */
+const BRIEF_DRIVEN_STAGES: StrategyStageType[] = ['copys', 'diseno', 'aprobacion', 'envios'];
 
 const STATUS_META: Record<StrategyNode['status'], { label: string; cls: string }> = {
   pending:     { label: 'Pendiente',   cls: 'bg-muted text-muted-foreground' },
@@ -294,6 +301,16 @@ export const LoopTab = ({ project }: Props) => {
   const tasksByNodeId = useMemo(() => {
     const map = new Map<string, { total: number; pending: number }>();
     nodes.forEach((n) => {
+      if (BRIEF_DRIVEN_STAGES.includes(n.stageType)) {
+        const matches = n.stageType === 'envios'
+          ? briefsForNode(project, n).filter((b) => b.tarea.startsWith('Configurar envío por'))
+          : briefsForNode(project, n);
+        map.set(n.id, {
+          total: matches.length,
+          pending: matches.filter((b) => getBriefStatus(b) !== 'completed').length,
+        });
+        return;
+      }
       const matches = project.tasks.filter(
         (t) => n.roleLabel && t.assignedRoleLabel === n.roleLabel,
       );
@@ -303,7 +320,7 @@ export const LoopTab = ({ project }: Props) => {
       });
     });
     return map;
-  }, [nodes, project.tasks]);
+  }, [nodes, project]);
 
 
 
@@ -974,6 +991,8 @@ const NodeTasksDialog = ({
   const role = project.roleGroups.find((g) => g.roleId === node.roleId);
   const members = role?.members ?? [];
 
+  const isBriefDriven = BRIEF_DRIVEN_STAGES.includes(node.stageType);
+
   const matches = node.roleLabel
     ? project.tasks.filter((t) => t.assignedRoleLabel === node.roleLabel)
     : [];
@@ -1000,6 +1019,13 @@ const NodeTasksDialog = ({
     setTitle('');
   };
 
+  const briefPendingCount = isBriefDriven
+    ? (node.stageType === 'envios'
+        ? briefsForNode(project, node).filter((b) => b.tarea.startsWith('Configurar envío por'))
+        : briefsForNode(project, node)
+      ).filter((b) => getBriefStatus(b) !== 'completed').length
+    : pending.length;
+
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-lg">
@@ -1014,13 +1040,19 @@ const NodeTasksDialog = ({
             <div className="leading-tight">
               <div className="text-sm font-semibold">{node.label}</div>
               <div className="text-[11px] text-muted-foreground font-normal">
-                {node.roleLabel ?? 'Sin rol'} · {pending.length} pendiente{pending.length !== 1 ? 's' : ''}
+                {node.roleLabel ?? 'Sin rol'} · {briefPendingCount} pendiente{briefPendingCount !== 1 ? 's' : ''}
               </div>
             </div>
           </DialogTitle>
         </DialogHeader>
 
-        {!node.roleLabel ? (
+        {node.stageType === 'copys' || node.stageType === 'diseno' ? (
+          <ContentBriefPanel project={project} node={node} />
+        ) : node.stageType === 'aprobacion' ? (
+          <ApprovalQueuePanel project={project} node={node} />
+        ) : node.stageType === 'envios' ? (
+          <DeliveryBriefPanel project={project} node={node} />
+        ) : !node.roleLabel ? (
           <p className="text-xs text-muted-foreground py-4">
             Asigna un rol a esta etapa para poder crear tareas.
           </p>
