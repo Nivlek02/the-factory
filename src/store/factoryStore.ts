@@ -88,6 +88,7 @@ export type StrategyStageType =
   | 'formulario'
   | 'landing'
   | 'copys'
+  | 'aprobacion'
   | 'diseno'
   | 'pauta'
   | 'envios'
@@ -182,6 +183,36 @@ interface FactoryStore {
 
   setActiveProject: (id: string | null) => void;
 }
+
+/** Default approval-gated pipeline created for every new project:
+ *  Copy escribe → Estratega aprueba → Diseño hace la pieza → Estratega aprueba → Gestor de canales envía.
+ *  Users can branch/extend it further from "Construir estrategia". */
+const buildDefaultStrategyNodes = (): StrategyNode[] => {
+  const node = (
+    id: string,
+    stageType: StrategyStageType,
+    label: string,
+    roleLabel: string,
+    dependsOn: string[]
+  ): StrategyNode => ({
+    id, stageType, label, roleId: null, roleLabel, memberId: null, memberName: null,
+    status: 'pending', dependsOn,
+  });
+
+  const copyId = `node-${uid()}`;
+  const approveCopyId = `node-${uid()}`;
+  const disenoId = `node-${uid()}`;
+  const approveDisenoId = `node-${uid()}`;
+  const enviosId = `node-${uid()}`;
+
+  return [
+    node(copyId, 'copys', 'Copys', 'Copy', []),
+    node(approveCopyId, 'aprobacion', 'Aprobación de copy', 'Estratega', [copyId]),
+    node(disenoId, 'diseno', 'Diseño de piezas', 'Diseño', [approveCopyId]),
+    node(approveDisenoId, 'aprobacion', 'Aprobación de diseño', 'Estratega', [disenoId]),
+    node(enviosId, 'envios', 'Envío de acciones', 'Gestor de canales', [approveDisenoId]),
+  ];
+};
 
 const patchProject = (
   projects: FactoryProject[],
@@ -324,7 +355,7 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       createdAt: new Date().toISOString(),
       roleGroups: [],
       tasks: [],
-      strategyNodes: [],
+      strategyNodes: buildDefaultStrategyNodes(),
     };
     set((s) => ({ projects: [project, ...s.projects], activeProjectId: id }));
     syncProject(project);

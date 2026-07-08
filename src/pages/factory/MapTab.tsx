@@ -13,7 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   Plus, MoreVertical, Trash2, Workflow, Rocket,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send, Link2,
-  Target, TrendingUp, Users, DollarSign, RefreshCw,
+  Target, TrendingUp, Users, DollarSign, RefreshCw, CheckCircle2,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -46,6 +46,7 @@ const STAGES: StageMeta[] = [
   { type: 'formulario', label: 'Formulario',         short: 'Form',     icon: FileText,        color: 'hsl(var(--team-seo))',        suggestRole: ['Diseñador', 'SEO', 'Mercadeo'] },
   { type: 'landing',    label: 'Landing',            short: 'Landing',  icon: LayoutPanelTop,  color: 'hsl(var(--team-design))',     suggestRole: ['Diseñador', 'SEO'] },
   { type: 'copys',      label: 'Copys',              short: 'Copys',    icon: PenLine,         color: 'hsl(var(--team-copy))',       suggestRole: ['Copy'] },
+  { type: 'aprobacion', label: 'Aprobación',         short: 'Aprueba',  icon: CheckCircle2,    color: 'hsl(var(--factory))',         suggestRole: ['Estratega'] },
   { type: 'diseno',     label: 'Diseño de piezas',   short: 'Diseño',   icon: Palette,         color: 'hsl(var(--team-design))',     suggestRole: ['Diseñador'] },
   { type: 'pauta',      label: 'Pauta',              short: 'Pauta',    icon: Megaphone,       color: 'hsl(var(--team-production))', suggestRole: ['Mercadeo', 'Manager'] },
   { type: 'envios',     label: 'Envíos masivos',     short: 'Envíos',   icon: Send,            color: 'hsl(var(--team-social))',     suggestRole: ['Mercadeo', 'Social'] },
