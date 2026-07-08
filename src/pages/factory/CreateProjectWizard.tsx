@@ -428,10 +428,12 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     if (!isEditing) setTimeout(reset, 300);
   };
 
+  const hasLandingOrFormulario = requerimientos.includes('landing') || requerimientos.includes('formulario');
+
   const canNext = step === 0
     ? data.name.trim().length > 0
-    : step === 2 && requerimientos.includes('formulario')
-    ? formularioConfig.basico !== null
+    : step === 2
+    ? hasLandingOrFormulario && (!requerimientos.includes('formulario') || formularioConfig.basico !== null)
     : true;
   const isLast = step === STEPS.length - 1;
 
@@ -1053,11 +1055,16 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
               {/* ─── Requerimientos ─── */}
               <div className="border-t pt-4">
                 <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
-                  Requerimiento
+                  Requerimiento *
                 </Label>
                 <p className="text-xs text-muted-foreground mb-3 italic">
                   Selecciona los requerimientos del proyecto para generar las tareas correspondientes en el brief de fábrica.
                 </p>
+                {!hasLandingOrFormulario && (
+                  <p className="text-xs mb-3 -mt-2 font-medium text-destructive">
+                    Debes elegir al menos "Landing" o "Formulario de inscripción" para continuar.
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {REQUERIMIENTOS.map((req) => {
                     const active = requerimientos.includes(req.id);
@@ -1188,7 +1195,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
             {step === 0 ? 'Cancelar' : (<><ChevronLeft className="h-4 w-4" /> Atrás</>)}
           </Button>
           {isLast ? (
-            <Button className="bg-gradient-factory text-factory-foreground shadow-glow" onClick={handleCreate} disabled={!data.name.trim()}>
+            <Button className="bg-gradient-factory text-factory-foreground shadow-glow" onClick={handleCreate} disabled={!data.name.trim() || !hasLandingOrFormulario}>
               <Check className="h-4 w-4" /> Crear proyecto
             </Button>
           ) : (
