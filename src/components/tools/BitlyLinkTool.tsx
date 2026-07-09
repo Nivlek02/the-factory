@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { AlertCircle, Check, Copy, Download, Loader2, RefreshCw } from 'lucide-react';
+import { AlertCircle, Check, Copy, Download, Loader2, QrCode, RefreshCw } from 'lucide-react';
 
 /**
  * Autocontenido: pinta lo que el JSON del webhook le da y hace POST de lo que el
@@ -32,8 +32,19 @@ interface BitlyResult {
   [key: string]: unknown;
 }
 
-type Status = 'loading-schema' | 'error-schema' | 'form' | 'submitting' | 'error-submit' | 'success';
+type Status = 'idle' | 'loading-schema' | 'error-schema' | 'form' | 'submitting' | 'error-submit' | 'success';
 type QrStatus = 'idle' | 'downloading' | 'error';
+
+/** Placeholders de guía para los campos más comunes — solo se usan cuando el schema
+ *  del webhook no trae uno propio para ese campo. */
+const DEFAULT_PLACEHOLDERS: Record<string, string> = {
+  link: 'https://tusitio.com/pagina',
+  titulo: 'Así lo encontrarás en Bitly',
+  utm_source: 'Ej: facebook, google, newsletter',
+  utm_medium: 'Ej: cpc, social, email',
+  utm_campaign: 'Ej: lanzamiento-2026',
+  utm_term: 'Ej: palabra clave (Google Ads)',
+};
 
 // Design tokens tal cual el HTML que hoy genera n8n para este formulario —
 // se mantienen locales al componente para no ensuciar el theme global de la app.
@@ -96,7 +107,7 @@ const emptyValuesFor = (schema: FormSchema): Record<string, string> => {
 };
 
 const BitlyLinkTool = () => {
-  const [status, setStatus] = useState<Status>('loading-schema');
+  const [status, setStatus] = useState<Status>('idle');
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [result, setResult] = useState<BitlyResult | null>(null);
@@ -125,10 +136,6 @@ const BitlyLinkTool = () => {
       setStatus('error-schema');
     }
   }, []);
-
-  useEffect(() => {
-    loadSchema();
-  }, [loadSchema]);
 
   useEffect(() => () => {
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
@@ -233,6 +240,45 @@ const BitlyLinkTool = () => {
       style={{ background: T.bg, fontFamily: T.font }}
     >
       <div className="w-full" style={{ maxWidth: 430 }}>
+        {status === 'idle' && (
+          <div className="p-8 sm:p-10 text-center" style={cardStyle}>
+            <div
+              className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
+              style={{ background: 'rgba(37,99,255,0.1)' }}
+            >
+              <QrCode className="h-6 w-6" style={{ color: T.focusBorder }} />
+            </div>
+            <h1 className="mb-2 text-xl font-bold" style={{ color: T.header }}>
+              Crear código QR con métricas de seguimiento
+            </h1>
+            <p className="mb-6 text-sm" style={{ color: T.label }}>
+              Acorta un link, agrégale parámetros UTM para medirlo y descarga su código QR.
+            </p>
+            <button
+              type="button"
+              onClick={loadSchema}
+              className="inline-flex w-full items-center justify-center gap-2 font-semibold transition-transform"
+              style={{
+                height: 50,
+                borderRadius: 999,
+                background: T.submitBg,
+                color: '#ffffff',
+                boxShadow: '0 10px 24px rgba(37,99,255,.4)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = T.submitBgHover;
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = T.submitBg;
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <QrCode className="h-4 w-4" /> Crear QR con métricas de seguimiento (Utms)
+            </button>
+          </div>
+        )}
+
         {status === 'loading-schema' && (
           <div className="p-8 sm:p-10 text-center" style={cardStyle}>
             <Loader2 className="mx-auto h-6 w-6 animate-spin" style={{ color: T.focusBorder }} />
@@ -441,7 +487,7 @@ const FieldInput = ({
   const sharedProps = {
     id: `bitly-field-${field.name}`,
     value,
-    placeholder: field.placeholder,
+    placeholder: field.placeholder ?? DEFAULT_PLACEHOLDERS[field.name],
     disabled,
     onFocus: () => setFocused(true),
     onBlur: () => setFocused(false),
