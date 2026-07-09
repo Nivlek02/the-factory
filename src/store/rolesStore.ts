@@ -13,7 +13,7 @@ const DEFAULT_TAREAS: Record<string, string[]> = {
   diseno:      ['Diseño de piezas gráficas'],
   social:      [],
   seo:         [],
-  produccion:  ['Landing page'],
+  produccion:  [],
   estratega:   [],
   gestor_canales: ['Formulario de inscripción', 'Landing'],
   soporte:     [],

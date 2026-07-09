@@ -61,7 +61,6 @@ type ReqId = (typeof REQUERIMIENTOS)[number]['id'];
 const REQ_ROLE_TAREAS: Record<ReqId, Record<string, string[]>> = {
   landing: {
     gestor_canales: ['Landing'],
-    produccion: ['Landing page'],
   },
   formulario: {},
   pauta_digital: {
@@ -304,10 +303,10 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     };
 
     // ─── Tareas configuradas desde Ajustes ───
-    //   Producción y Diseño siempre participan
+    //   Diseño siempre participa
     for (const role of roles) {
       if (role.tareas.length === 0) continue;
-      if (role.id === 'produccion' || role.id === 'diseno') {
+      if (role.id === 'diseno') {
         addRoleTareasFiltered(role.id, role.label, role.tareas);
       }
     }
@@ -407,6 +406,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       if (involvedInCanal || involvedInLoop) {
         addRoleTareasFiltered(role.id, role.label, role.tareas);
       }
+    }
+
+    // ─── Tarea de landing page — responsabilidad del Gestor de canales ───
+    if (reqs.includes('landing')) {
+      addItem('gestor_canales', 'Gestor de canales', 'Landing page');
     }
 
     // ─── Tarea de formulario de inscripción ───

@@ -58,12 +58,20 @@ const activateNextStage = (project: FactoryProject, brief: FabricaBriefItem) => 
 };
 
 /** Entregables que viven en un nodo: por currentNodeId (fijo desde su creación), o por roleLabel
- *  si aún no lo tienen (datos legados). El entregable nunca "se mueve" de nodo — solo cambia su
- *  `workflowStatus`, así que aprobar/corregir siempre se hace desde la misma tarea. */
+ *  si aún no lo tienen (datos legados/creados desde el wizard). El entregable nunca "se mueve" de
+ *  nodo — solo cambia su `workflowStatus`, así que aprobar/corregir siempre se hace desde la
+ *  misma tarea. El rol "Gestor de canales" se comparte entre Landing, Formulario y Envíos, así
+ *  que para los entregables sin currentNodeId además hace falta desambiguar por el texto de la
+ *  tarea para que cada nodo muestre solo lo suyo. */
 export const briefsForNode = (project: FactoryProject, node: StrategyNode): FabricaBriefItem[] =>
-  (project.fabricaBriefs ?? []).filter((b) =>
-    b.currentNodeId ? b.currentNodeId === node.id : b.roleLabel === node.roleLabel
-  );
+  (project.fabricaBriefs ?? []).filter((b) => {
+    if (b.currentNodeId) return b.currentNodeId === node.id;
+    if (b.roleLabel !== node.roleLabel) return false;
+    if (node.stageType === 'envios') return isCanalBrief(b.tarea);
+    if (node.stageType === 'landing') return b.tarea.includes('Landing');
+    if (node.stageType === 'formulario') return b.tarea.includes('Formulario de inscripción');
+    return true;
+  });
 
 const hasUnresolvedCorrection = (brief: FabricaBriefItem) =>
   getBriefStatus(brief) === 'pending' && (brief.comments ?? []).some((c) => c.isAdjustmentRequest);
@@ -565,7 +573,7 @@ const DeliveryEditDialog = ({
 };
 
 export const DeliveryBriefPanel = ({ project, node }: { project: FactoryProject; node: StrategyNode }) => {
-  const briefs = briefsForNode(project, node).filter((b) => isCanalBrief(b.tarea));
+  const briefs = briefsForNode(project, node);
   const [editingBrief, setEditingBrief] = useState<FabricaBriefItem | null>(null);
 
   if (!node.roleLabel) {

@@ -59,7 +59,7 @@ const STAGE_BY_TYPE = Object.fromEntries(STAGES.map((s) => [s.type, s])) as Reco
 
 /** Etapas cuyo panel de tareas gestiona entregables (FabricaBriefItem) en vez del todo-list simple.
  *  La aprobación de cada entregable vive dentro de su propia tarea (ver StrategyBriefPanels). */
-const BRIEF_DRIVEN_STAGES: StrategyStageType[] = ['copys', 'diseno', 'envios'];
+const BRIEF_DRIVEN_STAGES: StrategyStageType[] = ['copys', 'diseno', 'envios', 'landing', 'formulario'];
 
 const STATUS_META: Record<StrategyNode['status'], { label: string; cls: string }> = {
   pending:     { label: 'Pendiente',   cls: 'bg-muted text-muted-foreground' },
@@ -286,9 +286,7 @@ export const WorkflowTab = ({ project }: Props) => {
     const map = new Map<string, { total: number; pending: number }>();
     nodes.forEach((n) => {
       if (BRIEF_DRIVEN_STAGES.includes(n.stageType)) {
-        const matches = n.stageType === 'envios'
-          ? briefsForNode(project, n).filter((b) => b.tarea.startsWith('Configurar envío por'))
-          : briefsForNode(project, n);
+        const matches = briefsForNode(project, n);
         map.set(n.id, {
           total: matches.length,
           pending: matches.filter((b) => getBriefStatus(b) !== 'completed').length,
@@ -832,10 +830,7 @@ const NodeTasksDialog = ({
   };
 
   const briefPendingCount = isBriefDriven
-    ? (node.stageType === 'envios'
-        ? briefsForNode(project, node).filter((b) => b.tarea.startsWith('Configurar envío por'))
-        : briefsForNode(project, node)
-      ).filter((b) => getBriefStatus(b) !== 'completed').length
+    ? briefsForNode(project, node).filter((b) => getBriefStatus(b) !== 'completed').length
     : pending.length;
 
   return (
@@ -858,7 +853,8 @@ const NodeTasksDialog = ({
           </DialogTitle>
         </DialogHeader>
 
-        {node.stageType === 'copys' || node.stageType === 'diseno' ? (
+        {node.stageType === 'copys' || node.stageType === 'diseno'
+          || node.stageType === 'landing' || node.stageType === 'formulario' ? (
           <ContentBriefPanel project={project} node={node} />
         ) : node.stageType === 'envios' ? (
           <DeliveryBriefPanel project={project} node={node} />
