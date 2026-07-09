@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   FactoryProject,
-  ProjectTask,
   StrategyNode,
   StrategyStageType,
   useFactoryStore,
@@ -11,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
-  Plus, MoreVertical, Trash2, Workflow, Rocket, ArrowRight,
+  MoreVertical, Trash2, Workflow, Rocket, ArrowRight,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   Target, TrendingUp, Users, DollarSign, RefreshCw,
 } from 'lucide-react';
@@ -56,10 +55,6 @@ const STAGES: StageMeta[] = [
 ];
 
 const STAGE_BY_TYPE = Object.fromEntries(STAGES.map((s) => [s.type, s])) as Record<StrategyStageType, StageMeta>;
-
-/** Etapas cuyo panel de tareas gestiona entregables (FabricaBriefItem) en vez del todo-list simple.
- *  La aprobación de cada entregable vive dentro de su propia tarea (ver StrategyBriefPanels). */
-const BRIEF_DRIVEN_STAGES: StrategyStageType[] = ['copys', 'diseno', 'envios', 'landing', 'formulario'];
 
 const STATUS_META: Record<StrategyNode['status'], { label: string; cls: string }> = {
   pending:     { label: 'Pendiente',   cls: 'bg-muted text-muted-foreground' },
@@ -272,7 +267,6 @@ interface Props {
 export const WorkflowTab = ({ project }: Props) => {
   const {
     addStrategyNode, updateStrategyNode, deleteStrategyNode,
-    addTask, updateTask, deleteTask,
   } = useFactoryStore();
 
   const nodes = project.strategyNodes ?? [];
@@ -285,20 +279,10 @@ export const WorkflowTab = ({ project }: Props) => {
   const tasksByNodeId = useMemo(() => {
     const map = new Map<string, { total: number; pending: number }>();
     nodes.forEach((n) => {
-      if (BRIEF_DRIVEN_STAGES.includes(n.stageType)) {
-        const matches = briefsForNode(project, n);
-        map.set(n.id, {
-          total: matches.length,
-          pending: matches.filter((b) => getBriefStatus(b) !== 'completed').length,
-        });
-        return;
-      }
-      const matches = project.tasks.filter(
-        (t) => n.roleLabel && t.assignedRoleLabel === n.roleLabel,
-      );
+      const matches = briefsForNode(project, n);
       map.set(n.id, {
         total: matches.length,
-        pending: matches.filter((t) => t.status !== 'completed').length,
+        pending: matches.filter((b) => getBriefStatus(b) !== 'completed').length,
       });
     });
     return map;
@@ -507,9 +491,6 @@ export const WorkflowTab = ({ project }: Props) => {
             project={project}
             node={node}
             onClose={() => setTasksNodeId(null)}
-            onAddTask={(t) => addTask(project.id, t)}
-            onUpdateTask={(id, u) => updateTask(project.id, id, u)}
-            onDeleteTask={(id) => deleteTask(project.id, id)}
           />
         );
       })()}
@@ -787,55 +768,20 @@ const EditNodeDialog = ({
 // ───────────────────────────────────────────────────────────────────────────
 
 const NodeTasksDialog = ({
-  project, node, onClose, onAddTask, onUpdateTask, onDeleteTask,
+  project, node, onClose,
 }: {
   project: FactoryProject;
   node: StrategyNode;
   onClose: () => void;
-  onAddTask: (t: Omit<ProjectTask, 'id' | 'createdAt'>) => void;
-  onUpdateTask: (id: string, u: Partial<Omit<ProjectTask, 'id' | 'createdAt'>>) => void;
-  onDeleteTask: (id: string) => void;
 }) => {
   const stage = STAGE_BY_TYPE[node.stageType];
   const Icon = stage?.icon ?? FileText;
-  const role = project.roleGroups.find((g) => g.roleId === node.roleId);
-  const members = role?.members ?? [];
 
-  const isBriefDriven = BRIEF_DRIVEN_STAGES.includes(node.stageType);
-
-  const matches = node.roleLabel
-    ? project.tasks.filter((t) => t.assignedRoleLabel === node.roleLabel)
-    : [];
-  const pending = matches.filter((t) => t.status !== 'completed');
-  const done = matches.filter((t) => t.status === 'completed');
-
-  const [title, setTitle] = useState('');
-  const [memberId, setMemberId] = useState(node.memberId ?? '');
-
-  const handleAdd = () => {
-    const t = title.trim();
-    if (!t || !node.roleLabel) return;
-    const m = members.find((x) => x.id === memberId);
-    onAddTask({
-      title: t,
-      description: '',
-      assignedMemberId: m?.id ?? node.memberId ?? null,
-      assignedMemberName: m?.name ?? node.memberName ?? null,
-      assignedRoleLabel: node.roleLabel,
-      status: 'pending',
-      priority: null,
-      dueDate: null,
-    });
-    setTitle('');
-  };
-
-  const briefPendingCount = isBriefDriven
-    ? briefsForNode(project, node).filter((b) => getBriefStatus(b) !== 'completed').length
-    : pending.length;
+  const briefPendingCount = briefsForNode(project, node).filter((b) => getBriefStatus(b) !== 'completed').length;
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className={isBriefDriven ? 'sm:max-w-2xl max-h-[85vh] overflow-y-auto' : 'sm:max-w-lg'}>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span
@@ -853,85 +799,10 @@ const NodeTasksDialog = ({
           </DialogTitle>
         </DialogHeader>
 
-        {node.stageType === 'copys' || node.stageType === 'diseno'
-          || node.stageType === 'landing' || node.stageType === 'formulario' ? (
-          <ContentBriefPanel project={project} node={node} />
-        ) : node.stageType === 'envios' ? (
+        {node.stageType === 'envios' ? (
           <DeliveryBriefPanel project={project} node={node} />
-        ) : !node.roleLabel ? (
-          <p className="text-xs text-muted-foreground py-4">
-            Asigna un rol a esta etapa para poder crear tareas.
-          </p>
         ) : (
-          <div className="space-y-4 py-1">
-            {/* Quick add */}
-            <div className="space-y-1.5">
-              <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Nueva tarea</Label>
-              <div className="flex gap-1.5">
-                <Input
-                  placeholder="¿Qué hay que hacer?"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                  className="h-8 text-xs"
-                />
-                {members.length > 0 && (
-                  <Select value={memberId} onValueChange={setMemberId}>
-                    <SelectTrigger className="h-8 text-xs w-32">
-                      <SelectValue placeholder="Asignar" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {members.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                <Button size="sm" className="h-8" onClick={handleAdd} disabled={!title.trim()}>
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Pending list */}
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Pendientes ({pending.length})
-              </p>
-              <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                {pending.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic px-1 py-2">Sin tareas pendientes.</p>
-                ) : pending.map((t) => (
-                  <TaskRow
-                    key={t.id}
-                    task={t}
-                    onComplete={() => onUpdateTask(t.id, { status: 'completed' })}
-                    onDelete={() => onDeleteTask(t.id)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Done collapsible */}
-            {done.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Completadas ({done.length})
-                </p>
-                <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1 opacity-70">
-                  {done.map((t) => (
-                    <TaskRow
-                      key={t.id}
-                      task={t}
-                      onReopen={() => onUpdateTask(t.id, { status: 'pending' })}
-                      onDelete={() => onDeleteTask(t.id)}
-                      done
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <ContentBriefPanel project={project} node={node} />
         )}
 
         <DialogFooter>
@@ -941,39 +812,6 @@ const NodeTasksDialog = ({
     </Dialog>
   );
 };
-
-const TaskRow = ({
-  task, onComplete, onReopen, onDelete, done,
-}: {
-  task: ProjectTask;
-  onComplete?: () => void;
-  onReopen?: () => void;
-  onDelete: () => void;
-  done?: boolean;
-}) => (
-  <div className="flex items-center gap-2 px-2 py-1.5 rounded-md border border-border/60 bg-card/60 hover:bg-muted/40 group">
-    <button
-      onClick={done ? onReopen : onComplete}
-      className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 transition-colors ${
-        done ? 'bg-state-done border-state-done' : 'border-muted-foreground/40 hover:border-state-done'
-      }`}
-      aria-label={done ? 'Reabrir' : 'Completar'}
-    />
-    <span className={`text-xs flex-1 truncate ${done ? 'line-through text-muted-foreground' : ''}`}>
-      {task.title}
-    </span>
-    {task.assignedMemberName && (
-      <span className="text-[10px] text-muted-foreground shrink-0">{task.assignedMemberName}</span>
-    )}
-    <button
-      onClick={onDelete}
-      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-      aria-label="Eliminar"
-    >
-      <Trash2 className="h-3 w-3" />
-    </button>
-  </div>
-);
 
 
 
