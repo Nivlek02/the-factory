@@ -609,15 +609,46 @@ const DeliveryEditDialog = ({
 };
 
 export const DeliveryBriefPanel = ({ project, node }: { project: FactoryProject; node: StrategyNode }) => {
+  const { addFabricaBriefs } = useFactoryStore();
   const briefs = briefsForNode(project, node);
   const [editingBrief, setEditingBrief] = useState<FabricaBriefItem | null>(null);
+  const [newTitle, setNewTitle] = useState('');
 
   if (!node.roleLabel) {
     return <p className="text-sm text-muted-foreground py-4">Asigna un rol a esta etapa para ver los envíos.</p>;
   }
 
+  const handleAdd = () => {
+    const t = newTitle.trim();
+    if (!t) return;
+    addFabricaBriefs(project.id, [{
+      roleId: node.roleId ?? node.roleLabel!,
+      roleLabel: node.roleLabel!,
+      tarea: t,
+      currentNodeId: node.id,
+      workflowStatus: 'pending',
+    }]);
+    setNewTitle('');
+  };
+
   return (
     <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Nueva tarea</Label>
+        <div className="flex gap-1.5">
+          <Input
+            placeholder="¿Qué hay que crear?"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+            className="h-9 text-sm"
+          />
+          <Button size="sm" className="h-9" onClick={handleAdd} disabled={!newTitle.trim()}>
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
       <BriefGroup
         title="Envíos"
         items={briefs}

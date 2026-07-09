@@ -59,9 +59,9 @@ type ReqId = (typeof REQUERIMIENTOS)[number]['id'];
 /** Maps each requerimiento to the roles + specific tareas that should appear when selected.
  *  If tareas array is empty for a role, ALL their tareas are included. */
 const REQ_ROLE_TAREAS: Record<ReqId, Record<string, string[]>> = {
-  landing: {
-    gestor_canales: ['Landing'],
-  },
+  // "Landing page" (Gestor de canales) se crea de forma explícita e incondicional más abajo
+  // — este mapa ya no debe agregar una segunda tarea "Landing" duplicada vía canales.
+  landing: {},
   formulario: {},
   pauta_digital: {
     social: [],
