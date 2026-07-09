@@ -447,7 +447,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   // Rebuild when canales, loops, requerimientos or formularioConfig change
   useEffect(() => {
     const hasFormulario = requerimientos.includes('formulario') && formularioConfig.basico !== null;
-    const hasContent = canalesRows.length > 0 || loopsRows.some((l) => l.responsable) || hasFormulario;
+    const hasLanding = requerimientos.includes('landing');
+    const hasContent = canalesRows.length > 0 || loopsRows.some((l) => l.responsable) || hasFormulario || hasLanding;
     if (hasContent) {
       setFabricaBriefs(buildFabricaBriefs(canalesRows, loopsRows, requerimientos, formularioConfig));
     } else {

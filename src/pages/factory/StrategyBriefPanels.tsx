@@ -11,6 +11,7 @@ import {
   BriefStatusBadge,
   getBriefStatus,
   isCanalBrief,
+  isUrlBrief,
 } from '@/components/factory/DeliverableSummary';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +27,15 @@ import FileUpload, { Attachment } from '@/components/ui/file-upload';
 
 const genId = () => `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const authorName = () => useAuthStore.getState().currentUser?.fullName ?? 'Usuario';
+
+const isValidUrl = (value: string) => {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
 
 const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleDateString('es-CO', {
@@ -148,6 +158,8 @@ const BriefDialog = ({
   const status = getBriefStatus(brief);
   const isEditable = status === 'pending';
   const isReviewable = status === 'in_review';
+  /** Landing/Formulario de inscripción: el entregable es una URL, no contenido enriquecido. */
+  const isUrl = isUrlBrief(brief.tarea);
 
   const [content, setContent] = useState(brief.deliverableContent ?? '');
   const [attachments, setAttachments] = useState<Attachment[]>(brief.deliverableAttachments ?? []);
@@ -246,18 +258,35 @@ const BriefDialog = ({
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label>Contenido del entregable</Label>
-              <RichTextEditor
-                content={content}
-                onChange={setContent}
-                placeholder="Escribe aquí el contenido del entregable..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Archivos adjuntos</Label>
-              <FileUpload attachments={attachments} onChange={setAttachments} taskId={brief.id} />
-            </div>
+            {isUrl ? (
+              <div className="space-y-2">
+                <Label>URL del entregable</Label>
+                <Input
+                  type="url"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="https://..."
+                />
+                {content.trim() && !isValidUrl(content.trim()) && (
+                  <p className="text-xs text-destructive">Ingresa una URL válida (con http:// o https://)</p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Contenido del entregable</Label>
+                  <RichTextEditor
+                    content={content}
+                    onChange={setContent}
+                    placeholder="Escribe aquí el contenido del entregable..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Archivos adjuntos</Label>
+                  <FileUpload attachments={attachments} onChange={setAttachments} taskId={brief.id} />
+                </div>
+              </>
+            )}
 
             <div className="space-y-2 border-t border-border/40 pt-3">
               <Label className="text-xs flex items-center gap-1"><MessageSquare className="h-3 w-3" /> Comentarios e historial</Label>
@@ -322,7 +351,10 @@ const BriefDialog = ({
           {isEditable && (
             <>
               <Button variant="outline" onClick={onClose}>Cancelar</Button>
-              <Button onClick={handleSubmit} disabled={!content && attachments.length === 0}>
+              <Button
+                onClick={handleSubmit}
+                disabled={isUrl ? !isValidUrl(content.trim()) : !content && attachments.length === 0}
+              >
                 {hasApprovalStage ? 'Enviar a aprobación' : 'Marcar como completado'}
               </Button>
             </>
