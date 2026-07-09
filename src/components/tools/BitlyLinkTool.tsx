@@ -1,29 +1,31 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { AlertCircle, Check, Copy, Download, Loader2, QrCode, RefreshCw } from 'lucide-react';
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { AlertCircle, Check, Copy, Download, Loader2, QrCode } from 'lucide-react';
 
 /**
- * Autocontenido: pinta lo que el JSON del webhook le da y hace POST de lo que el
- * usuario llena. Ningún campo del formulario ni lógica de Bitly/QR vive acá — todo
- * sale del schema remoto.
+ * Autocontenido: los campos del formulario viven acá (no hay un webhook de schema — n8n
+ * solo expone el de envío). El componente solo hace POST de lo que el usuario llena y
+ * pinta la respuesta; ninguna lógica de Bitly/QR vive acá.
  */
-const SCHEMA_URL = 'https://n8n.camarabaq.org.co/webhook/formulariolink';
 const SUBMIT_URL = 'https://n8n.camarabaq.org.co/webhook/crearlink';
 
-type FieldType = 'text' | 'url' | 'email' | 'tel' | 'number' | 'textarea';
+type FieldType = 'text' | 'url';
 
-interface FormFieldSchema {
+interface FormField {
   name: string;
   label: string;
   type: FieldType;
-  placeholder?: string;
-  required?: boolean;
+  placeholder: string;
+  required: boolean;
 }
 
-interface FormSchema {
-  title: string;
-  fields: FormFieldSchema[];
-  submitLabel: string;
-}
+const FIELDS: FormField[] = [
+  { name: 'link', label: 'Link a cortar', type: 'url', placeholder: 'https://tusitio.com/pagina', required: true },
+  { name: 'titulo', label: 'Título (Así lo encontrarás en Bitly)', type: 'text', placeholder: 'Así lo encontrarás en Bitly', required: true },
+  { name: 'utm_source', label: 'UTM Source (Opcional)', type: 'text', placeholder: 'Ej: facebook, google, newsletter', required: false },
+  { name: 'utm_medium', label: 'UTM Medium (Opcional)', type: 'text', placeholder: 'Ej: cpc, social, email', required: false },
+  { name: 'utm_campaign', label: 'UTM Campaign (Opcional)', type: 'text', placeholder: 'Ej: lanzamiento-2026', required: false },
+  { name: 'utm_term', label: 'UTM Term (Opcional)', type: 'text', placeholder: 'Ej: palabra clave (Google Ads)', required: false },
+];
 
 interface BitlyResult {
   url: string;
@@ -32,19 +34,8 @@ interface BitlyResult {
   [key: string]: unknown;
 }
 
-type Status = 'idle' | 'loading-schema' | 'error-schema' | 'form' | 'submitting' | 'error-submit' | 'success';
+type Status = 'idle' | 'form' | 'submitting' | 'error-submit' | 'success';
 type QrStatus = 'idle' | 'downloading' | 'error';
-
-/** Placeholders de guía para los campos más comunes — solo se usan cuando el schema
- *  del webhook no trae uno propio para ese campo. */
-const DEFAULT_PLACEHOLDERS: Record<string, string> = {
-  link: 'https://tusitio.com/pagina',
-  titulo: 'Así lo encontrarás en Bitly',
-  utm_source: 'Ej: facebook, google, newsletter',
-  utm_medium: 'Ej: cpc, social, email',
-  utm_campaign: 'Ej: lanzamiento-2026',
-  utm_term: 'Ej: palabra clave (Google Ads)',
-};
 
 // Design tokens tal cual el HTML que hoy genera n8n para este formulario —
 // se mantienen locales al componente para no ensuciar el theme global de la app.
@@ -100,50 +91,30 @@ const filenameFromResponse = (res: Response): string => {
   return `codigo-qr.${ext}`;
 };
 
-const emptyValuesFor = (schema: FormSchema): Record<string, string> => {
+const emptyValues = (): Record<string, string> => {
   const values: Record<string, string> = {};
-  for (const f of schema.fields) values[f.name] = '';
+  for (const f of FIELDS) values[f.name] = '';
   return values;
 };
 
 const BitlyLinkTool = () => {
   const [status, setStatus] = useState<Status>('idle');
-  const [schema, setSchema] = useState<FormSchema | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [result, setResult] = useState<BitlyResult | null>(null);
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, string>>(emptyValues);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
   const [qrStatus, setQrStatus] = useState<QrStatus>('idle');
   const [qrError, setQrError] = useState('');
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadSchema = useCallback(async () => {
-    setStatus('loading-schema');
-    try {
-      const res = await fetch(SCHEMA_URL, { method: 'GET' });
-      if (!res.ok) throw new Error(`El servidor respondió con error ${res.status}`);
-      const data = (await res.json()) as FormSchema;
-      if (!data || !Array.isArray(data.fields)) {
-        throw new Error('El formulario recibido no tiene un formato válido');
-      }
-      setSchema(data);
-      setValues(emptyValuesFor(data));
-      setFieldErrors({});
-      setStatus('form');
-    } catch (err) {
-      setErrorMessage(errorMessageFrom(err, 'No se pudo cargar el formulario. Intenta de nuevo.'));
-      setStatus('error-schema');
-    }
-  }, []);
-
   useEffect(() => () => {
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
   }, []);
 
-  const validate = (activeSchema: FormSchema): boolean => {
+  const validate = (): boolean => {
     const errors: Record<string, string> = {};
-    for (const field of activeSchema.fields) {
+    for (const field of FIELDS) {
       const raw = (values[field.name] ?? '').trim();
       if (field.required && !raw) {
         errors[field.name] = 'Este campo es obligatorio';
@@ -159,7 +130,7 @@ const BitlyLinkTool = () => {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!schema || !validate(schema)) return;
+    if (!validate()) return;
 
     setStatus('submitting');
     try {
@@ -182,8 +153,7 @@ const BitlyLinkTool = () => {
   };
 
   const resetForm = () => {
-    if (!schema) return;
-    setValues(emptyValuesFor(schema));
+    setValues(emptyValues());
     setFieldErrors({});
     setCopied(false);
     setQrStatus('idle');
@@ -254,48 +224,20 @@ const BitlyLinkTool = () => {
             <p className="mb-6 text-sm" style={{ color: T.label }}>
               Acorta un link, agrégale parámetros UTM para medirlo y descarga su código QR.
             </p>
-            <button
-              type="button"
-              onClick={loadSchema}
-              className="inline-flex w-full items-center justify-center gap-2 font-semibold transition-transform"
-              style={{
-                height: 50,
-                borderRadius: 999,
-                background: T.submitBg,
-                color: '#ffffff',
-                boxShadow: '0 10px 24px rgba(37,99,255,.4)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = T.submitBgHover;
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = T.submitBg;
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <QrCode className="h-4 w-4" /> Crear QR con métricas de seguimiento (Utms)
-            </button>
+            <PillButton onClick={() => setStatus('form')} icon={<QrCode className="h-4 w-4 shrink-0" />}>
+              Crear QR con métricas de seguimiento (Utms)
+            </PillButton>
           </div>
         )}
 
-        {status === 'loading-schema' && (
-          <div className="p-8 sm:p-10 text-center" style={cardStyle}>
-            <Loader2 className="mx-auto h-6 w-6 animate-spin" style={{ color: T.focusBorder }} />
-            <p className="mt-3 text-sm" style={{ color: T.label }}>Cargando formulario…</p>
-          </div>
-        )}
-
-        {status === 'error-schema' && <ErrorCard message={errorMessage} onRetry={loadSchema} />}
-
-        {schema && (status === 'form' || status === 'submitting' || status === 'error-submit') && (
+        {(status === 'form' || status === 'submitting' || status === 'error-submit') && (
           <div className="p-6 sm:p-8" style={cardStyle}>
             <h1 className="mb-6 text-xl font-bold" style={{ color: T.header }}>
-              {schema.title}
+              Crear código QR con métricas de seguimiento
             </h1>
 
             <form noValidate onSubmit={handleSubmit} className="space-y-4">
-              {schema.fields.map((field) => (
+              {FIELDS.map((field) => (
                 <FieldInput
                   key={field.name}
                   field={field}
@@ -312,7 +254,7 @@ const BitlyLinkTool = () => {
                 </p>
               )}
 
-              <SubmitButton submitting={status === 'submitting'} label={schema.submitLabel} />
+              <SubmitButton submitting={status === 'submitting'} label="Generar link" />
             </form>
           </div>
         )}
@@ -343,58 +285,19 @@ const BitlyLinkTool = () => {
             </div>
 
             <div className="flex flex-col gap-2.5">
-              <button
-                type="button"
-                onClick={() => handleCopy(result.url)}
-                className="inline-flex items-center justify-center gap-2 font-semibold transition-transform"
-                style={{
-                  height: 48,
-                  borderRadius: 999,
-                  background: T.submitBg,
-                  color: '#ffffff',
-                  boxShadow: '0 10px 24px rgba(37,99,255,.4)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = T.submitBgHover;
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = T.submitBg;
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              <PillButton onClick={() => handleCopy(result.url)} icon={copied ? <Check className="h-4 w-4 shrink-0" /> : <Copy className="h-4 w-4 shrink-0" />}>
                 {copied ? '¡Link copiado!' : 'Copiar link'}
-              </button>
+              </PillButton>
 
               {result.qrUrl && (
-                <button
-                  type="button"
+                <PillButton
+                  variant="outline"
                   disabled={qrStatus === 'downloading'}
                   onClick={() => handleDownloadQr(result.qrUrl!)}
-                  className="inline-flex items-center justify-center gap-2 font-semibold transition-transform disabled:cursor-not-allowed disabled:opacity-70"
-                  style={{
-                    height: 48,
-                    borderRadius: 999,
-                    background: '#ffffff',
-                    color: T.focusBorder,
-                    border: `1px solid ${T.inputBorder}`,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (qrStatus === 'downloading') return;
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
+                  icon={qrStatus === 'downloading' ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Download className="h-4 w-4 shrink-0" />}
                 >
-                  {qrStatus === 'downloading' ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
                   {qrStatus === 'downloading' ? 'Descargando…' : 'Descargar código QR'}
-                </button>
+                </PillButton>
               )}
 
               {qrStatus === 'error' && (
@@ -419,41 +322,48 @@ const BitlyLinkTool = () => {
   );
 };
 
-const ErrorCard = ({ message, onRetry }: { message: string; onRetry: () => void }) => (
-  <div
-    className="p-8 sm:p-10 text-center"
-    style={{
-      fontFamily: T.font,
-      background: T.cardBg,
-      border: `1px solid ${T.cardBorder}`,
-      borderRadius: T.cardRadius,
-      boxShadow: `0 20px 45px -18px ${T.cardShadow}`,
-    }}
-  >
-    <div
-      className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
-      style={{ background: 'rgba(255,109,90,0.1)' }}
-    >
-      <AlertCircle className="h-6 w-6" style={{ color: T.required }} />
-    </div>
-    <p className="mb-5 text-sm" style={{ color: T.label }}>{message}</p>
+/** Botón píldora compartido — crece con el alto del contenido (padding en vez de height fijo)
+ *  para que el ícono nunca quede fuera del botón cuando el texto envuelve a dos líneas. */
+const PillButton = ({
+  onClick, icon, children, variant = 'primary', disabled,
+}: {
+  onClick: () => void;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  variant?: 'primary' | 'outline';
+  disabled?: boolean;
+}) => {
+  const isPrimary = variant === 'primary';
+  return (
     <button
       type="button"
-      onClick={onRetry}
-      className="inline-flex items-center justify-center gap-2 font-semibold"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex w-full items-center justify-center gap-2 text-center font-semibold leading-snug transition-transform disabled:cursor-not-allowed disabled:opacity-70"
       style={{
-        height: 44,
-        padding: '0 20px',
         borderRadius: 999,
-        background: T.submitBg,
-        color: '#ffffff',
-        boxShadow: '0 10px 24px rgba(37,99,255,.4)',
+        padding: '13px 22px',
+        background: isPrimary ? T.submitBg : '#ffffff',
+        color: isPrimary ? '#ffffff' : T.focusBorder,
+        border: isPrimary ? 'none' : `1px solid ${T.inputBorder}`,
+        boxShadow: isPrimary ? '0 10px 24px rgba(37,99,255,.4)' : 'none',
+        fontFamily: T.font,
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        if (isPrimary) e.currentTarget.style.background = T.submitBgHover;
+        e.currentTarget.style.transform = 'translateY(-1px)';
+      }}
+      onMouseLeave={(e) => {
+        if (isPrimary) e.currentTarget.style.background = T.submitBg;
+        e.currentTarget.style.transform = 'translateY(0)';
       }}
     >
-      <RefreshCw className="h-4 w-4" /> Reintentar
+      {icon}
+      <span>{children}</span>
     </button>
-  </div>
-);
+  );
+};
 
 const FieldInput = ({
   field,
@@ -462,7 +372,7 @@ const FieldInput = ({
   disabled,
   onChange,
 }: {
-  field: FormFieldSchema;
+  field: FormField;
   value: string;
   error?: string;
   disabled: boolean;
@@ -484,17 +394,6 @@ const FieldInput = ({
     background: disabled ? '#f6f8ff' : '#ffffff',
   };
 
-  const sharedProps = {
-    id: `bitly-field-${field.name}`,
-    value,
-    placeholder: field.placeholder ?? DEFAULT_PLACEHOLDERS[field.name],
-    disabled,
-    onFocus: () => setFocused(true),
-    onBlur: () => setFocused(false),
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(e.target.value),
-    style: inputStyle,
-  };
-
   return (
     <div>
       <label
@@ -505,11 +404,17 @@ const FieldInput = ({
         {field.label}
         {field.required && <span style={{ color: T.required }}> *</span>}
       </label>
-      {field.type === 'textarea' ? (
-        <textarea rows={3} {...sharedProps} />
-      ) : (
-        <input type={field.type} {...sharedProps} />
-      )}
+      <input
+        id={`bitly-field-${field.name}`}
+        type={field.type}
+        value={value}
+        placeholder={field.placeholder}
+        disabled={disabled}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onChange={(e) => onChange(e.target.value)}
+        style={inputStyle}
+      />
       {error && (
         <p className="mt-1 text-xs" style={{ color: T.required }}>{error}</p>
       )}
