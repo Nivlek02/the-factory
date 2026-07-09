@@ -143,12 +143,16 @@ const BriefGroup = ({
 // ───────────────────────────────────────────────────────────────────────────
 
 const BriefDialog = ({
-  project, brief, hasApprovalStage, queue, onClose, onAdvance,
+  project, brief, hasApprovalStage, urlOnly, queue, onClose, onAdvance,
 }: {
   project: FactoryProject;
   brief: FabricaBriefItem;
   /** Si existe una etapa de Aprobación aguas abajo, "enviar" pasa a revisión en vez de completar directo. */
   hasApprovalStage: boolean;
+  /** El nodo es Landing/Formulario: el entregable siempre es una URL, sin importar el texto de la
+   *  tarea (incluye tareas creadas a mano desde "Nueva tarea" en ese nodo). Si no se pasa, se
+   *  infiere del texto de la tarea (`isUrlBrief`) para compatibilidad con otros llamadores. */
+  urlOnly?: boolean;
   /** Hermanos en la misma lista, para avanzar automáticamente al siguiente tras aprobar/corregir. */
   queue?: FabricaBriefItem[];
   onClose: () => void;
@@ -158,8 +162,7 @@ const BriefDialog = ({
   const status = getBriefStatus(brief);
   const isEditable = status === 'pending';
   const isReviewable = status === 'in_review';
-  /** Landing/Formulario de inscripción: el entregable es una URL, no contenido enriquecido. */
-  const isUrl = isUrlBrief(brief.tarea);
+  const isUrl = urlOnly ?? isUrlBrief(brief.tarea);
 
   const [content, setContent] = useState(brief.deliverableContent ?? '');
   const [attachments, setAttachments] = useState<Attachment[]>(brief.deliverableAttachments ?? []);
@@ -500,6 +503,7 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
           project={project}
           brief={openBrief}
           hasApprovalStage={hasApprovalStage}
+          urlOnly={node.stageType === 'landing' || node.stageType === 'formulario'}
           queue={inReview}
           onClose={() => setOpenBrief(null)}
           onAdvance={setOpenBrief}
