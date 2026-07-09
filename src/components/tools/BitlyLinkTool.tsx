@@ -206,22 +206,22 @@ const BitlyLinkTool = () => {
 
   return (
     <div
-      className="flex min-h-full items-center justify-center px-3 py-8 sm:px-6"
+      className="flex h-full items-center justify-center overflow-y-auto px-3 py-3 sm:px-6"
       style={{ background: T.bg, fontFamily: T.font }}
     >
-      <div className="w-full" style={{ maxWidth: 430 }}>
+      <div className="w-full" style={{ maxWidth: 400 }}>
         {status === 'idle' && (
-          <div className="p-8 sm:p-10 text-center" style={cardStyle}>
+          <div className="p-5 sm:p-7 text-center" style={cardStyle}>
             <div
-              className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
+              className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full"
               style={{ background: 'rgba(37,99,255,0.1)' }}
             >
-              <QrCode className="h-6 w-6" style={{ color: T.focusBorder }} />
+              <QrCode className="h-5 w-5" style={{ color: T.focusBorder }} />
             </div>
-            <h1 className="mb-2 text-xl font-bold" style={{ color: T.header }}>
+            <h1 className="mb-1.5 text-lg font-bold" style={{ color: T.header }}>
               Crear código QR con métricas de seguimiento
             </h1>
-            <p className="mb-6 text-sm" style={{ color: T.label }}>
+            <p className="mb-4 text-sm" style={{ color: T.label }}>
               Acorta un link, agrégale parámetros UTM para medirlo y descarga su código QR.
             </p>
             <PillButton onClick={() => setStatus('form')} icon={<QrCode className="h-4 w-4 shrink-0" />}>
@@ -231,12 +231,12 @@ const BitlyLinkTool = () => {
         )}
 
         {(status === 'form' || status === 'submitting' || status === 'error-submit') && (
-          <div className="p-6 sm:p-8" style={cardStyle}>
-            <h1 className="mb-6 text-xl font-bold" style={{ color: T.header }}>
+          <div className="p-5 sm:p-6" style={cardStyle}>
+            <h1 className="mb-4 text-lg font-bold" style={{ color: T.header }}>
               Crear código QR con métricas de seguimiento
             </h1>
 
-            <form noValidate onSubmit={handleSubmit} className="space-y-4">
+            <form noValidate onSubmit={handleSubmit} className="space-y-3">
               {FIELDS.map((field) => (
                 <FieldInput
                   key={field.name}
@@ -260,20 +260,20 @@ const BitlyLinkTool = () => {
         )}
 
         {status === 'success' && result && (
-          <div className="p-6 sm:p-8 text-center" style={cardStyle}>
+          <div className="p-5 sm:p-6 text-center" style={cardStyle}>
             <div
-              className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
+              className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full"
               style={{ background: 'rgba(37,99,255,0.1)' }}
             >
-              <Check className="h-6 w-6" style={{ color: T.focusBorder }} />
+              <Check className="h-5 w-5" style={{ color: T.focusBorder }} />
             </div>
-            <h1 className="mb-1 text-xl font-bold" style={{ color: T.header }}>Link generado</h1>
+            <h1 className="mb-1 text-lg font-bold" style={{ color: T.header }}>Link generado</h1>
             {result.titulo && (
-              <p className="mb-4 text-sm" style={{ color: T.label }}>{result.titulo}</p>
+              <p className="mb-3 text-sm" style={{ color: T.label }}>{result.titulo}</p>
             )}
 
             <div
-              className="mb-5 break-all px-4 py-3 text-sm font-medium"
+              className="mb-4 break-all px-3.5 py-2.5 text-sm font-medium"
               style={{
                 background: '#f4f7ff',
                 border: `1px solid ${T.inputBorder}`,
@@ -284,7 +284,7 @@ const BitlyLinkTool = () => {
               {result.url}
             </div>
 
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2">
               <PillButton onClick={() => handleCopy(result.url)} icon={copied ? <Check className="h-4 w-4 shrink-0" /> : <Copy className="h-4 w-4 shrink-0" />}>
                 {copied ? '¡Link copiado!' : 'Copiar link'}
               </PillButton>
@@ -342,7 +342,7 @@ const PillButton = ({
       className="inline-flex w-full items-center justify-center gap-2 text-center font-semibold leading-snug transition-transform disabled:cursor-not-allowed disabled:opacity-70"
       style={{
         borderRadius: 999,
-        padding: '13px 22px',
+        padding: '11px 20px',
         background: isPrimary ? T.submitBg : '#ffffff',
         color: isPrimary ? '#ffffff' : T.focusBorder,
         border: isPrimary ? 'none' : `1px solid ${T.inputBorder}`,
@@ -388,7 +388,7 @@ const FieldInput = ({
     color: T.inputText,
     fontFamily: T.font,
     fontSize: 14,
-    padding: '11px 14px',
+    padding: '9px 12px',
     outline: 'none',
     transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
     background: disabled ? '#f6f8ff' : '#ffffff',
@@ -398,7 +398,7 @@ const FieldInput = ({
     <div>
       <label
         htmlFor={`bitly-field-${field.name}`}
-        className="mb-1.5 block text-xs font-semibold"
+        className="mb-1 block text-xs font-semibold"
         style={{ color: T.label, fontFamily: T.font }}
       >
         {field.label}
@@ -426,9 +426,9 @@ const SubmitButton = ({ submitting, label }: { submitting: boolean; label: strin
   <button
     type="submit"
     disabled={submitting}
-    className="mt-2 flex w-full items-center justify-center gap-2 font-semibold transition-transform disabled:cursor-not-allowed disabled:opacity-80"
+    className="mt-1 flex w-full items-center justify-center gap-2 font-semibold transition-transform disabled:cursor-not-allowed disabled:opacity-80"
     style={{
-      height: 50,
+      height: 46,
       borderRadius: 999,
       background: T.submitBg,
       color: '#ffffff',
