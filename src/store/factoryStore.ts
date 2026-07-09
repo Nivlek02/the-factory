@@ -16,6 +16,7 @@ export interface CanalRow {
   id: string;
   canal: string;
   dia: string;
+  hora: string;
   copy: string;
   segmento: string;
 }
@@ -268,6 +269,35 @@ const stripApprovalNodes = (nodes: StrategyNode[]): StrategyNode[] => {
     .map((n) => ({ ...n, dependsOn: bridge(n.dependsOn) }));
 };
 
+/** Mapea cada requerimiento del wizard al stage raíz correspondiente en el flujo de trabajo. */
+const REQ_TO_STAGE: Record<string, { stageType: StrategyStageType; label: string; roleLabel: string }> = {
+  landing: { stageType: 'landing', label: 'Landing', roleLabel: 'Gestor de canales' },
+  formulario: { stageType: 'formulario', label: 'Formulario de inscripción', roleLabel: 'Gestor de canales' },
+  pauta_digital: { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Social Media' },
+};
+
+/** Sincroniza los nodos raíz (landing/formulario/pauta) del flujo de trabajo con los
+ *  requerimientos actuales del proyecto al editarlo — agrega los que falten y quita los que
+ *  ya no estén seleccionados, sin tocar el resto de la cadena (Copys → Diseño → Envíos) ni
+ *  nodos agregados a mano. Corrige que un requerimiento desmarcado (ej. "Formulario de
+ *  inscripción") dejara su nodo huérfano en Flujo de trabajo. */
+const syncRequerimientoNodes = (nodes: StrategyNode[], requerimientos: string[]): StrategyNode[] => {
+  let result = nodes;
+  for (const [reqId, cfg] of Object.entries(REQ_TO_STAGE)) {
+    const hasReq = requerimientos.includes(reqId);
+    const existing = result.find((n) => n.stageType === cfg.stageType);
+    if (hasReq && !existing) {
+      result = [...result, {
+        id: `node-${uid()}`, stageType: cfg.stageType, label: cfg.label, roleId: null,
+        roleLabel: cfg.roleLabel, memberId: null, memberName: null, status: 'pending', dependsOn: [],
+      }];
+    } else if (!hasReq && existing) {
+      result = result.filter((n) => n.id !== existing.id);
+    }
+  }
+  return result;
+};
+
 const patchProject = (
   projects: FactoryProject[],
   id: string,
@@ -418,7 +448,13 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
 
   updateProject: (id, updates) =>
     persistAfter(set, get, id, (s) => ({
-      projects: patchProject(s.projects, id, (p) => ({ ...p, ...updates })),
+      projects: patchProject(s.projects, id, (p) => ({
+        ...p,
+        ...updates,
+        strategyNodes: updates.requerimientos
+          ? syncRequerimientoNodes(p.strategyNodes, updates.requerimientos)
+          : p.strategyNodes,
+      })),
     })),
 
   deleteProject: (id) => {

@@ -10,7 +10,11 @@ import {
 import { useFactoryStore, type FabricaBriefItem } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
 import RichTextEditor from '@/components/ui/rich-text-editor';
-import { Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Check, Target, GitBranch, Calendar } from 'lucide-react';
+import {
+  Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Check, Target, GitBranch, Calendar, Clock,
+  Mail, MessageCircle, Smartphone, Facebook, Instagram, Music, Search, Phone, Store, Briefcase, Handshake,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { FactoryProject } from '@/store/factoryStore';
 interface Props {
@@ -87,6 +91,21 @@ const formatDisplay = (dateStr: string) => {
   return `${parseInt(match[3], 10)} de ${MESES_CORTO[m - 1]}`;
 };
 
+/** Canales disponibles en el Plan de canales, cada uno con su ícono. */
+const CHANNELS: { id: string; icon: LucideIcon }[] = [
+  { id: 'Correo', icon: Mail },
+  { id: 'WhatsApp', icon: MessageCircle },
+  { id: 'SMS', icon: Smartphone },
+  { id: 'Facebook', icon: Facebook },
+  { id: 'Instagram', icon: Instagram },
+  { id: 'TikTok', icon: Music },
+  { id: 'Google Ads', icon: Search },
+  { id: 'Call Center', icon: Phone },
+  { id: 'BTL', icon: Store },
+  { id: 'KAM', icon: Briefcase },
+  { id: 'Relacionamiento', icon: Handshake },
+];
+
 const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Props) => {
   const { addProject, updateProject, projects: allProjects } = useFactoryStore();
   const { roles } = useRolesStore();
@@ -158,8 +177,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       return false;
     });
   }, [data.eventCategory, data.startDate, data.dueDate, allProjects, editProject]);
-  const [canalesRows, setCanalesRows] = useState<{ id: string; canal: string; dia: string; copy: string; segmento: string }[]>(
-    editProject?.canales?.map((c) => ({ ...c })) ?? []
+  const [canalesRows, setCanalesRows] = useState<{ id: string; canal: string; dia: string; hora: string; copy: string; segmento: string }[]>(
+    editProject?.canales?.map((c) => ({ hora: '', ...c })) ?? []
   );
   const [loopsRows, setLoopsRows] = useState<{ id: string; disparador: string; reaccion: string; responsable: string }[]>(
     editProject?.loops?.map((l) => ({ ...l })) ?? []
@@ -241,7 +260,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   };
 
   const addCanalRow = () => {
-    setCanalesRows((prev) => [...prev, { id: uid(), canal: 'Correo', dia: '', copy: '', segmento: 'todos' }]);
+    setCanalesRows((prev) => [...prev, { id: uid(), canal: 'Correo', dia: '', hora: '', copy: '', segmento: 'todos' }]);
   };
   const removeCanalRow = (id: string) => setCanalesRows((prev) => prev.filter((r) => r.id !== id));
   const updateCanalRow = (id: string, field: string, value: string) =>
@@ -317,9 +336,12 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           }
           break;
         }
-        case 'Meta Ads': {
+        case 'Facebook':
+        case 'Instagram':
+        case 'TikTok':
+        case 'Google Ads': {
           addItem('social', 'Social Media',
-            `Configurar campaña en Meta Ads${row.copy ? ` — ${row.copy}` : ''}`);
+            `Configurar campaña en ${row.canal}${row.copy ? ` — ${row.copy}` : ''}`);
           const socialRole = roles.find((r) => r.id === 'social');
           if (socialRole) {
             addRoleTareasFiltered(socialRole.id, socialRole.label, socialRole.tareas);
@@ -341,13 +363,21 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           }
           break;
         }
-        case 'RRSS': {
-          addItem('social', 'Social Media',
-            `Plan de contenido para RRSS${row.copy ? ` — ${row.copy}` : ''}`);
-          const socialRole = roles.find((r) => r.id === 'social');
-          if (socialRole) {
-            addRoleTareasFiltered(socialRole.id, socialRole.label, socialRole.tareas);
-          }
+        case 'BTL': {
+          addItem('estratega', 'Estratega',
+            `Coordinar activación BTL${ref ? ` — ${ref}` : ''}`);
+          addItem('diseno', 'Diseñador',
+            `Diseñar piezas BTL${row.copy ? ` — ${row.copy}` : ''}`);
+          break;
+        }
+        case 'KAM': {
+          addItem('estratega', 'Estratega',
+            `Gestionar cuentas clave (KAM)${ref ? ` — ${ref}` : ''}`);
+          break;
+        }
+        case 'Relacionamiento': {
+          addItem('gestor_canales', 'Gestor de canales',
+            `Plan de relacionamiento${ref ? ` — ${ref}` : ''}`);
           break;
         }
       }
@@ -398,9 +428,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       Correo:      ['gestor_canales', 'copy'],
       WhatsApp:    ['gestor_canales', 'copy'],
       SMS:         ['gestor_canales', 'copy'],
-      'Meta Ads':  ['social'],
+      Facebook:    ['social'],
+      Instagram:   ['social'],
+      TikTok:      ['social'],
+      'Google Ads': ['social'],
       'Call Center': ['estratega', 'copy'],
-      RRSS:        ['social'],
+      BTL:         ['estratega', 'diseno'],
+      KAM:         ['estratega'],
+      Relacionamiento: ['gestor_canales'],
     };
     return map[canal]?.includes(roleId) ?? false;
   };
@@ -856,50 +891,78 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   Plan de canales
                 </Label>
                 <div className="space-y-2">
-                  {/* Header */}
-                  <div className="grid grid-cols-[90px_60px_1fr_minmax(0,140px)] gap-2 px-2">
+                  {/* Header — visible solo desde md, en mobile cada fila es una tarjeta apilada */}
+                  <div className="hidden md:grid md:grid-cols-[130px_115px_90px_1fr_130px] gap-2 px-2">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Canal</span>
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      <span className="hidden sm:inline">Día</span>
+                      <Calendar className="h-3 w-3" /> Día
+                    </span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3 w-3" /> Hora
                     </span>
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Copy / Ángulo del toque</span>
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Segmento</span>
                   </div>
                   {canalesRows.map((row) => (
-                    <div key={row.id} className="grid grid-cols-[90px_60px_1fr_minmax(0,140px)_24px] gap-2 items-center rounded-lg border border-border/60 bg-card p-2">
-                      <select
-                        value={row.canal}
-                        onChange={(e) => updateCanalRow(row.id, 'canal', e.target.value)}
-                        className="text-xs bg-transparent border-none outline-none cursor-pointer font-medium"
-                      >
-                        <option value="Correo">Correo</option>
-                        <option value="WhatsApp">WhatsApp</option>
-                        <option value="SMS">SMS</option>
-                        <option value="Meta Ads">Meta Ads</option>
-                        <option value="RRSS">RRSS</option>
-                        <option value="Call Center">Call Center</option>
-                      </select>
-                      <div
-                        className="relative flex items-center gap-1 w-full cursor-pointer"
-                        onClick={(e) => {
-                          const input = e.currentTarget.querySelector('input[type="date"]') as HTMLInputElement;
-                          input?.showPicker();
-                        }}
-                      >
-                        <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        {row.dia && (
+                    <div
+                      key={row.id}
+                      className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-3 md:grid md:grid-cols-[130px_115px_90px_1fr_130px_24px] md:items-center md:gap-2 md:p-2"
+                    >
+                      <Select value={row.canal} onValueChange={(v) => updateCanalRow(row.id, 'canal', v)}>
+                        <SelectTrigger className="h-8 w-full gap-1.5 border-none bg-transparent px-1 text-xs font-medium shadow-none focus:ring-0 focus:ring-offset-0 md:h-auto">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CHANNELS.map(({ id, icon: Icon }) => (
+                            <SelectItem key={id} value={id} className="text-xs">
+                              <span className="flex items-center gap-2">
+                                <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                {id}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <div className="flex items-center gap-3 md:contents">
+                        <div
+                          className="relative flex flex-1 items-center gap-1.5 cursor-pointer md:flex-none"
+                          onClick={(e) => {
+                            const input = e.currentTarget.querySelector('input[type="date"]') as HTMLInputElement;
+                            input?.showPicker();
+                          }}
+                        >
+                          <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <span className="text-xs text-foreground truncate">
-                            {formatDisplay(row.dia)}
+                            {row.dia ? formatDisplay(row.dia) : <span className="text-muted-foreground/60">Fecha</span>}
                           </span>
-                        )}
-                        <input
-                          type="date"
-                          value={row.dia}
-                          onChange={(e) => updateCanalRow(row.id, 'dia', e.target.value)}
-                          className="w-0 h-0 opacity-0 absolute -z-10"
-                        />
+                          <input
+                            type="date"
+                            value={row.dia}
+                            onChange={(e) => updateCanalRow(row.id, 'dia', e.target.value)}
+                            className="w-0 h-0 opacity-0 absolute -z-10"
+                          />
+                        </div>
+                        <div
+                          className="relative flex flex-1 items-center gap-1.5 cursor-pointer md:flex-none"
+                          onClick={(e) => {
+                            const input = e.currentTarget.querySelector('input[type="time"]') as HTMLInputElement;
+                            input?.showPicker();
+                          }}
+                        >
+                          <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-xs text-foreground truncate">
+                            {row.hora || <span className="text-muted-foreground/60">Hora</span>}
+                          </span>
+                          <input
+                            type="time"
+                            value={row.hora ?? ''}
+                            onChange={(e) => updateCanalRow(row.id, 'hora', e.target.value)}
+                            className="w-0 h-0 opacity-0 absolute -z-10"
+                          />
+                        </div>
                       </div>
+
                       <input
                         placeholder="Ángulo del toque…"
                         value={row.copy}
@@ -923,7 +986,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                       </div>
                       <button
                         onClick={() => removeCanalRow(row.id)}
-                        className="text-muted-foreground hover:text-destructive transition-colors"
+                        className="self-end text-muted-foreground hover:text-destructive transition-colors md:self-auto"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
