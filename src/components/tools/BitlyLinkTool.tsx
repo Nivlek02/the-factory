@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { AlertCircle, Check, Copy, Loader2, RefreshCw } from 'lucide-react';
+import { AlertCircle, Check, Copy, Download, Loader2, RefreshCw } from 'lucide-react';
 
 /**
  * Autocontenido: pinta lo que el JSON del webhook le da y hace POST de lo que el
- * usuario llena. Ningún campo del formulario ni lógica de Bitly vive acá — todo
+ * usuario llena. Ningún campo del formulario ni lógica de Bitly/QR vive acá — todo
  * sale del schema remoto.
  */
 const SCHEMA_URL = 'https://n8n.camarabaq.org.co/webhook/formulariolink';
@@ -28,10 +28,12 @@ interface FormSchema {
 interface BitlyResult {
   url: string;
   titulo?: string;
+  qrUrl?: string;
   [key: string]: unknown;
 }
 
 type Status = 'loading-schema' | 'error-schema' | 'form' | 'submitting' | 'error-submit' | 'success';
+type QrStatus = 'idle' | 'downloading' | 'error';
 
 // Design tokens tal cual el HTML que hoy genera n8n para este formulario —
 // se mantienen locales al componente para no ensuciar el theme global de la app.
@@ -67,6 +69,26 @@ const isValidUrl = (value: string) => {
 const errorMessageFrom = (err: unknown, fallback: string) =>
   err instanceof Error && err.message ? err.message : fallback;
 
+const EXTENSION_BY_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+  'application/pdf': 'pdf',
+};
+
+/** El nombre de archivo sale del header `Content-Disposition` si n8n lo manda;
+ *  si no, se arma uno genérico a partir del content-type de la respuesta. */
+const filenameFromResponse = (res: Response): string => {
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const match = disposition.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+  if (match?.[1]) return decodeURIComponent(match[1]);
+
+  const mime = (res.headers.get('Content-Type') ?? 'image/png').split(';')[0].trim();
+  const ext = EXTENSION_BY_MIME[mime] ?? 'png';
+  return `codigo-qr.${ext}`;
+};
+
 const emptyValuesFor = (schema: FormSchema): Record<string, string> => {
   const values: Record<string, string> = {};
   for (const f of schema.fields) values[f.name] = '';
@@ -81,6 +103,8 @@ const BitlyLinkTool = () => {
   const [values, setValues] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
+  const [qrStatus, setQrStatus] = useState<QrStatus>('idle');
+  const [qrError, setQrError] = useState('');
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadSchema = useCallback(async () => {
@@ -155,8 +179,33 @@ const BitlyLinkTool = () => {
     setValues(emptyValuesFor(schema));
     setFieldErrors({});
     setCopied(false);
+    setQrStatus('idle');
+    setQrError('');
     setResult(null);
     setStatus('form');
+  };
+
+  const handleDownloadQr = async (qrUrl: string) => {
+    setQrStatus('downloading');
+    setQrError('');
+    try {
+      const res = await fetch(qrUrl);
+      if (!res.ok) throw new Error(`El servidor respondió con error ${res.status}`);
+      const blob = await res.blob();
+      const filename = filenameFromResponse(res);
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+      setQrStatus('idle');
+    } catch (err) {
+      setQrError(errorMessageFrom(err, 'No se pudo descargar el código QR. Intenta de nuevo.'));
+      setQrStatus('error');
+    }
   };
 
   const handleCopy = async (url: string) => {
@@ -271,6 +320,42 @@ const BitlyLinkTool = () => {
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 {copied ? '¡Link copiado!' : 'Copiar link'}
               </button>
+
+              {result.qrUrl && (
+                <button
+                  type="button"
+                  disabled={qrStatus === 'downloading'}
+                  onClick={() => handleDownloadQr(result.qrUrl!)}
+                  className="inline-flex items-center justify-center gap-2 font-semibold transition-transform disabled:cursor-not-allowed disabled:opacity-70"
+                  style={{
+                    height: 48,
+                    borderRadius: 999,
+                    background: '#ffffff',
+                    color: T.focusBorder,
+                    border: `1px solid ${T.inputBorder}`,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (qrStatus === 'downloading') return;
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
+                  {qrStatus === 'downloading' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  {qrStatus === 'downloading' ? 'Descargando…' : 'Descargar código QR'}
+                </button>
+              )}
+
+              {qrStatus === 'error' && (
+                <p className="flex items-center justify-center gap-1.5 text-xs" style={{ color: T.required }}>
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {qrError}
+                </p>
+              )}
 
               <button
                 type="button"
