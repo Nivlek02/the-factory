@@ -31,6 +31,15 @@ const formatDateTime = (iso?: string | null) => {
   });
 };
 
+const formatSimpleDate = (dateStr?: string | null) => {
+  if (!dateStr) return '';
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return dateStr;
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('es-CO', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  });
+};
+
 export const isCanalBrief = (tarea: string) => tarea.startsWith('Configurar envío por');
 export const isMetricsBrief = (tarea: string) => tarea.startsWith('Recolectar métricas de');
 export const isUrlBrief = (tarea: string) => tarea.includes('Landing') || tarea.includes('Formulario de inscripción');
@@ -58,7 +67,23 @@ export const DeliverableSummary = ({ brief }: { brief: FabricaBriefItem }) => {
         </div>
       )}
 
-      {isCanalBrief(brief.tarea) ? (
+      {brief.deliverableDone !== undefined ? (
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">¿Se realizó?</p>
+          {brief.deliverableDone === true && (
+            <Badge variant="outline" className="border-0 bg-state-done-bg text-state-done">Hecho</Badge>
+          )}
+          {brief.deliverableDone === false && (
+            <Badge variant="outline" className="border-0 bg-state-blocked-bg text-state-blocked">No hecho</Badge>
+          )}
+          {brief.deliverableDone == null && (
+            <p className="text-sm text-muted-foreground italic">Aún sin definir</p>
+          )}
+          {brief.deliverableDate && (
+            <p className="text-sm text-foreground/80">Fecha: {formatSimpleDate(brief.deliverableDate)}</p>
+          )}
+        </div>
+      ) : isCanalBrief(brief.tarea) ? (
         <div className="space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado del envío</p>
           {brief.deliverableEnviado === true && (
@@ -111,6 +136,20 @@ export const DeliverableSummary = ({ brief }: { brief: FabricaBriefItem }) => {
         </div>
       ) : (
         <div className="space-y-3">
+          {brief.deliverablePublicada !== undefined && (
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">¿Publicada?</p>
+              {brief.deliverablePublicada === true && (
+                <Badge variant="outline" className="border-0 bg-state-done-bg text-state-done">Publicada</Badge>
+              )}
+              {brief.deliverablePublicada === false && (
+                <Badge variant="outline" className="border-0 bg-state-blocked-bg text-state-blocked">No publicada</Badge>
+              )}
+              {brief.deliverablePublicada == null && (
+                <p className="text-sm text-muted-foreground italic">Aún sin definir</p>
+              )}
+            </div>
+          )}
           <div className="space-y-1.5">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contenido</p>
             {brief.deliverableContent ? (

@@ -17,6 +17,7 @@ const DEFAULT_TAREAS: Record<string, string[]> = {
   estratega:   [],
   gestor_canales: ['Formulario de inscripción', 'Landing'],
   soporte:     [],
+  trafficker:  [],
 };
 
 /** Roles visibles para asignar equipo a un proyecto (pestaña Equipo). 'social', 'seo' y
@@ -29,13 +30,14 @@ const DEFAULT_ROLES: CustomRole[] = [
   { id: 'gestor_canales', label: 'Gestor de canales',  isDefault: true, tareas: DEFAULT_TAREAS.gestor_canales },
   { id: 'estratega',      label: 'Estratega',          isDefault: true, tareas: DEFAULT_TAREAS.estratega },
   { id: 'soporte',        label: 'Soporte',            isDefault: true, tareas: DEFAULT_TAREAS.soporte },
+  { id: 'trafficker',     label: 'Trafficker',         isDefault: true, tareas: DEFAULT_TAREAS.trafficker },
   { id: 'social',         label: 'Social Media',       isDefault: true, tareas: DEFAULT_TAREAS.social },
   { id: 'seo',            label: 'SEO',                isDefault: true, tareas: DEFAULT_TAREAS.seo },
   { id: 'produccion',     label: 'Producción',         isDefault: true, tareas: DEFAULT_TAREAS.produccion },
 ];
 
-/** Los 5 roles asignables desde la pestaña Equipo de un proyecto. */
-export const ASSIGNABLE_ROLE_IDS = ['copy', 'diseno', 'gestor_canales', 'estratega', 'soporte'];
+/** Los 6 roles asignables desde la pestaña Equipo de un proyecto. */
+export const ASSIGNABLE_ROLE_IDS = ['copy', 'diseno', 'gestor_canales', 'estratega', 'soporte', 'trafficker'];
 
 interface RolesStore {
   roles: CustomRole[];
@@ -87,7 +89,7 @@ export const useRolesStore = create<RolesStore>()(
     }),
     {
       name: 'factory-roles-store',
-      version: 2,
+      version: 3,
       migrate: (persisted: any) => {
         const oldRoles: { id: string; label: string; isDefault?: boolean }[] = persisted?.roles ?? [];
         const roles = oldRoles.map((r) => {

@@ -50,7 +50,6 @@ const SEGMENTOS_LABEL: Record<string, string> = {
 const REQUERIMIENTOS = [
   { id: 'landing', label: 'Landing' },
   { id: 'formulario', label: 'Formulario de inscripción' },
-  { id: 'pauta_digital', label: 'Pauta en redes sociales' },
   { id: 'piezas', label: 'Piezas' },
 ] as const;
 
@@ -63,9 +62,6 @@ const REQ_ROLE_TAREAS: Record<ReqId, Record<string, string[]>> = {
   // — este mapa ya no debe agregar una segunda tarea "Landing" duplicada vía canales.
   landing: {},
   formulario: {},
-  pauta_digital: {
-    social: [],
-  },
   piezas: {
     diseno: ['Diseño de piezas gráficas'],
   },
@@ -339,26 +335,22 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         case 'Instagram':
         case 'TikTok':
         case 'Google Ads': {
-          addItem('social', 'Social Media',
+          addItem('trafficker', 'Trafficker',
             `Configurar campaña en ${row.canal}${row.copy ? ` — ${row.copy}` : ''}`);
-          const socialRole = roles.find((r) => r.id === 'social');
-          if (socialRole) {
-            addRoleTareasFiltered(socialRole.id, socialRole.label, socialRole.tareas);
+          const traffickerRole = roles.find((r) => r.id === 'trafficker');
+          if (traffickerRole) {
+            addRoleTareasFiltered(traffickerRole.id, traffickerRole.label, traffickerRole.tareas);
           }
           break;
         }
         case 'Call Center': {
-          addItem('estratega', 'Estratega',
-            `Gestionar Call Center${ref ? ` — ${ref}` : ''}`);
+          // La tarea de registro de Estratega ("¿se hizo? sí/no + fecha") se activa sola al
+          // aprobar el guion — ver activateNextStage en StrategyBriefPanels — no se siembra aquí.
           addItem('copy', 'Copywriter',
             `Redactar guion para Call Center${row.copy ? ` — ${row.copy}` : ''}`);
           const copyRole = roles.find((r) => r.id === 'copy');
           if (copyRole) {
             addRoleTareasFiltered(copyRole.id, copyRole.label, copyRole.tareas);
-          }
-          const estRole = roles.find((r) => r.id === 'estratega');
-          if (estRole) {
-            addRoleTareasFiltered(estRole.id, estRole.label, estRole.tareas);
           }
           break;
         }
@@ -375,7 +367,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           break;
         }
         case 'Relacionamiento': {
-          addItem('gestor_canales', 'Gestor de canales',
+          addItem('estratega', 'Estratega',
             `Plan de relacionamiento${ref ? ` — ${ref}` : ''}`);
           break;
         }
@@ -432,14 +424,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       Correo:      ['gestor_canales', 'copy'],
       WhatsApp:    ['gestor_canales', 'copy'],
       SMS:         ['gestor_canales', 'copy'],
-      Facebook:    ['social'],
-      Instagram:   ['social'],
-      TikTok:      ['social'],
-      'Google Ads': ['social'],
-      'Call Center': ['estratega', 'copy'],
+      Facebook:    ['trafficker'],
+      Instagram:   ['trafficker'],
+      TikTok:      ['trafficker'],
+      'Google Ads': ['trafficker'],
+      'Call Center': ['copy'],
       BTL:         ['estratega', 'diseno'],
       KAM:         ['estratega'],
-      Relacionamiento: ['gestor_canales'],
+      Relacionamiento: ['estratega'],
     };
     return map[canal]?.includes(roleId) ?? false;
   };

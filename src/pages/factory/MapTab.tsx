@@ -13,6 +13,7 @@ import {
   MoreVertical, Trash2, Workflow, Rocket, ArrowRight,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   Target, TrendingUp, Users, DollarSign, RefreshCw,
+  Briefcase, Store, Handshake, Phone, PhoneCall,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -28,7 +29,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  ContentBriefPanel, DeliveryBriefPanel, briefsForNode,
+  ContentBriefPanel, DeliveryBriefPanel, DoneDateBriefPanel, PautaBriefPanel, briefsForNode,
 } from './StrategyBriefPanels';
 import { getBriefStatus } from '@/components/factory/DeliverableSummary';
 
@@ -50,8 +51,13 @@ const STAGES: StageMeta[] = [
   { type: 'landing',    label: 'Landing',            short: 'Landing',  icon: LayoutPanelTop,  color: 'hsl(var(--team-design))',     suggestRole: ['Diseñador', 'SEO'] },
   { type: 'copys',      label: 'Copys',              short: 'Copys',    icon: PenLine,         color: 'hsl(var(--team-copy))',       suggestRole: ['Copy'] },
   { type: 'diseno',     label: 'Diseño de piezas',   short: 'Diseño',   icon: Palette,         color: 'hsl(var(--team-design))',     suggestRole: ['Diseñador'] },
-  { type: 'pauta',      label: 'Pauta en redes sociales', short: 'Pauta', icon: Megaphone,      color: 'hsl(var(--team-social))',      suggestRole: ['Social Media'] },
+  { type: 'pauta',      label: 'Pauta en redes sociales', short: 'Pauta', icon: Megaphone,      color: 'hsl(var(--team-social))',      suggestRole: ['Trafficker'] },
   { type: 'envios',     label: 'Envíos masivos',     short: 'Envíos',   icon: Send,            color: 'hsl(var(--team-social))',     suggestRole: ['Mercadeo', 'Social'] },
+  { type: 'kam',        label: 'KAM',                short: 'KAM',      icon: Briefcase,       color: 'hsl(var(--team-direction))',  suggestRole: ['Estratega'] },
+  { type: 'btl',        label: 'BTL',                short: 'BTL',      icon: Store,           color: 'hsl(var(--team-production))', suggestRole: ['Estratega'] },
+  { type: 'relacionamiento', label: 'Relacionamiento', short: 'Relac.', icon: Handshake,       color: 'hsl(var(--team-direction))',  suggestRole: ['Estratega'] },
+  { type: 'callcenter_guion', label: 'Guion de llamada', short: 'Guion', icon: Phone,          color: 'hsl(var(--team-copy))',       suggestRole: ['Copywriter'] },
+  { type: 'callcenter', label: 'Call Center',        short: 'Call Center', icon: PhoneCall,    color: 'hsl(var(--team-direction))',  suggestRole: ['Estratega'] },
 ];
 
 const STAGE_BY_TYPE = Object.fromEntries(STAGES.map((s) => [s.type, s])) as Record<StrategyStageType, StageMeta>;
@@ -82,6 +88,10 @@ const LANE_RANK: Partial<Record<StrategyStageType, number>> = {
   envios: 1,
   custom: 1,
   pauta: 2,
+  kam: 2,
+  btl: 2,
+  relacionamiento: 2,
+  callcenter_guion: 2,
 };
 
 function computeLanes(nodes: StrategyNode[]): StrategyNode[][] {
@@ -801,6 +811,10 @@ const NodeTasksDialog = ({
 
         {node.stageType === 'envios' ? (
           <DeliveryBriefPanel project={project} node={node} />
+        ) : node.stageType === 'pauta' ? (
+          <PautaBriefPanel project={project} node={node} />
+        ) : node.stageType === 'kam' || node.stageType === 'btl' || node.stageType === 'relacionamiento' || node.stageType === 'callcenter' ? (
+          <DoneDateBriefPanel project={project} node={node} />
         ) : (
           <ContentBriefPanel project={project} node={node} />
         )}

@@ -20,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, MessageSquare, FileText, Image as ImageIcon, History } from 'lucide-react';
+import { Plus, MessageSquare, FileText, Image as ImageIcon, History, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import RichTextEditor from '@/components/ui/rich-text-editor';
 import FileUpload, { Attachment } from '@/components/ui/file-upload';
@@ -42,17 +42,21 @@ const formatDateTime = (iso: string) =>
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 
-/** Etapas de contenido genérico (comparten el mismo panel de tareas/entregables). */
-const CONTENT_STAGE_TYPES: StrategyNode['stageType'][] = ['copys', 'diseno'];
+/** Etapas cuya aprobación puede activar automáticamente una tarea en el siguiente nodo de la
+ *  cadena (ver `activateNextStage`). */
+const AUTO_ADVANCE_STAGE_TYPES: StrategyNode['stageType'][] = ['copys', 'diseno', 'callcenter_guion', 'callcenter'];
 
-/** Al aprobar un entregable, activa automáticamente una tarea pendiente para el siguiente rol
- *  de la cadena (ej: Copys aprobado → nueva tarea para Diseño). El entregable original no se
- *  mueve — el historial de aprobación queda en su propia tarea (ver `briefsForNode`). */
-const activateNextStage = (project: FactoryProject, brief: FabricaBriefItem) => {
-  if (!brief.currentNodeId) return;
+/** Al aprobar un entregable, activa automáticamente una tarea pendiente para el siguiente nodo
+ *  de la cadena (ej: Copys aprobado → nueva tarea para Diseño; guion de Call Center aprobado →
+ *  tarea de registro para Estratega). El entregable original no se mueve — el historial de
+ *  aprobación queda en su propia tarea (ver `briefsForNode`).
+ *  `currentNodeId` se recibe explícito (no se lee de `brief.currentNodeId`) porque entregables
+ *  sembrados desde el wizard pueden no tenerlo estampado — el panel que abre el diálogo siempre
+ *  sabe en qué nodo vive la tarea que se está aprobando. */
+const activateNextStage = (project: FactoryProject, currentNodeId: string, brief: FabricaBriefItem) => {
   const nodes = project.strategyNodes ?? [];
   const nextNodes = nodes.filter(
-    (n) => n.dependsOn.includes(brief.currentNodeId!) && CONTENT_STAGE_TYPES.includes(n.stageType) && n.roleLabel
+    (n) => n.dependsOn.includes(currentNodeId) && AUTO_ADVANCE_STAGE_TYPES.includes(n.stageType) && n.roleLabel
   );
   if (nextNodes.length === 0) return;
   useFactoryStore.getState().addFabricaBriefs(
@@ -60,7 +64,10 @@ const activateNextStage = (project: FactoryProject, brief: FabricaBriefItem) => 
     nextNodes.map((n) => ({
       roleId: n.roleId ?? n.roleLabel!,
       roleLabel: n.roleLabel!,
-      tarea: brief.tarea,
+      // El registro de Call Center no es "el mismo guion avanzando" — es un nuevo checkpoint.
+      tarea: n.stageType === 'callcenter'
+        ? brief.tarea.replace(/^Redactar guion para /i, 'Registrar realización — ')
+        : brief.tarea,
       currentNodeId: n.id,
       workflowStatus: 'pending' as const,
     }))
@@ -80,6 +87,17 @@ export const briefsForNode = (project: FactoryProject, node: StrategyNode): Fabr
     if (node.stageType === 'envios') return isCanalBrief(b.tarea);
     if (node.stageType === 'landing') return b.tarea.includes('Landing');
     if (node.stageType === 'formulario') return b.tarea.includes('Formulario de inscripción');
+    // KAM/BTL/Relacionamiento/Call Center comparten roleLabel "Estratega" — sin esto, un
+    // entregable sin currentNodeId (que debería estar cubierto por stampCanalNodeIds, ver
+    // factoryStore) aparecería a la vez en los 4 nodos en vez de en el suyo.
+    if (node.stageType === 'kam') return /\bKAM\b/i.test(b.tarea);
+    if (node.stageType === 'btl') return /\bBTL\b/i.test(b.tarea);
+    if (node.stageType === 'relacionamiento') return /relacionamiento/i.test(b.tarea);
+    if (node.stageType === 'callcenter') return /call center/i.test(b.tarea) && !/guion/i.test(b.tarea);
+    if (node.stageType === 'callcenter_guion') return /guion/i.test(b.tarea) && /call center/i.test(b.tarea);
+    // "copys" comparte roleLabel "Copywriter" con "callcenter_guion" — evita que el guion
+    // (excluido arriba de su propio nodo si no calza, y aquí de copys) se cuele en ambos.
+    if (node.stageType === 'copys') return !(/guion/i.test(b.tarea) && /call center/i.test(b.tarea));
     return true;
   });
 
@@ -143,10 +161,13 @@ const BriefGroup = ({
 // ───────────────────────────────────────────────────────────────────────────
 
 const BriefDialog = ({
-  project, brief, hasApprovalStage, urlOnly, queue, onClose, onAdvance,
+  project, brief, nodeId, hasApprovalStage, urlOnly, queue, onClose, onAdvance,
 }: {
   project: FactoryProject;
   brief: FabricaBriefItem;
+  /** Nodo desde el que se abrió esta tarea — se usa para activar el siguiente nodo de la cadena
+   *  al aprobar (ver `activateNextStage`) y para estampar `currentNodeId` en el entregable. */
+  nodeId: string;
   /** Si existe una etapa de Aprobación aguas abajo, "enviar" pasa a revisión en vez de completar directo. */
   hasApprovalStage: boolean;
   /** El nodo es Landing/Formulario: el entregable siempre es una URL, sin importar el texto de la
@@ -196,6 +217,7 @@ const BriefDialog = ({
       deliverableAttachments: attachments,
       workflowStatus: hasApprovalStage ? 'in_review' : 'completed',
       deliverableSubmittedAt: now,
+      currentNodeId: nodeId,
       comments: [...priorComments, {
         id: genId(), author: authorName(),
         content: hasApprovalStage ? 'Entregable enviado a revisión' : 'Entregable marcado como completado',
@@ -209,12 +231,13 @@ const BriefDialog = ({
     const now = new Date().toISOString();
     updateFabricaBrief(project.id, brief.id, {
       workflowStatus: 'completed',
+      currentNodeId: nodeId,
       comments: [...priorComments, {
         id: genId(), author: authorName(), content: 'Entregable aprobado',
         isAdjustmentRequest: false, isSystemEvent: true, createdAt: now,
       }],
     });
-    activateNextStage(project, brief);
+    activateNextStage(project, nodeId, brief);
     advanceOrClose();
   };
 
@@ -228,6 +251,7 @@ const BriefDialog = ({
       }],
       workflowStatus: 'pending',
       deliverableSubmittedAt: null,
+      currentNodeId: nodeId,
     });
     advanceOrClose();
   };
@@ -502,6 +526,7 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
         <BriefDialog
           project={project}
           brief={openBrief}
+          nodeId={node.id}
           hasApprovalStage={hasApprovalStage}
           urlOnly={node.stageType === 'landing' || node.stageType === 'formulario'}
           queue={inReview}
@@ -658,6 +683,290 @@ export const DeliveryBriefPanel = ({ project, node }: { project: FactoryProject;
       />
       {editingBrief && (
         <DeliveryEditDialog project={project} brief={editingBrief} onClose={() => setEditingBrief(null)} />
+      )}
+    </div>
+  );
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// KAM / BTL / Relacionamiento / registro de Call Center — entregable simple:
+// se hizo sí/no + fecha. Sin contenido, sin adjuntos, sin aprobación.
+// ───────────────────────────────────────────────────────────────────────────
+
+const DoneDateStatusBadge = ({ brief }: { brief: FabricaBriefItem }) => {
+  if (brief.deliverableDone === true)
+    return <Badge variant="outline" className="border-0 bg-state-done-bg text-state-done text-[10px] px-1.5 h-4">Hecho</Badge>;
+  if (brief.deliverableDone === false)
+    return <Badge variant="outline" className="border-0 bg-state-blocked-bg text-state-blocked text-[10px] px-1.5 h-4">No hecho</Badge>;
+  return <Badge variant="outline" className="border-0 bg-muted text-muted-foreground text-[10px] px-1.5 h-4">Pendiente</Badge>;
+};
+
+const DoneDateEditDialog = ({
+  project, brief, onClose,
+}: {
+  project: FactoryProject;
+  brief: FabricaBriefItem;
+  onClose: () => void;
+}) => {
+  const { updateFabricaBrief } = useFactoryStore();
+  const [done, setDone] = useState<boolean | null>(brief.deliverableDone ?? null);
+  const [fecha, setFecha] = useState(brief.deliverableDate ?? '');
+
+  const handleSave = () => {
+    const now = new Date().toISOString();
+    updateFabricaBrief(project.id, brief.id, {
+      deliverableDone: done,
+      deliverableDate: fecha || null,
+      workflowStatus: done === true ? 'completed' : brief.workflowStatus,
+      deliverableSubmittedAt: done === true ? (brief.deliverableSubmittedAt ?? now) : brief.deliverableSubmittedAt,
+    });
+    onClose();
+  };
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{brief.tarea}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>¿Se realizó?</Label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="hecho-estado" checked={done === true}
+                  onChange={() => setDone(true)} className="h-4 w-4 text-primary" />
+                <span className="text-sm">Sí</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="hecho-estado" checked={done === false}
+                  onChange={() => setDone(false)} className="h-4 w-4 text-primary" />
+                <span className="text-sm">No</span>
+              </label>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs flex items-center gap-1"><Calendar className="h-3 w-3" /> Fecha</Label>
+            <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="text-sm" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={done === null}>Guardar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export const DoneDateBriefPanel = ({ project, node }: { project: FactoryProject; node: StrategyNode }) => {
+  const { addFabricaBriefs } = useFactoryStore();
+  const briefs = briefsForNode(project, node);
+  const [editingBrief, setEditingBrief] = useState<FabricaBriefItem | null>(null);
+  const [newTitle, setNewTitle] = useState('');
+
+  if (!node.roleLabel) {
+    return <p className="text-sm text-muted-foreground py-4">Asigna un rol a esta etapa para poder crear tareas.</p>;
+  }
+
+  const handleAdd = () => {
+    const t = newTitle.trim();
+    if (!t) return;
+    addFabricaBriefs(project.id, [{
+      roleId: node.roleId ?? node.roleLabel!,
+      roleLabel: node.roleLabel!,
+      tarea: t,
+      currentNodeId: node.id,
+      workflowStatus: 'pending',
+    }]);
+    setNewTitle('');
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Nueva tarea</Label>
+        <div className="flex gap-1.5">
+          <Input
+            placeholder="¿Qué hay que crear?"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+            className="h-9 text-sm"
+          />
+          <Button size="sm" className="h-9" onClick={handleAdd} disabled={!newTitle.trim()}>
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <BriefGroup
+        title="Tareas"
+        items={briefs}
+        onOpen={setEditingBrief}
+        badge={(b) => <DoneDateStatusBadge brief={b} />}
+        emptyLabel="Sin tareas todavía."
+      />
+      {editingBrief && (
+        <DoneDateEditDialog project={project} brief={editingBrief} onClose={() => setEditingBrief(null)} />
+      )}
+    </div>
+  );
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// Pauta en redes sociales (Trafficker) — cuadro de texto + adjuntos, y un
+// entregable de "publicada sí/no" que, al marcarse, dispara la recolección de
+// métricas de esa campaña (mismo patrón que Envíos → Recolectar métricas de X).
+// ───────────────────────────────────────────────────────────────────────────
+
+const PautaStatusBadge = ({ brief }: { brief: FabricaBriefItem }) => {
+  if (brief.deliverablePublicada === true)
+    return <Badge variant="outline" className="border-0 bg-state-done-bg text-state-done text-[10px] px-1.5 h-4">Publicada</Badge>;
+  if (brief.deliverablePublicada === false)
+    return <Badge variant="outline" className="border-0 bg-state-blocked-bg text-state-blocked text-[10px] px-1.5 h-4">No publicada</Badge>;
+  return <Badge variant="outline" className="border-0 bg-muted text-muted-foreground text-[10px] px-1.5 h-4">Pendiente</Badge>;
+};
+
+const PautaEditDialog = ({
+  project, brief, onClose,
+}: {
+  project: FactoryProject;
+  brief: FabricaBriefItem;
+  onClose: () => void;
+}) => {
+  const { updateFabricaBrief, addFabricaBriefs } = useFactoryStore();
+  const [content, setContent] = useState(brief.deliverableContent ?? '');
+  const [attachments, setAttachments] = useState<Attachment[]>(brief.deliverableAttachments ?? []);
+  const [publicada, setPublicada] = useState<boolean | null>(brief.deliverablePublicada ?? null);
+
+  const campana = brief.tarea.match(/Configurar campaña en (\w+)/)?.[1] ?? brief.tarea;
+
+  const handleSave = () => {
+    const now = new Date().toISOString();
+    updateFabricaBrief(project.id, brief.id, {
+      deliverableContent: content,
+      deliverableAttachments: attachments,
+      deliverablePublicada: publicada,
+      workflowStatus: publicada === true ? 'completed' : brief.workflowStatus,
+      deliverableSubmittedAt: publicada === true ? (brief.deliverableSubmittedAt ?? now) : brief.deliverableSubmittedAt,
+    });
+
+    if (publicada === true) {
+      const liveProject = useFactoryStore.getState().projects.find((p) => p.id === project.id);
+      const metricsTarea = `Recolectar métricas de ${campana}`;
+      const alreadyHasMetrics = liveProject?.fabricaBriefs.some((b) => b.tarea === metricsTarea) ?? false;
+      if (!alreadyHasMetrics) {
+        addFabricaBriefs(project.id, [{
+          roleId: brief.roleId,
+          roleLabel: brief.roleLabel,
+          tarea: metricsTarea,
+          currentNodeId: brief.currentNodeId,
+        }]);
+      }
+    }
+    onClose();
+  };
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{brief.tarea}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Contenido de la campaña</Label>
+            <RichTextEditor
+              content={content}
+              onChange={setContent}
+              placeholder="Escribe aquí el copy/brief de la campaña..."
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Archivos adjuntos</Label>
+            <FileUpload attachments={attachments} onChange={setAttachments} taskId={brief.id} />
+          </div>
+          <div className="space-y-2 border-t border-border/40 pt-3">
+            <Label>¿Publicada?</Label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="publicada-estado" checked={publicada === true}
+                  onChange={() => setPublicada(true)} className="h-4 w-4 text-primary" />
+                <span className="text-sm">Sí</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="publicada-estado" checked={publicada === false}
+                  onChange={() => setPublicada(false)} className="h-4 w-4 text-primary" />
+                <span className="text-sm">No</span>
+              </label>
+            </div>
+            {publicada === true && (
+              <p className="text-xs text-muted-foreground italic">
+                Al guardar se creará la tarea "Recolectar métricas de {campana}".
+              </p>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSave}>Guardar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export const PautaBriefPanel = ({ project, node }: { project: FactoryProject; node: StrategyNode }) => {
+  const { addFabricaBriefs } = useFactoryStore();
+  const briefs = briefsForNode(project, node);
+  const [editingBrief, setEditingBrief] = useState<FabricaBriefItem | null>(null);
+  const [newTitle, setNewTitle] = useState('');
+
+  if (!node.roleLabel) {
+    return <p className="text-sm text-muted-foreground py-4">Asigna un rol a esta etapa para poder crear tareas.</p>;
+  }
+
+  const handleAdd = () => {
+    const t = newTitle.trim();
+    if (!t) return;
+    addFabricaBriefs(project.id, [{
+      roleId: node.roleId ?? node.roleLabel!,
+      roleLabel: node.roleLabel!,
+      tarea: t,
+      currentNodeId: node.id,
+      workflowStatus: 'pending',
+    }]);
+    setNewTitle('');
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Nueva tarea</Label>
+        <div className="flex gap-1.5">
+          <Input
+            placeholder="¿Qué campaña hay que crear?"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+            className="h-9 text-sm"
+          />
+          <Button size="sm" className="h-9" onClick={handleAdd} disabled={!newTitle.trim()}>
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <BriefGroup
+        title="Campañas"
+        items={briefs}
+        onOpen={setEditingBrief}
+        badge={(b) => <PautaStatusBadge brief={b} />}
+        emptyLabel="Sin campañas configuradas."
+      />
+      {editingBrief && (
+        <PautaEditDialog project={project} brief={editingBrief} onClose={() => setEditingBrief(null)} />
       )}
     </div>
   );

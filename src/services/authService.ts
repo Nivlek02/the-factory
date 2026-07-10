@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 /** Rol de equipo — puramente informativo, ya no controla acceso a tableros ni RLS. */
-export type AppRole = 'copy' | 'diseno' | 'gestor_canales' | 'estratega' | 'soporte';
+export type AppRole = 'copy' | 'diseno' | 'gestor_canales' | 'estratega' | 'soporte' | 'trafficker';
 
 export interface AppUser {
   id: string;
@@ -19,6 +19,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   gestor_canales: 'Gestor de canales',
   estratega: 'Estratega',
   soporte: 'Soporte',
+  trafficker: 'Trafficker',
 };
 
 // Fetch user profile with role

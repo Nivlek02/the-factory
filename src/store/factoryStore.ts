@@ -65,6 +65,12 @@ export interface FabricaBriefItem {
   deliverableEnviado?: boolean | null;
   deliverableMotivoNoEnvio?: string;
   deliverableMetricas?: Record<string, string>;
+  /** Entregable "hecho sí/no + fecha" — KAM, BTL, Relacionamiento, registro de Call Center */
+  deliverableDone?: boolean | null;
+  deliverableDate?: string | null;
+  /** Entregable de Pauta en redes sociales (Trafficker): publicada sí/no, dispara la
+   *  recolección de métricas de la campaña. Contenido/adjuntos usan los campos de arriba. */
+  deliverablePublicada?: boolean | null;
   /** Nodo de "Construir estrategia" donde vive hoy este entregable (gestión de flujo por-nodo) */
   currentNodeId?: string | null;
   /** Estado de flujo dentro de Construir estrategia, independiente de `checked`/`deliverableSubmittedAt` */
@@ -114,6 +120,11 @@ export type StrategyStageType =
   | 'diseno'
   | 'pauta'
   | 'envios'
+  | 'kam'
+  | 'btl'
+  | 'relacionamiento'
+  | 'callcenter_guion'
+  | 'callcenter'
   | 'custom';
 
 export interface StrategyNode {
@@ -206,11 +217,11 @@ interface FactoryStore {
   setActiveProject: (id: string | null) => void;
 }
 
-/** Default pipeline creado para cada proyecto nuevo: rama central Copys → Diseño → Envíos,
- *  más ramas independientes según los requerimientos elegidos en el wizard:
- *  Landing/Formulario (rama superior, rol Gestor de canales) y Pauta en redes sociales
- *  (rama inferior, rol Social Media). La aprobación ya no es una etapa aparte: cada
- *  entregable pasa por revisión dentro de su propia tarea (ver `hasApprovalStage` en
+/** Default pipeline creado para cada proyecto nuevo: rama central Copys → Diseño → Envíos, más
+ *  Landing/Formulario (rol Gestor de canales) si se eligieron en el wizard. Las demás ramas
+ *  (Pauta en redes sociales, BTL, KAM, Relacionamiento, Call Center) dependen de los canales del
+ *  Plan de canales, no de un checkbox — ver `syncCanalNodes`. La aprobación ya no es una etapa
+ *  aparte: cada entregable pasa por revisión dentro de su propia tarea (ver `hasApprovalStage` en
  *  StrategyBriefPanels). Users can branch/extend it further from "Construir estrategia". */
 const buildDefaultStrategyNodes = (requerimientos: string[] = []): StrategyNode[] => {
   const node = (
@@ -239,9 +250,6 @@ const buildDefaultStrategyNodes = (requerimientos: string[] = []): StrategyNode[
   }
   if (requerimientos.includes('formulario')) {
     nodes.push(node(`node-${uid()}`, 'formulario', 'Formulario de inscripción', 'Gestor de canales', []));
-  }
-  if (requerimientos.includes('pauta_digital')) {
-    nodes.push(node(`node-${uid()}`, 'pauta', 'Pauta en redes sociales', 'Social Media', []));
   }
 
   return nodes;
@@ -273,7 +281,6 @@ const stripApprovalNodes = (nodes: StrategyNode[]): StrategyNode[] => {
 const REQ_TO_STAGE: Record<string, { stageType: StrategyStageType; label: string; roleLabel: string }> = {
   landing: { stageType: 'landing', label: 'Landing', roleLabel: 'Gestor de canales' },
   formulario: { stageType: 'formulario', label: 'Formulario de inscripción', roleLabel: 'Gestor de canales' },
-  pauta_digital: { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Social Media' },
 };
 
 /** Sincroniza los nodos raíz (landing/formulario/pauta) del flujo de trabajo con los
@@ -297,6 +304,93 @@ const syncRequerimientoNodes = (nodes: StrategyNode[], requerimientos: string[])
   }
   return result;
 };
+
+/** Nodos de una sola etapa que dependen de los canales elegidos en el Plan de canales (a
+ *  diferencia de landing/formulario, que dependen de los checkboxes de Requerimiento). Varios
+ *  canales pueden apuntar al mismo nodo (Facebook/Instagram/TikTok/Google Ads → Pauta). */
+const CANAL_SINGLE_NODE: Record<string, { stageType: StrategyStageType; label: string; roleLabel: string }> = {
+  Facebook: { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
+  Instagram: { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
+  TikTok: { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
+  'Google Ads': { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
+  BTL: { stageType: 'btl', label: 'BTL', roleLabel: 'Estratega' },
+  KAM: { stageType: 'kam', label: 'KAM', roleLabel: 'Estratega' },
+  Relacionamiento: { stageType: 'relacionamiento', label: 'Relacionamiento', roleLabel: 'Estratega' },
+};
+
+/** Sincroniza los nodos del flujo de trabajo que dependen de los canales del Plan de canales:
+ *  Facebook/Instagram/TikTok/Google Ads → "Pauta en redes sociales" (Trafficker), BTL/KAM/
+ *  Relacionamiento → su propio nodo (Estratega), y "Call Center" → una cadena de 2 nodos (el
+ *  Copywriter redacta el guion, pasa a aprobación y activa un nodo de registro para Estratega).
+ *  Agrega los nodos que falten y quita los que ya no correspondan, sin tocar el resto del flujo. */
+const syncCanalNodes = (nodes: StrategyNode[], canales: CanalRow[]): StrategyNode[] => {
+  let result = nodes;
+  const canalTypes = new Set(canales.map((c) => c.canal));
+
+  const stageTypesWanted = new Set<StrategyStageType>();
+  for (const [canal, cfg] of Object.entries(CANAL_SINGLE_NODE)) {
+    if (canalTypes.has(canal)) stageTypesWanted.add(cfg.stageType);
+  }
+  const singleNodeConfigs = new Map(Object.values(CANAL_SINGLE_NODE).map((cfg) => [cfg.stageType, cfg] as const));
+  for (const [stageType, cfg] of singleNodeConfigs) {
+    const existing = result.find((n) => n.stageType === stageType);
+    if (stageTypesWanted.has(stageType) && !existing) {
+      result = [...result, {
+        id: `node-${uid()}`, stageType, label: cfg.label, roleId: null,
+        roleLabel: cfg.roleLabel, memberId: null, memberName: null, status: 'pending', dependsOn: [],
+      }];
+    } else if (!stageTypesWanted.has(stageType) && existing) {
+      result = result.filter((n) => n.id !== existing.id)
+        .map((n) => ({ ...n, dependsOn: n.dependsOn.filter((d) => d !== existing.id) }));
+    }
+  }
+
+  const wantsCallCenter = canalTypes.has('Call Center');
+  const guion = result.find((n) => n.stageType === 'callcenter_guion');
+  const registro = result.find((n) => n.stageType === 'callcenter');
+  if (wantsCallCenter && !guion) {
+    const guionId = `node-${uid()}`;
+    const registroId = `node-${uid()}`;
+    result = [
+      ...result,
+      { id: guionId, stageType: 'callcenter_guion', label: 'Guion de llamada', roleId: null,
+        roleLabel: 'Copywriter', memberId: null, memberName: null, status: 'pending', dependsOn: [] },
+      { id: registroId, stageType: 'callcenter', label: 'Call Center', roleId: null,
+        roleLabel: 'Estratega', memberId: null, memberName: null, status: 'pending', dependsOn: [guionId] },
+    ];
+  } else if (!wantsCallCenter && guion) {
+    const removeIds = new Set([guion.id, ...(registro ? [registro.id] : [])]);
+    result = result
+      .filter((n) => !removeIds.has(n.id))
+      .map((n) => ({ ...n, dependsOn: n.dependsOn.filter((d) => !removeIds.has(d)) }));
+  }
+
+  return result;
+};
+
+/** Patrones de texto para asociar, la primera vez que se sincroniza el proyecto, un entregable
+ *  ya generado por el wizard (sin currentNodeId) a su nodo correspondiente — evita que roles
+ *  compartidos entre varios nodos (ej. "Estratega" en KAM/BTL/Relacionamiento/Call Center) se
+ *  mezclen entre sí. Una vez estampado, `briefsForNode` ya no necesita heurísticas de texto para
+ *  estos entregables (ver StrategyBriefPanels.briefsForNode, que sí sigue usando texto para
+ *  landing/formulario/envíos por compatibilidad con datos previos a este mecanismo). */
+const CANAL_NODE_TEXT_PATTERN: Partial<Record<StrategyStageType, RegExp>> = {
+  kam: /\bKAM\b/i,
+  btl: /\bBTL\b/i,
+  relacionamiento: /relacionamiento/i,
+  callcenter_guion: /guion/i,
+};
+
+const stampCanalNodeIds = (nodes: StrategyNode[], briefs: FabricaBriefItem[]): FabricaBriefItem[] =>
+  briefs.map((b) => {
+    if (b.currentNodeId) return b;
+    const match = nodes.find((n) => {
+      if (n.roleLabel !== b.roleLabel) return false;
+      const pattern = CANAL_NODE_TEXT_PATTERN[n.stageType];
+      return pattern ? pattern.test(b.tarea) : n.stageType === 'pauta';
+    });
+    return match ? { ...b, currentNodeId: match.id } : b;
+  });
 
 const patchProject = (
   projects: FactoryProject[],
@@ -420,15 +514,17 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
 
   addProject: (data) => {
     const id = `proj-${uid()}`;
+    const canales = data.canales ?? [];
+    const strategyNodes = syncCanalNodes(buildDefaultStrategyNodes(data.requerimientos), canales);
     const project: FactoryProject = {
       ...data,
       startDate: data.startDate ?? null,
       dueDate: data.dueDate ?? null,
       strategistName: data.strategistName ?? '',
       audienciaNarrativa: data.audienciaNarrativa ?? { segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' },
-      canales: data.canales ?? [],
+      canales,
       loops: data.loops ?? [],
-      fabricaBriefs: data.fabricaBriefs ?? [],
+      fabricaBriefs: stampCanalNodeIds(strategyNodes, data.fabricaBriefs ?? []),
       requerimientos: data.requerimientos ?? [],
       segmentLink: data.segmentLink ?? '',
       eventCategory: data.eventCategory ?? '',
@@ -439,7 +535,7 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       createdAt: new Date().toISOString(),
       roleGroups: [],
       tasks: [],
-      strategyNodes: buildDefaultStrategyNodes(data.requerimientos),
+      strategyNodes,
     };
     set((s) => ({ projects: [project, ...s.projects], activeProjectId: id }));
     syncProject(project);
@@ -448,13 +544,15 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
 
   updateProject: (id, updates) =>
     persistAfter(set, get, id, (s) => ({
-      projects: patchProject(s.projects, id, (p) => ({
-        ...p,
-        ...updates,
-        strategyNodes: updates.requerimientos
-          ? syncRequerimientoNodes(p.strategyNodes, updates.requerimientos)
-          : p.strategyNodes,
-      })),
+      projects: patchProject(s.projects, id, (p) => {
+        let strategyNodes = p.strategyNodes;
+        if (updates.requerimientos) strategyNodes = syncRequerimientoNodes(strategyNodes, updates.requerimientos);
+        if (updates.canales) strategyNodes = syncCanalNodes(strategyNodes, updates.canales);
+        const fabricaBriefs = updates.canales || updates.requerimientos
+          ? stampCanalNodeIds(strategyNodes, updates.fabricaBriefs ?? p.fabricaBriefs)
+          : (updates.fabricaBriefs ?? p.fabricaBriefs);
+        return { ...p, ...updates, strategyNodes, fabricaBriefs };
+      }),
     })),
 
   deleteProject: (id) => {
