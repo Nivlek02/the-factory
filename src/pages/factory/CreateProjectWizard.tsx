@@ -50,7 +50,6 @@ const SEGMENTOS_LABEL: Record<string, string> = {
 const REQUERIMIENTOS = [
   { id: 'landing', label: 'Landing' },
   { id: 'formulario', label: 'Formulario de inscripción' },
-  { id: 'piezas', label: 'Piezas' },
 ] as const;
 
 type ReqId = (typeof REQUERIMIENTOS)[number]['id'];
@@ -62,9 +61,6 @@ const REQ_ROLE_TAREAS: Record<ReqId, Record<string, string[]>> = {
   // — este mapa ya no debe agregar una segunda tarea "Landing" duplicada vía canales.
   landing: {},
   formulario: {},
-  piezas: {
-    diseno: ['Diseño de piezas gráficas'],
-  },
 };
 
 /** Convierte YYYY-MM-DD a DD/MM para mostrar. Si no es fecha ISO, devuelve el texto original. */

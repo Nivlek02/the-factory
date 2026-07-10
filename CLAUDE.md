@@ -554,6 +554,41 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       `syncCanalNodes` borra el nodo correctamente — la lógica es simétrica a
       `syncRequerimientoNodes` (ya probada en el punto 10) pero no se ejercitó en este flujo nuevo.
 
+24. **Flujo de trabajo: layout de grilla densa en vez de carriles apilados + se quita
+    "Piezas" de Requerimientos**
+    - El diagrama de Flujo de trabajo (`WorkflowTab` en `MapTab.tsx`) apilaba cada rama
+      (`computeLanes`) en su propia fila a **ancho completo** — una rama de 1 solo nodo (KAM, BTL,
+      Relacionamiento, Landing, Pauta) ocupaba una fila entera con 2/3 del ancho vacíos (cada
+      `NodeCard` medía `100/maxLaneLength%`, calculado sobre la rama más larga de *todo* el
+      diagrama). Con 10 nodos y hasta 7 ramas independientes esto se veía muy alargado
+      verticalmente con huecos horizontales grandes — exactamente lo que pidió corregir el usuario.
+    - Reemplazado por una **grilla CSS densa** (`display: grid`, `grid-template-columns:
+      repeat(auto-fill, minmax(160px, 1fr))`, `grid-auto-flow: dense`): cada rama es un ítem que
+      ocupa `grid-column: span N` (N = su longitud real — 3 para Copys→Diseño→Envíos, 2 para
+      Guion de llamada→Call Center, 1 para el resto), y el algoritmo de *dense packing* del
+      navegador intercala los nodos sueltos en los huecos que dejan las cadenas más largas, sin
+      que el código tenga que calcular filas/columnas a mano. `computeLanes` ordena las ramas por
+      longitud descendente (antes usaba `LANE_RANK` para fijar Landing/Formulario arriba, Copys
+      centro, Pauta abajo — se eliminó esa constante, ya no hay orden "por fase") para que las
+      cadenas largas se coloquen primero y las sueltas rellenen alrededor.
+    - El conector bezier multi-rama desde "Inicia el proyecto" (un `<svg>` con una curva por
+      carril, pensado para carriles apilados verticalmente) ya no tenía sentido geométrico con una
+      grilla 2D — se reemplazó por una sola flecha fija (`ArrowRight`), igual a como ya se veía
+      cuando solo había 1 rama.
+    - Las flechas **dentro** de una rama (que sí representan un `dependsOn` real) se mantienen
+      igual que antes.
+    - De paso, a pedido del usuario, se quitó el botón "Piezas" del paso "Requerimiento" del
+      wizard (`CreateProjectWizard.tsx`): se eliminó de `REQUERIMIENTOS` y su entrada en
+      `REQ_ROLE_TAREAS` (generaba la tarea "Diseño de piezas gráficas" para Diseñador — ya no se
+      genera por esa vía; `roles.diseno.tareas` en Ajustes sigue pudiendo tener esa tarea si el
+      usuario la define ahí, pero el requerimiento del wizard que la disparaba automáticamente
+      desapareció).
+    - Verificado con Playwright: con los mismos 6 canales + Landing del punto 23, el grid quedó en
+      3 filas × 3 columnas aproximadamente (662×424px, mucho más ancho que alto) en vez de 7 filas
+      a ancho completo; sin overflow horizontal en 1400/1200/1000/900px de ancho (medido con
+      `scrollWidth` vs `clientWidth`, no solo visual); botón "Piezas" confirmado ausente. Typecheck
+      y `npm run build` pasan limpio.
+
 ## Pendientes / próximos pasos
 
 - [ ] **Investigar `406` al hacer `upsert` a `factory_projects`** — apareció al verificar el punto

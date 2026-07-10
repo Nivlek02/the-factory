@@ -71,28 +71,12 @@ const STATUS_META: Record<StrategyNode['status'], { label: string; cls: string }
 
 // ───────────────────────────────────────────────────────────────────────────
 // Lanes: agrupa los nodos en cadenas lineales por rama (cada raíz —sin
-// dependsOn— inicia una rama que sigue a su único dependiente). Las tres
-// ramas que genera este proyecto son: Landing/Formulario (arriba),
-// Copys → Diseño → Envíos (centro) y Pauta en redes sociales (abajo). Un nodo
-// con varios dependientes abre una rama nueva por cada uno.
+// dependsOn— inicia una rama que sigue a su único dependiente, ej.
+// Copys → Diseño → Envíos, o Guion de llamada → Call Center). Un nodo con
+// varios dependientes abre una rama nueva por cada uno. Las ramas se
+// empacan en una grilla densa (ver `WorkflowTab`) en vez de apilarse en
+// filas/carriles fijos — no hay agrupación por fase, solo por conexión real.
 // ───────────────────────────────────────────────────────────────────────────
-
-/** Orden visual de las ramas: Landing/Formulario arriba, la cadena de
- *  contenido al centro, Pauta abajo. Cualquier otra rama (p.ej. loops
- *  encadenados desde envíos) queda con la cadena central. */
-const LANE_RANK: Partial<Record<StrategyStageType, number>> = {
-  formulario: 0,
-  landing: 0,
-  copys: 1,
-  diseno: 1,
-  envios: 1,
-  custom: 1,
-  pauta: 2,
-  kam: 2,
-  btl: 2,
-  relacionamiento: 2,
-  callcenter_guion: 2,
-};
 
 function computeLanes(nodes: StrategyNode[]): StrategyNode[][] {
   const byId = new Map(nodes.map((n) => [n.id, n] as const));
@@ -131,7 +115,10 @@ function computeLanes(nodes: StrategyNode[]): StrategyNode[][] {
   // Cualquier nodo restante (ciclo inesperado) — no debería pasar, pero por robustez.
   nodes.filter((n) => !visited.has(n.id)).forEach(buildLane);
 
-  return lanes.sort((a, b) => (LANE_RANK[a[0].stageType] ?? 1) - (LANE_RANK[b[0].stageType] ?? 1));
+  // Ramas más largas primero: al empacarlas en la grilla densa (ver `WorkflowTab`), colocar
+  // las cadenas conectadas antes que los nodos sueltos deja mejores huecos para rellenar y
+  // evita el desperdicio de espacio horizontal que dejaban los carriles de ancho fijo.
+  return lanes.sort((a, b) => b.length - a.length);
 }
 
 // ─── Loop phases ──────────────────────────────────────────────────────────────
@@ -281,7 +268,6 @@ export const WorkflowTab = ({ project }: Props) => {
 
   const nodes = project.strategyNodes ?? [];
   const lanes = useMemo(() => computeLanes(nodes), [nodes]);
-  const maxLaneLength = Math.max(1, ...lanes.map((l) => l.length));
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tasksNodeId, setTasksNodeId] = useState<string | null>(null);
@@ -416,9 +402,9 @@ export const WorkflowTab = ({ project }: Props) => {
           </p>
         </div>
       ) : (
-        <div className="flex items-center gap-0 w-full">
-          {/* Nodo de inicio, centrado verticalmente respecto a todas las ramas */}
-          <div className="shrink-0 pr-1.5">
+        <div className="flex items-start gap-0 w-full">
+          {/* Nodo de inicio */}
+          <div className="shrink-0 pr-1.5 pt-1">
             <div className="w-24 sm:w-28 rounded-lg shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-2 py-2.5">
               <Rocket className="h-4 w-4 mb-1" />
               <p className="text-[11px] font-semibold leading-tight">Inicia el proyecto</p>
@@ -426,38 +412,24 @@ export const WorkflowTab = ({ project }: Props) => {
             </div>
           </div>
 
-          {lanes.length <= 1 ? (
-            <ArrowRight className="h-5 w-5 text-muted-foreground/40 shrink-0 mx-1" />
-          ) : (
-            <div className="relative shrink-0 self-stretch" style={{ width: 26 }}>
-              <svg
-                className="absolute inset-0 h-full w-full pointer-events-none"
-                viewBox="0 0 26 100"
-                preserveAspectRatio="none"
-              >
-                {lanes.map((lane, i) => {
-                  const y = ((i + 0.5) / lanes.length) * 100;
-                  return (
-                    <path
-                      key={lane[0].id}
-                      d={`M 0 50 C 13 50, 13 ${y}, 26 ${y}`}
-                      stroke="hsl(var(--border))"
-                      strokeWidth="2"
-                      fill="none"
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  );
-                })}
-              </svg>
-            </div>
-          )}
+          <ArrowRight className="h-5 w-5 text-muted-foreground/40 shrink-0 mx-1 mt-6" />
 
-          {/* Ramas: cada una es una cadena horizontal de nodos con flechas entre ellos */}
-          <div className="flex-1 min-w-0 flex flex-col gap-3">
+          {/* Grilla densa: cada rama (nodo suelto o cadena conectada) es una celda que ocupa
+             tantas columnas como nodos tenga; `grid-auto-flow: dense` rellena los huecos que
+             dejan las ramas cortas con las siguientes, sin agrupar por fase ni carril. Las
+             flechas dentro de una celda reflejan un `dependsOn` real entre esos nodos. */}
+          <div
+            className="flex-1 min-w-0 grid gap-3 items-start"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gridAutoFlow: 'dense' }}
+          >
             {lanes.map((lane) => (
-              <div key={lane[0].id} className="flex items-center">
+              <div
+                key={lane[0].id}
+                className="flex items-center gap-1 min-w-0"
+                style={{ gridColumn: `span ${lane.length}` }}
+              >
                 {lane.map((n, j) => (
-                  <div key={n.id} className="flex items-center min-w-0" style={{ width: `${(100 / maxLaneLength).toFixed(4)}%` }}>
+                  <div key={n.id} className="flex items-center min-w-0 flex-1">
                     <div className="flex-1 min-w-0">
                       <NodeCard
                         node={n}
