@@ -7,7 +7,6 @@ const HerramientasPage = () => {
       <div className="flex h-full flex-col p-6">
         <div className="mb-4 shrink-0">
           <h1 className="text-2xl font-bold text-foreground">Herramientas</h1>
-          <p className="text-muted-foreground">Crear código QR con métricas de seguimiento</p>
         </div>
         <div className="min-h-0 flex-1">
           <BitlyLinkTool />
