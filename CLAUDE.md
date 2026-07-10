@@ -589,6 +589,51 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       `scrollWidth` vs `clientWidth`, no solo visual); botón "Piezas" confirmado ausente. Typecheck
       y `npm run build` pasan limpio.
 
+25. **Flujo de trabajo: layout de árbol con ramas en filas paralelas + Copys se bifurca a Call
+    Center (se elimina el nodo "Guion de llamada")**
+    - El usuario pidió una estructura exacta tipo diagrama de flujo: "Inicia el proyecto" como
+      única entrada a la izquierda, y de ahí 6 ramas en filas paralelas — Landing, Copys, Pauta,
+      BTL, KAM, Relacionamiento. Copys **se bifurca** en dos caminos: Copys → Diseño de piezas →
+      Envío de acciones, y **Copys → Call Center directo**. Las ramas cortas no deben ocupar el
+      mismo ancho que la rama larga de Copys, sin cruces de líneas.
+    - **Cambio de modelo de datos (confirmado con el usuario vía `AskUserQuestion`):** se eliminó el
+      nodo intermedio `callcenter_guion` ("Guion de llamada"). Ahora el nodo `callcenter` (registro
+      de la Estratega, "¿se hizo? sí/no + fecha") **depende directamente del nodo Copys**. El
+      copywriter redacta el guion como una tarea más dentro de Copys ("Redactar guion para Call
+      Center", que ahora `briefsForNode` enruta a Copys por `roleLabel` Copywriter — se quitó el
+      branch que la excluía). Al aprobar esa tarea (o cualquier copy) en Copys, `activateNextStage`
+      crea el registro "Registrar realización — Call Center" en el nodo Call Center. El usuario
+      aceptó explícitamente el tradeoff de que *cualquier* copy aprobado dispare ese registro; para
+      que no se dupliquen, `activateNextStage` ahora **deduplica** el registro de Call Center (solo
+      crea uno por nodo) y usa un nombre fijo en vez de derivarlo del texto del copy.
+      `AUTO_ADVANCE_STAGE_TYPES` pasó de `['copys','diseno','callcenter_guion','callcenter']` a
+      `['diseno','callcenter']` (los dos hijos de Copys).
+    - `syncCanalNodes` (`factoryStore.ts`): el canal "Call Center" ya no crea la cadena de 2 nodos;
+      crea un solo nodo `callcenter` con `dependsOn: [copysNodeId]`. Además limpia en caliente
+      cualquier nodo `callcenter_guion` que estuviera en memoria. Nueva migración en lectura
+      `mergeGuionNodes()` (en `rowToProject`, junto a `stripApprovalNodes`) hace lo mismo para datos
+      ya persistidos en Supabase: quita el guion y re-cuelga el Call Center de Copys. El tipo
+      `callcenter_guion` se mantiene en el union `StrategyStageType` solo para poder parsear datos
+      viejos antes de migrarlos.
+    - **Layout rediseñado a un árbol real** (`computeTreeLayout` reemplaza a `computeLanes` en
+      `MapTab.tsx`): asigna a cada nodo `(columna = profundidad en la cadena, fila = hoja del
+      subárbol)` con un DFS que numera las hojas; un nodo con varios hijos (Copys) ocupa el rango de
+      filas de todas sus hojas y se centra entre ellas. Las raíces se ordenan por `ROOT_ORDER`
+      (Landing, [Formulario], Copys, Pauta, BTL, KAM, Relacionamiento). El render usa **CSS grid**
+      (`grid-template-columns/rows: repeat(n, 1fr)`, alto fijo `filas × 116px`) para colocar las
+      tarjetas, y **dos `<svg>` con `preserveAspectRatio="none"`** por detrás para las conexiones:
+      uno para el abanico Inicia→raíces, otro para las dependencias entre nodos (curvas Bézier
+      centro-a-centro, tapadas por las tarjetas opacas para que parezcan salir del borde). La
+      bifurcación de Copys se ve como **dos curvas saliendo del mismo nodo** (una a Diseño, otra a
+      Call Center), sin medición del DOM: las coordenadas salen directo de la grilla `(col, fila)`.
+      Las ramas cortas ocupan solo su columna (las demás columnas de esa fila quedan vacías), así
+      que no se estiran al ancho de la rama de Copys. Se eliminaron `computeLanes`, `LANE_RANK` (ya
+      estaba fuera), y los imports `ArrowRight`/`Phone` que quedaron sin uso.
+    - Verificado con Playwright: 9 nodos, sin "Guion de llamada"; el guion vive en Copys; aprobarlo
+      crea "Registrar realización — Call Center" en el nodo Call Center; la bifurcación de Copys se
+      ve con dos líneas; sin overflow horizontal en 1400/1200/1000px. Typecheck y `npm run build`
+      pasan limpio.
+
 ## Pendientes / próximos pasos
 
 - [ ] **Investigar `406` al hacer `upsert` a `factory_projects`** — apareció al verificar el punto

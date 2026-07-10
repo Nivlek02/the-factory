@@ -43,13 +43,13 @@ const formatDateTime = (iso: string) =>
   });
 
 /** Etapas cuya aprobación puede activar automáticamente una tarea en el siguiente nodo de la
- *  cadena (ver `activateNextStage`). */
-const AUTO_ADVANCE_STAGE_TYPES: StrategyNode['stageType'][] = ['copys', 'diseno', 'callcenter_guion', 'callcenter'];
+ *  cadena (ver `activateNextStage`). Copys se bifurca hacia Diseño y hacia Call Center. */
+const AUTO_ADVANCE_STAGE_TYPES: StrategyNode['stageType'][] = ['diseno', 'callcenter'];
 
 /** Al aprobar un entregable, activa automáticamente una tarea pendiente para el siguiente nodo
- *  de la cadena (ej: Copys aprobado → nueva tarea para Diseño; guion de Call Center aprobado →
- *  tarea de registro para Estratega). El entregable original no se mueve — el historial de
- *  aprobación queda en su propia tarea (ver `briefsForNode`).
+ *  de la cadena (ej: Copys aprobado → nueva tarea para Diseño y, si hay Call Center, su registro
+ *  para la Estratega). El entregable original no se mueve — el historial de aprobación queda en su
+ *  propia tarea (ver `briefsForNode`).
  *  `currentNodeId` se recibe explícito (no se lee de `brief.currentNodeId`) porque entregables
  *  sembrados desde el wizard pueden no tenerlo estampado — el panel que abre el diálogo siempre
  *  sabe en qué nodo vive la tarea que se está aprobando. */
@@ -59,19 +59,26 @@ const activateNextStage = (project: FactoryProject, currentNodeId: string, brief
     (n) => n.dependsOn.includes(currentNodeId) && AUTO_ADVANCE_STAGE_TYPES.includes(n.stageType) && n.roleLabel
   );
   if (nextNodes.length === 0) return;
-  useFactoryStore.getState().addFabricaBriefs(
-    project.id,
-    nextNodes.map((n) => ({
-      roleId: n.roleId ?? n.roleLabel!,
-      roleLabel: n.roleLabel!,
-      // El registro de Call Center no es "el mismo guion avanzando" — es un nuevo checkpoint.
-      tarea: n.stageType === 'callcenter'
-        ? brief.tarea.replace(/^Redactar guion para /i, 'Registrar realización — ')
-        : brief.tarea,
-      currentNodeId: n.id,
-      workflowStatus: 'pending' as const,
-    }))
-  );
+  const live = useFactoryStore.getState().projects.find((p) => p.id === project.id) ?? project;
+  const toAdd: Omit<FabricaBriefItem, 'id' | 'checked'>[] = [];
+  for (const n of nextNodes) {
+    if (n.stageType === 'callcenter') {
+      // El registro de Call Center es un checkpoint único por nodo: aprobar cualquier copy lo
+      // activa, pero solo se crea una vez (no uno por cada copy aprobado).
+      const already = (live.fabricaBriefs ?? []).some((b) => b.currentNodeId === n.id);
+      if (already) continue;
+      toAdd.push({
+        roleId: n.roleId ?? n.roleLabel!, roleLabel: n.roleLabel!,
+        tarea: 'Registrar realización — Call Center', currentNodeId: n.id, workflowStatus: 'pending',
+      });
+    } else {
+      toAdd.push({
+        roleId: n.roleId ?? n.roleLabel!, roleLabel: n.roleLabel!,
+        tarea: brief.tarea, currentNodeId: n.id, workflowStatus: 'pending',
+      });
+    }
+  }
+  if (toAdd.length > 0) useFactoryStore.getState().addFabricaBriefs(project.id, toAdd);
 };
 
 /** Entregables que viven en un nodo: por currentNodeId (fijo desde su creación), o por roleLabel
@@ -93,11 +100,10 @@ export const briefsForNode = (project: FactoryProject, node: StrategyNode): Fabr
     if (node.stageType === 'kam') return /\bKAM\b/i.test(b.tarea);
     if (node.stageType === 'btl') return /\bBTL\b/i.test(b.tarea);
     if (node.stageType === 'relacionamiento') return /relacionamiento/i.test(b.tarea);
+    // El registro de Call Center (Estratega) siempre lleva currentNodeId (lo crea
+    // activateNextStage), así que este texto es solo una red de seguridad. El guion de la llamada
+    // vive en Copys (roleLabel Copywriter), no aquí.
     if (node.stageType === 'callcenter') return /call center/i.test(b.tarea) && !/guion/i.test(b.tarea);
-    if (node.stageType === 'callcenter_guion') return /guion/i.test(b.tarea) && /call center/i.test(b.tarea);
-    // "copys" comparte roleLabel "Copywriter" con "callcenter_guion" — evita que el guion
-    // (excluido arriba de su propio nodo si no calza, y aquí de copys) se cuele en ambos.
-    if (node.stageType === 'copys') return !(/guion/i.test(b.tarea) && /call center/i.test(b.tarea));
     return true;
   });
 

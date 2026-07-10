@@ -10,10 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
-  MoreVertical, Trash2, Workflow, Rocket, ArrowRight,
+  MoreVertical, Trash2, Workflow, Rocket,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   Target, TrendingUp, Users, DollarSign, RefreshCw,
-  Briefcase, Store, Handshake, Phone, PhoneCall,
+  Briefcase, Store, Handshake, PhoneCall,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -56,7 +56,6 @@ const STAGES: StageMeta[] = [
   { type: 'kam',        label: 'KAM',                short: 'KAM',      icon: Briefcase,       color: 'hsl(var(--team-direction))',  suggestRole: ['Estratega'] },
   { type: 'btl',        label: 'BTL',                short: 'BTL',      icon: Store,           color: 'hsl(var(--team-production))', suggestRole: ['Estratega'] },
   { type: 'relacionamiento', label: 'Relacionamiento', short: 'Relac.', icon: Handshake,       color: 'hsl(var(--team-direction))',  suggestRole: ['Estratega'] },
-  { type: 'callcenter_guion', label: 'Guion de llamada', short: 'Guion', icon: Phone,          color: 'hsl(var(--team-copy))',       suggestRole: ['Copywriter'] },
   { type: 'callcenter', label: 'Call Center',        short: 'Call Center', icon: PhoneCall,    color: 'hsl(var(--team-direction))',  suggestRole: ['Estratega'] },
 ];
 
@@ -70,15 +69,38 @@ const STATUS_META: Record<StrategyNode['status'], { label: string; cls: string }
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// Lanes: agrupa los nodos en cadenas lineales por rama (cada raíz —sin
-// dependsOn— inicia una rama que sigue a su único dependiente, ej.
-// Copys → Diseño → Envíos, o Guion de llamada → Call Center). Un nodo con
-// varios dependientes abre una rama nueva por cada uno. Las ramas se
-// empacan en una grilla densa (ver `WorkflowTab`) en vez de apilarse en
-// filas/carriles fijos — no hay agrupación por fase, solo por conexión real.
+// Layout de árbol: "Inicia el proyecto" es la única entrada a la izquierda y de
+// ahí salen las ramas raíz (cada nodo sin dependsOn válido) en filas paralelas.
+// Cada rama se despliega horizontalmente hacia la derecha siguiendo sus
+// dependencias (Copys → Diseño → Envíos). Un nodo con varios hijos se bifurca:
+// ocupa tantas filas como hojas cuelguen de él (Copys → Diseño…/Call Center = 2
+// filas) y se centra verticalmente entre ellas. Sin fases ni swimlanes: la
+// columna = profundidad real en la cadena, la fila = hoja del subárbol.
 // ───────────────────────────────────────────────────────────────────────────
 
-function computeLanes(nodes: StrategyNode[]): StrategyNode[][] {
+/** Orden vertical de las ramas raíz. Coincide con lo pedido: Landing, Copys (bifurca), Pauta,
+ *  BTL, KAM, Relacionamiento. Formulario (si existe) va junto a Landing arriba. */
+const ROOT_ORDER: Partial<Record<StrategyStageType, number>> = {
+  landing: 0, formulario: 1, copys: 2, pauta: 3, btl: 4, kam: 5, relacionamiento: 6, custom: 7,
+};
+
+interface NodePlacement {
+  node: StrategyNode;
+  col: number;       // profundidad (0 = raíz de la rama)
+  rowStart: number;  // fila inicial (0-based, inclusiva)
+  rowEnd: number;    // fila final (0-based, exclusiva)
+}
+interface TreeLayout {
+  placements: NodePlacement[];
+  edges: { fromId: string; toId: string }[];
+  rootIds: string[];
+  totalCols: number;
+  totalRows: number;
+  colOf: Map<string, number>;
+  centerYOf: Map<string, number>;
+}
+
+function computeTreeLayout(nodes: StrategyNode[]): TreeLayout {
   const byId = new Map(nodes.map((n) => [n.id, n] as const));
   const childrenOf = new Map<string, StrategyNode[]>();
   nodes.forEach((n) => {
@@ -89,36 +111,57 @@ function computeLanes(nodes: StrategyNode[]): StrategyNode[][] {
     });
   });
 
-  const visited = new Set<string>();
-  const lanes: StrategyNode[][] = [];
-
-  const buildLane = (start: StrategyNode) => {
-    if (visited.has(start.id)) return;
-    const lane: StrategyNode[] = [];
-    let current: StrategyNode | undefined = start;
-    const extraStarts: StrategyNode[] = [];
-    while (current && !visited.has(current.id)) {
-      lane.push(current);
-      visited.add(current.id);
-      const kids = (childrenOf.get(current.id) ?? []).filter((k) => !visited.has(k.id));
-      current = kids[0];
-      for (let i = 1; i < kids.length; i++) extraStarts.push(kids[i]);
-    }
-    lanes.push(lane);
-    extraStarts.forEach(buildLane);
-  };
-
-  // Raíces reales (sin dependsOn) o "huérfanas" (dependsOn a nodos borrados).
-  nodes
+  const roots = nodes
     .filter((n) => n.dependsOn.length === 0 || !n.dependsOn.some((p) => byId.has(p)))
-    .forEach(buildLane);
-  // Cualquier nodo restante (ciclo inesperado) — no debería pasar, pero por robustez.
-  nodes.filter((n) => !visited.has(n.id)).forEach(buildLane);
+    .sort((a, b) => (ROOT_ORDER[a.stageType] ?? 99) - (ROOT_ORDER[b.stageType] ?? 99));
 
-  // Ramas más largas primero: al empacarlas en la grilla densa (ver `WorkflowTab`), colocar
-  // las cadenas conectadas antes que los nodos sueltos deja mejores huecos para rellenar y
-  // evita el desperdicio de espacio horizontal que dejaban los carriles de ancho fijo.
-  return lanes.sort((a, b) => b.length - a.length);
+  const colOf = new Map<string, number>();
+  const range = new Map<string, { start: number; end: number }>();
+  const edges: { fromId: string; toId: string }[] = [];
+  const visited = new Set<string>();
+  let rowCursor = 0;
+  let maxCol = 0;
+
+  const assign = (node: StrategyNode, depth: number): { start: number; end: number } => {
+    if (visited.has(node.id)) return range.get(node.id) ?? { start: rowCursor, end: rowCursor + 1 };
+    visited.add(node.id);
+    colOf.set(node.id, depth);
+    maxCol = Math.max(maxCol, depth);
+    const kids = (childrenOf.get(node.id) ?? []).filter((k) => !visited.has(k.id));
+    kids.forEach((k) => edges.push({ fromId: node.id, toId: k.id }));
+    if (kids.length === 0) {
+      const start = rowCursor;
+      rowCursor += 1;
+      const r = { start, end: start + 1 };
+      range.set(node.id, r);
+      return r;
+    }
+    const kidRanges = kids.map((k) => assign(k, depth + 1));
+    const r = {
+      start: Math.min(...kidRanges.map((x) => x.start)),
+      end: Math.max(...kidRanges.map((x) => x.end)),
+    };
+    range.set(node.id, r);
+    return r;
+  };
+  roots.forEach((r) => assign(r, 0));
+  // Nodos huérfanos (ciclo inesperado) — cada uno en su propia fila, por robustez.
+  nodes.filter((n) => !visited.has(n.id)).forEach((n) => assign(n, 0));
+
+  const centerYOf = new Map<string, number>();
+  range.forEach((r, id) => centerYOf.set(id, (r.start + r.end) / 2));
+
+  const placements: NodePlacement[] = nodes.map((n) => ({
+    node: n,
+    col: colOf.get(n.id) ?? 0,
+    rowStart: range.get(n.id)!.start,
+    rowEnd: range.get(n.id)!.end,
+  }));
+
+  return {
+    placements, edges, rootIds: roots.map((r) => r.id),
+    totalCols: maxCol + 1, totalRows: Math.max(1, rowCursor), colOf, centerYOf,
+  };
 }
 
 // ─── Loop phases ──────────────────────────────────────────────────────────────
@@ -267,7 +310,7 @@ export const WorkflowTab = ({ project }: Props) => {
   } = useFactoryStore();
 
   const nodes = project.strategyNodes ?? [];
-  const lanes = useMemo(() => computeLanes(nodes), [nodes]);
+  const layout = useMemo(() => computeTreeLayout(nodes), [nodes]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tasksNodeId, setTasksNodeId] = useState<string | null>(null);
@@ -401,55 +444,101 @@ export const WorkflowTab = ({ project }: Props) => {
             canales y loops definidos al crear el proyecto.
           </p>
         </div>
-      ) : (
-        <div className="flex items-start gap-0 w-full">
-          {/* Nodo de inicio */}
-          <div className="shrink-0 pr-1.5 pt-1">
-            <div className="w-24 sm:w-28 rounded-lg shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-2 py-2.5">
-              <Rocket className="h-4 w-4 mb-1" />
-              <p className="text-[11px] font-semibold leading-tight">Inicia el proyecto</p>
-              <p className="text-[9px] opacity-80 truncate max-w-full">{project.name}</p>
+      ) : (() => {
+        const ROW_H = 116;
+        const gridHeight = layout.totalRows * ROW_H;
+        return (
+          <div className="flex items-stretch gap-0 w-full" style={{ minHeight: gridHeight }}>
+            {/* Nodo de inicio — única entrada, centrado verticalmente frente a todas las ramas */}
+            <div className="shrink-0 flex items-center pr-1">
+              <div className="w-24 sm:w-28 rounded-lg shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-2 py-2.5">
+                <Rocket className="h-4 w-4 mb-1" />
+                <p className="text-[11px] font-semibold leading-tight">Inicia el proyecto</p>
+                <p className="text-[9px] opacity-80 truncate max-w-full">{project.name}</p>
+              </div>
             </div>
-          </div>
 
-          <ArrowRight className="h-5 w-5 text-muted-foreground/40 shrink-0 mx-1 mt-6" />
-
-          {/* Grilla densa: cada rama (nodo suelto o cadena conectada) es una celda que ocupa
-             tantas columnas como nodos tenga; `grid-auto-flow: dense` rellena los huecos que
-             dejan las ramas cortas con las siguientes, sin agrupar por fase ni carril. Las
-             flechas dentro de una celda reflejan un `dependsOn` real entre esos nodos. */}
-          <div
-            className="flex-1 min-w-0 grid gap-3 items-start"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gridAutoFlow: 'dense' }}
-          >
-            {lanes.map((lane) => (
-              <div
-                key={lane[0].id}
-                className="flex items-center gap-1 min-w-0"
-                style={{ gridColumn: `span ${lane.length}` }}
+            {/* Abanico de conexiones: del inicio a la primera tarjeta de cada rama */}
+            <div className="relative shrink-0 self-stretch" style={{ width: 30 }}>
+              <svg
+                className="absolute inset-0 h-full w-full pointer-events-none"
+                viewBox={`0 0 1 ${layout.totalRows}`}
+                preserveAspectRatio="none"
               >
-                {lane.map((n, j) => (
-                  <div key={n.id} className="flex items-center min-w-0 flex-1">
-                    <div className="flex-1 min-w-0">
+                {layout.rootIds.map((id) => {
+                  const cy = layout.centerYOf.get(id)!;
+                  return (
+                    <path
+                      key={id}
+                      d={`M 0 ${layout.totalRows / 2} C 0.5 ${layout.totalRows / 2}, 0.5 ${cy}, 1 ${cy}`}
+                      stroke="hsl(var(--border))"
+                      strokeWidth="2"
+                      fill="none"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  );
+                })}
+              </svg>
+            </div>
+
+            {/* Área de ramas: cada nodo se coloca en su (columna = profundidad, fila = hoja);
+               un SVG por detrás dibuja las dependencias, incluida la bifurcación de Copys
+               (dos curvas saliendo del mismo nodo). Las ramas cortas ocupan solo su columna. */}
+            <div className="relative flex-1 min-w-0" style={{ height: gridHeight }}>
+              <svg
+                className="absolute inset-0 h-full w-full pointer-events-none"
+                viewBox={`0 0 ${layout.totalCols} ${layout.totalRows}`}
+                preserveAspectRatio="none"
+              >
+                {layout.edges.map((e) => {
+                  const pcx = layout.colOf.get(e.fromId)! + 0.5;
+                  const pcy = layout.centerYOf.get(e.fromId)!;
+                  const ccx = layout.colOf.get(e.toId)! + 0.5;
+                  const ccy = layout.centerYOf.get(e.toId)!;
+                  const mx = (pcx + ccx) / 2;
+                  return (
+                    <path
+                      key={`${e.fromId}-${e.toId}`}
+                      d={`M ${pcx} ${pcy} C ${mx} ${pcy}, ${mx} ${ccy}, ${ccx} ${ccy}`}
+                      stroke="hsl(var(--border))"
+                      strokeWidth="2"
+                      fill="none"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  );
+                })}
+              </svg>
+
+              <div
+                className="relative grid h-full"
+                style={{
+                  gridTemplateColumns: `repeat(${layout.totalCols}, minmax(0, 1fr))`,
+                  gridTemplateRows: `repeat(${layout.totalRows}, 1fr)`,
+                }}
+              >
+                {layout.placements.map((p) => (
+                  <div
+                    key={p.node.id}
+                    className="flex items-center min-w-0 px-1.5"
+                    style={{ gridColumn: p.col + 1, gridRow: `${p.rowStart + 1} / ${p.rowEnd + 1}` }}
+                  >
+                    <div className="w-full min-w-0">
                       <NodeCard
-                        node={n}
-                        taskCounts={tasksByNodeId.get(n.id)}
-                        onOpenTasks={() => setTasksNodeId(n.id)}
-                        onEdit={() => setEditingId(n.id)}
-                        onStatus={(s) => updateStrategyNode(project.id, n.id, { status: s })}
-                        onDelete={() => deleteStrategyNode(project.id, n.id)}
+                        node={p.node}
+                        taskCounts={tasksByNodeId.get(p.node.id)}
+                        onOpenTasks={() => setTasksNodeId(p.node.id)}
+                        onEdit={() => setEditingId(p.node.id)}
+                        onStatus={(s) => updateStrategyNode(project.id, p.node.id, { status: s })}
+                        onDelete={() => deleteStrategyNode(project.id, p.node.id)}
                       />
                     </div>
-                    {j < lane.length - 1 && (
-                      <ArrowRight className="h-4 w-4 text-muted-foreground/40 shrink-0 mx-1" />
-                    )}
                   </div>
                 ))}
               </div>
-            ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Edit node dialog */}
       {editingId && (

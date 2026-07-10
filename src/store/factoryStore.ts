@@ -277,6 +277,22 @@ const stripApprovalNodes = (nodes: StrategyNode[]): StrategyNode[] => {
     .map((n) => ({ ...n, dependsOn: bridge(n.dependsOn) }));
 };
 
+/** Migración en lectura: proyectos creados antes de fusionar el guion en Copys pueden traer un
+ *  nodo intermedio "Guion de llamada" (callcenter_guion) entre Copys y Call Center. Lo quitamos y
+ *  re-colgamos el nodo Call Center directo del nodo Copys (el guion ahora es una tarea de Copys). */
+const mergeGuionNodes = (nodes: StrategyNode[]): StrategyNode[] => {
+  const guionIds = new Set(nodes.filter((n) => n.stageType === 'callcenter_guion').map((n) => n.id));
+  if (guionIds.size === 0) return nodes;
+  const copys = nodes.find((n) => n.stageType === 'copys');
+  return nodes
+    .filter((n) => !guionIds.has(n.id))
+    .map((n) => {
+      const deps = n.dependsOn.filter((d) => !guionIds.has(d));
+      if (n.stageType === 'callcenter' && copys && !deps.includes(copys.id)) deps.push(copys.id);
+      return { ...n, dependsOn: deps };
+    });
+};
+
 /** Mapea cada requerimiento del wizard al stage raíz correspondiente en el flujo de trabajo. */
 const REQ_TO_STAGE: Record<string, { stageType: StrategyStageType; label: string; roleLabel: string }> = {
   landing: { stageType: 'landing', label: 'Landing', roleLabel: 'Gestor de canales' },
@@ -320,12 +336,23 @@ const CANAL_SINGLE_NODE: Record<string, { stageType: StrategyStageType; label: s
 
 /** Sincroniza los nodos del flujo de trabajo que dependen de los canales del Plan de canales:
  *  Facebook/Instagram/TikTok/Google Ads → "Pauta en redes sociales" (Trafficker), BTL/KAM/
- *  Relacionamiento → su propio nodo (Estratega), y "Call Center" → una cadena de 2 nodos (el
- *  Copywriter redacta el guion, pasa a aprobación y activa un nodo de registro para Estratega).
- *  Agrega los nodos que falten y quita los que ya no correspondan, sin tocar el resto del flujo. */
+ *  Relacionamiento → su propio nodo (Estratega), y "Call Center" → un nodo de registro (Estratega,
+ *  hecho sí/no + fecha) que cuelga directo del nodo Copys: el copywriter redacta el guion como una
+ *  tarea más dentro de Copys y, al aprobarse, se activa el registro en Call Center (ver
+ *  `activateNextStage`). Agrega los nodos que falten y quita los que ya no correspondan, sin tocar
+ *  el resto del flujo. */
 const syncCanalNodes = (nodes: StrategyNode[], canales: CanalRow[]): StrategyNode[] => {
   let result = nodes;
   const canalTypes = new Set(canales.map((c) => c.canal));
+
+  // Migración en caliente: el nodo intermedio "Guion de llamada" (callcenter_guion) ya no existe
+  // — el guion vive dentro de Copys. Se quita y sus dependientes se re-cuelgan de Copys abajo.
+  const guionIds = new Set(result.filter((n) => n.stageType === 'callcenter_guion').map((n) => n.id));
+  if (guionIds.size > 0) {
+    result = result
+      .filter((n) => !guionIds.has(n.id))
+      .map((n) => ({ ...n, dependsOn: n.dependsOn.filter((d) => !guionIds.has(d)) }));
+  }
 
   const stageTypesWanted = new Set<StrategyStageType>();
   for (const [canal, cfg] of Object.entries(CANAL_SINGLE_NODE)) {
@@ -345,24 +372,22 @@ const syncCanalNodes = (nodes: StrategyNode[], canales: CanalRow[]): StrategyNod
     }
   }
 
+  // Call Center: un solo nodo de registro (Estratega) que depende del nodo Copys.
   const wantsCallCenter = canalTypes.has('Call Center');
-  const guion = result.find((n) => n.stageType === 'callcenter_guion');
-  const registro = result.find((n) => n.stageType === 'callcenter');
-  if (wantsCallCenter && !guion) {
-    const guionId = `node-${uid()}`;
-    const registroId = `node-${uid()}`;
-    result = [
-      ...result,
-      { id: guionId, stageType: 'callcenter_guion', label: 'Guion de llamada', roleId: null,
-        roleLabel: 'Copywriter', memberId: null, memberName: null, status: 'pending', dependsOn: [] },
-      { id: registroId, stageType: 'callcenter', label: 'Call Center', roleId: null,
-        roleLabel: 'Estratega', memberId: null, memberName: null, status: 'pending', dependsOn: [guionId] },
-    ];
-  } else if (!wantsCallCenter && guion) {
-    const removeIds = new Set([guion.id, ...(registro ? [registro.id] : [])]);
-    result = result
-      .filter((n) => !removeIds.has(n.id))
-      .map((n) => ({ ...n, dependsOn: n.dependsOn.filter((d) => !removeIds.has(d)) }));
+  const copys = result.find((n) => n.stageType === 'copys');
+  const callcenter = result.find((n) => n.stageType === 'callcenter');
+  if (wantsCallCenter && !callcenter) {
+    result = [...result, {
+      id: `node-${uid()}`, stageType: 'callcenter', label: 'Call Center', roleId: null,
+      roleLabel: 'Estratega', memberId: null, memberName: null, status: 'pending',
+      dependsOn: copys ? [copys.id] : [],
+    }];
+  } else if (!wantsCallCenter && callcenter) {
+    result = result.filter((n) => n.id !== callcenter.id)
+      .map((n) => ({ ...n, dependsOn: n.dependsOn.filter((d) => d !== callcenter.id) }));
+  } else if (wantsCallCenter && callcenter && copys && !callcenter.dependsOn.includes(copys.id)) {
+    // Datos migrados (dep al guion ya borrado): re-colgar el registro de Copys.
+    result = result.map((n) => (n.id === callcenter.id ? { ...n, dependsOn: [copys.id] } : n));
   }
 
   return result;
@@ -378,7 +403,6 @@ const CANAL_NODE_TEXT_PATTERN: Partial<Record<StrategyStageType, RegExp>> = {
   kam: /\bKAM\b/i,
   btl: /\bBTL\b/i,
   relacionamiento: /relacionamiento/i,
-  callcenter_guion: /guion/i,
 };
 
 const stampCanalNodeIds = (nodes: StrategyNode[], briefs: FabricaBriefItem[]): FabricaBriefItem[] =>
@@ -419,7 +443,7 @@ const rowToProject = (row: any): FactoryProject => {
     createdAt: row.created_at,
     roleGroups: data.roleGroups ?? [],
     tasks: data.tasks ?? [],
-    strategyNodes: stripApprovalNodes(data.strategyNodes ?? []),
+    strategyNodes: mergeGuionNodes(stripApprovalNodes(data.strategyNodes ?? [])),
     strategistName: data.strategistName ?? '',
     audienciaNarrativa: data.audienciaNarrativa ?? { segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' },
     canales: data.canales ?? [],
