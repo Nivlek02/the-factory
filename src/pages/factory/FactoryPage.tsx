@@ -31,7 +31,7 @@ import {
   FolderKanban,
   Users,
   CheckSquare,
-  Sparkles,
+  LayoutGrid,
   CircleDot,
   Flag,
   Calendar,
@@ -44,6 +44,8 @@ import {
   BarChart3,
   RefreshCw,
   Pencil,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup, CanalRow, FabricaBriefItem } from '@/store/factoryStore';
 import { useRolesStore, ASSIGNABLE_ROLE_IDS } from '@/store/rolesStore';
@@ -788,6 +790,7 @@ const FactoryPage = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [stateFilter, setStateFilter] = useState<'all' | FactoryProject['state']>('all');
+  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
 
   const filteredProjects = projects.filter((p) => {
     const matchesQ = query.trim()
@@ -805,7 +808,7 @@ const FactoryPage = () => {
           <div className="px-6 py-3 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-md bg-factory-soft flex items-center justify-center">
-                <Sparkles className="h-3.5 w-3.5 text-factory" />
+                <LayoutGrid className="h-3.5 w-3.5 text-factory" />
               </div>
               <div className="leading-tight">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">La Fabrica</p>
@@ -821,15 +824,43 @@ const FactoryPage = () => {
 
         {/* Two-panel layout */}
         <div className="flex flex-1 overflow-hidden">
-          {/* Left: project list */}
-          <div className="w-72 shrink-0 border-r border-border/60 flex flex-col bg-card/40">
+          {/* Left: project list (collapsible) */}
+          <div className={`${projectsCollapsed ? 'w-11' : 'w-72'} shrink-0 border-r border-border/60 flex flex-col bg-card/40 transition-all duration-300`}>
+            {projectsCollapsed ? (
+              <div className="flex flex-col items-center gap-3 py-3">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => setProjectsCollapsed(false)}
+                  title="Mostrar proyectos"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </Button>
+                <div className="w-7 h-7 rounded-md bg-factory-soft flex items-center justify-center">
+                  <FolderKanban className="h-3.5 w-3.5 text-factory" />
+                </div>
+              </div>
+            ) : (
+            <>
             <div className="px-3 py-3 border-b border-border/60 space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <FolderKanban className="h-3 w-3" />
                   Proyectos
                 </p>
-                <span className="text-[10px] text-muted-foreground">{filteredProjects.length}/{projects.length}</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-muted-foreground">{filteredProjects.length}/{projects.length}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 -mr-1 text-muted-foreground hover:text-foreground"
+                    onClick={() => setProjectsCollapsed(true)}
+                    title="Ocultar proyectos"
+                  >
+                    <PanelLeftClose className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
               <Input
                 placeholder="Buscar proyecto…"
@@ -926,6 +957,8 @@ const FactoryPage = () => {
                   Nuevo proyecto
                 </Button>
               </div>
+            )}
+            </>
             )}
           </div>
 
