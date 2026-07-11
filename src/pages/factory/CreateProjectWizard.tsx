@@ -7,12 +7,14 @@ import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { useFactoryStore, type FabricaBriefItem } from '@/store/factoryStore';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
+import { useFactoryStore, type FabricaBriefItem, type EtapaCiclo, type EtapaTipo } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
 import RichTextEditor from '@/components/ui/rich-text-editor';
 import {
-  Cog, Plus, X, ChevronLeft, ChevronRight, FolderKanban, Check, Target, GitBranch, Calendar, Clock,
+  Cog, Plus, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, FolderKanban, Check, Target, GitBranch, Calendar, Clock,
   Mail, MessageCircle, Smartphone, Facebook, Instagram, Music, Search, Phone, Store, Briefcase, Handshake,
+  Sparkles, Megaphone, MousePointerClick, Link2, ShieldCheck, Flag, RefreshCw,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -97,6 +99,261 @@ const CHANNELS: { id: string; icon: LucideIcon }[] = [
   { id: 'Relacionamiento', icon: Handshake },
 ];
 
+/** Las 6 etapas del ecosistema cíclico de convocatoria/conversión/reactivación — ver
+ *  EtapaCiclo en factoryStore.ts. `initEtapas()` siembra estos defaults; nombre/objetivo
+ *  quedan editables, tipo/orden inicial no. */
+const ETAPA_DEFAULTS: { tipo: EtapaTipo; nombre: string; objetivo: string }[] = [
+  { tipo: 'atraccion', nombre: 'Atracción multicanal', objetivo: 'Canales directos, redes orgánicas y pauta digital que traen al contacto al ecosistema.' },
+  { tipo: 'interaccion', nombre: 'Interacción', objetivo: 'Abre/no abre · clic/no clic · comenta · visita la landing.' },
+  { tipo: 'captura', nombre: 'Captura de interés', objetivo: 'Link por DM · formulario de inscripción · datos de contacto.' },
+  { tipo: 'validacion', nombre: 'Validación', objetivo: 'Cruce contra CRM/fuente externa (ej: renovado / no renovado / no inscrito).' },
+  { tipo: 'desenlace', nombre: 'Desenlace', objetivo: 'Rama por resultado (ej: confirmación · CTA de renovación · ruta de formalización).' },
+  { tipo: 'reactivacion', nombre: 'Reactivación y remarketing', objetivo: 'Audiencias por comportamiento (no abrió · abrió sin clic · clic sin conversión · comentó sin convertir) — reinicia el ciclo con una nueva ola de segmentación.' },
+];
+
+/** Ícono + color por tipo de etapa, para el acordeón del wizard (mismo patrón que
+ *  STAGE_BY_TYPE en MapTab.tsx). */
+const ETAPA_TIPO_META: Record<EtapaTipo, { icon: LucideIcon; color: string }> = {
+  atraccion: { icon: Megaphone, color: 'hsl(var(--team-social))' },
+  interaccion: { icon: MousePointerClick, color: 'hsl(var(--team-copy))' },
+  captura: { icon: Link2, color: 'hsl(var(--team-seo))' },
+  validacion: { icon: ShieldCheck, color: 'hsl(var(--team-production))' },
+  desenlace: { icon: Flag, color: 'hsl(var(--team-direction))' },
+  reactivacion: { icon: RefreshCw, color: 'hsl(var(--team-design))' },
+};
+
+type WizardCanalRow = { id: string; canal: string; dia: string; hora: string; copy: string; segmento: string; etapaId?: string };
+type WizardLoopRow = { id: string; disparador: string; reaccion: string; responsable: string; etapaId?: string; siguienteEtapaId?: string };
+
+/** Una fila del Plan de canales — reutilizada dentro de cada etapa y en "Sin etapa asignada"
+ *  (donde además se muestra el selector de etapa) para no triplicar este markup. */
+const ToqueRow = ({
+  row, onUpdate, onRemove, segmentos, etapas, showEtapaPicker,
+}: {
+  row: WizardCanalRow;
+  onUpdate: (field: string, value: string) => void;
+  onRemove: () => void;
+  segmentos: string[];
+  etapas: EtapaCiclo[];
+  showEtapaPicker?: boolean;
+}) => (
+  <div
+    className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-3 md:grid md:items-center md:gap-2 md:p-2"
+    style={{ gridTemplateColumns: showEtapaPicker ? '130px 115px 90px 1fr 130px 140px 24px' : '130px 115px 90px 1fr 130px 24px' }}
+  >
+    <Select value={row.canal} onValueChange={(v) => onUpdate('canal', v)}>
+      <SelectTrigger className="h-8 w-full gap-1.5 border-none bg-transparent px-1 text-xs font-medium shadow-none focus:ring-0 focus:ring-offset-0 md:h-auto">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {CHANNELS.map(({ id, icon: Icon }) => (
+          <SelectItem key={id} value={id} className="text-xs">
+            <span className="flex items-center gap-2">
+              <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              {id}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+
+    <div className="flex items-center gap-3 md:contents">
+      <div
+        className="relative flex flex-1 items-center gap-1.5 cursor-pointer md:flex-none"
+        onClick={(e) => {
+          const input = e.currentTarget.querySelector('input[type="date"]') as HTMLInputElement;
+          input?.showPicker();
+        }}
+      >
+        <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className="text-xs text-foreground truncate">
+          {row.dia ? formatDisplay(row.dia) : <span className="text-muted-foreground/60">Fecha</span>}
+        </span>
+        <input
+          type="date"
+          value={row.dia}
+          onChange={(e) => onUpdate('dia', e.target.value)}
+          className="w-0 h-0 opacity-0 absolute -z-10"
+        />
+      </div>
+      <div
+        className="relative flex flex-1 items-center gap-1.5 cursor-pointer md:flex-none"
+        onClick={(e) => {
+          const input = e.currentTarget.querySelector('input[type="time"]') as HTMLInputElement;
+          input?.showPicker();
+        }}
+      >
+        <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className="text-xs text-foreground truncate">
+          {row.hora || <span className="text-muted-foreground/60">Hora</span>}
+        </span>
+        <input
+          type="time"
+          value={row.hora ?? ''}
+          onChange={(e) => onUpdate('hora', e.target.value)}
+          className="w-0 h-0 opacity-0 absolute -z-10"
+        />
+      </div>
+    </div>
+
+    <input
+      placeholder="Ángulo del toque…"
+      value={row.copy}
+      onChange={(e) => onUpdate('copy', e.target.value)}
+      className="text-xs bg-transparent border-none outline-none w-full"
+    />
+    <div className="min-w-0 overflow-hidden" title={SEGMENTOS_LABEL[row.segmento] ?? 'Segmento General'}>
+      <select
+        value={row.segmento || 'todos'}
+        onChange={(e) => onUpdate('segmento', e.target.value)}
+        className="text-xs bg-transparent border-none outline-none w-full max-w-full cursor-pointer truncate"
+        style={{ textOverflow: 'ellipsis' }}
+      >
+        <option value="todos">Segmento General</option>
+        {segmentos.map((segId) => (
+          <option key={segId} value={segId}>
+            {SEGMENTOS_LABEL[segId] ?? segId}
+          </option>
+        ))}
+      </select>
+    </div>
+    {showEtapaPicker && (
+      <div className="min-w-0 overflow-hidden">
+        <select
+          value={row.etapaId ?? ''}
+          onChange={(e) => onUpdate('etapaId', e.target.value)}
+          className="text-xs bg-transparent border-none outline-none w-full max-w-full cursor-pointer truncate"
+        >
+          <option value="">Asignar a etapa…</option>
+          {[...etapas].sort((a, b) => a.orden - b.orden).map((e) => (
+            <option key={e.id} value={e.id}>{e.nombre}</option>
+          ))}
+        </select>
+      </div>
+    )}
+    <button
+      onClick={onRemove}
+      className="self-end text-muted-foreground hover:text-destructive transition-colors md:self-auto"
+    >
+      <X className="h-3.5 w-3.5" />
+    </button>
+  </div>
+);
+
+/** Una fila de Loops de comportamiento — reutilizada dentro de cada etapa y en "Sin etapa
+ *  asignada". `onUpdate('siguienteEtapaId', etapaId)` es el selector "Lleva a →" que cierra o
+ *  ramifica el ciclo (ej. una reactivación que reinicia en Atracción). */
+const LoopRowItem = ({
+  row, onUpdate, onRemove, canalesRows, roles, etapas, showEtapaPicker,
+}: {
+  row: WizardLoopRow;
+  onUpdate: (field: string, value: string) => void;
+  onRemove: () => void;
+  canalesRows: WizardCanalRow[];
+  roles: { id: string; label: string }[];
+  etapas: EtapaCiclo[];
+  showEtapaPicker?: boolean;
+}) => {
+  const emailTriggers = canalesRows
+    .filter((c) => c.canal === 'Correo' && c.copy.trim())
+    .map((c) => ({ label: `📧 ${c.copy.trim()}`, value: `Envío de correo: ${c.copy.trim()}` }));
+  const standardTriggers = [
+    'Abrió correo pero no hizo clic',
+    'Hizo clic en el enlace',
+    'No abrió el correo',
+    'Respondió al correo',
+    'Se dio de baja',
+  ];
+  const allPresetValues = ['', ...standardTriggers, ...emailTriggers.map((t) => t.value)];
+  const isCustomInput = row.disparador === '__custom__' || (row.disparador !== '' && !allPresetValues.includes(row.disparador));
+
+  return (
+    <tr className="border-b border-border/60">
+      <td className="p-1.5">
+        {emailTriggers.length > 0 && !isCustomInput ? (
+          <select
+            value={row.disparador}
+            onChange={(e) => onUpdate('disparador', e.target.value)}
+            className="w-full bg-transparent border-none outline-none text-xs py-1 cursor-pointer"
+          >
+            <option value="">Seleccionar disparador…</option>
+            <optgroup label="Disparadores estándar">
+              {standardTriggers.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Envíos programados">
+              {emailTriggers.map((t, i) => (
+                <option key={i} value={t.value}>{t.label}</option>
+              ))}
+            </optgroup>
+            <option value="__custom__">✏️ Escribir personalizado…</option>
+          </select>
+        ) : (
+          <input
+            placeholder="Escribe el disparador personalizado…"
+            value={isCustomInput && row.disparador === '__custom__' ? '' : row.disparador}
+            onChange={(e) => onUpdate('disparador', e.target.value)}
+            className="w-full bg-transparent border-none outline-none text-xs py-1"
+          />
+        )}
+      </td>
+      <td className="p-1.5">
+        <input
+          placeholder="Reacción diseñada…"
+          value={row.reaccion}
+          onChange={(e) => onUpdate('reaccion', e.target.value)}
+          className="w-full bg-transparent border-none outline-none text-xs py-1"
+        />
+      </td>
+      <td className="p-1.5">
+        <select
+          value={row.responsable}
+          onChange={(e) => onUpdate('responsable', e.target.value)}
+          className="w-full bg-transparent border-none outline-none text-xs py-1 cursor-pointer"
+        >
+          <option value="">Responsable</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.label}>{r.label}</option>
+          ))}
+        </select>
+      </td>
+      <td className="p-1.5">
+        <select
+          value={row.siguienteEtapaId ?? ''}
+          onChange={(e) => onUpdate('siguienteEtapaId', e.target.value)}
+          className="w-full bg-transparent border-none outline-none text-xs py-1 cursor-pointer"
+          title="Lleva a → cierra o ramifica el ciclo hacia otra etapa (ej. reactivación)"
+        >
+          <option value="">— Cierra aquí —</option>
+          {[...etapas].sort((a, b) => a.orden - b.orden).map((e) => (
+            <option key={e.id} value={e.id}>Lleva a: {e.nombre}</option>
+          ))}
+        </select>
+      </td>
+      {showEtapaPicker && (
+        <td className="p-1.5">
+          <select
+            value={row.etapaId ?? ''}
+            onChange={(e) => onUpdate('etapaId', e.target.value)}
+            className="w-full bg-transparent border-none outline-none text-xs py-1 cursor-pointer"
+          >
+            <option value="">Asignar a etapa…</option>
+            {[...etapas].sort((a, b) => a.orden - b.orden).map((e) => (
+              <option key={e.id} value={e.id}>{e.nombre}</option>
+            ))}
+          </select>
+        </td>
+      )}
+      <td className="p-1.5">
+        <button onClick={onRemove} className="text-muted-foreground hover:text-destructive transition-colors shrink-0">
+          <X className="h-3 w-3" />
+        </button>
+      </td>
+    </tr>
+  );
+};
+
 const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Props) => {
   const { addProject, updateProject, projects: allProjects } = useFactoryStore();
   const { roles } = useRolesStore();
@@ -168,12 +425,22 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       return false;
     });
   }, [data.eventCategory, data.startDate, data.dueDate, allProjects, editProject]);
-  const [canalesRows, setCanalesRows] = useState<{ id: string; canal: string; dia: string; hora: string; copy: string; segmento: string }[]>(
+  const [canalesRows, setCanalesRows] = useState<WizardCanalRow[]>(
     editProject?.canales?.map((c) => ({ hora: '', ...c })) ?? []
   );
-  const [loopsRows, setLoopsRows] = useState<{ id: string; disparador: string; reaccion: string; responsable: string }[]>(
+  const [loopsRows, setLoopsRows] = useState<WizardLoopRow[]>(
     editProject?.loops?.map((l) => ({ ...l })) ?? []
   );
+  const [etapas, setEtapas] = useState<EtapaCiclo[]>(editProject?.etapas ?? []);
+  const [mensajeBase, setMensajeBase] = useState({
+    emocion: editProject?.mensajeBase?.emocion ?? '',
+    logica: editProject?.mensajeBase?.logica ?? '',
+    motivacion: editProject?.mensajeBase?.motivacion ?? '',
+    recompensa: editProject?.mensajeBase?.recompensa ?? '',
+  });
+  const [motor, setMotor] = useState({
+    fuenteValidacion: editProject?.motor?.fuenteValidacion ?? '',
+  });
   const [requerimientos, setRequerimientos] = useState<string[]>(
     editProject?.requerimientos ?? []
   );
@@ -204,6 +471,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           if (parsed.audiencia) setAudiencia(parsed.audiencia);
           if (parsed.canalesRows) setCanalesRows(parsed.canalesRows);
           if (parsed.loopsRows) setLoopsRows(parsed.loopsRows);
+          if (parsed.etapas) setEtapas(parsed.etapas);
+          if (parsed.mensajeBase) setMensajeBase(parsed.mensajeBase);
+          if (parsed.motor) setMotor(parsed.motor);
           if (parsed.requerimientos) setRequerimientos(parsed.requerimientos);
           if (parsed.formularioConfig) setFormularioConfig(parsed.formularioConfig);
           if (parsed.attachments) setAttachments(parsed.attachments);
@@ -223,6 +493,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           audiencia,
           canalesRows,
           loopsRows,
+          etapas,
+          mensajeBase,
+          motor,
           requerimientos,
           formularioConfig,
           attachments,
@@ -231,7 +504,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       } catch { /* QuotaExceededError — draft not persisted, data stays in state */ }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [open, isEditing, data, audiencia, canalesRows, loopsRows, requerimientos, formularioConfig, attachments, step]);
+  }, [open, isEditing, data, audiencia, canalesRows, loopsRows, etapas, mensajeBase, motor, requerimientos, formularioConfig, attachments, step]);
 
   const clearDraft = () => {
     try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
@@ -244,20 +517,45 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     setAudiencia({ segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' });
     setCanalesRows([]);
     setLoopsRows([]);
+    setEtapas([]);
+    setMensajeBase({ emocion: '', logica: '', motivacion: '', recompensa: '' });
+    setMotor({ fuenteValidacion: '' });
     setRequerimientos([]);
     setFormularioConfig({ basico: null, camposAdicionales: '', cuadroTexto: '' });
     setAttachments([]);
     setFabricaBriefs([]);
   };
 
-  const addCanalRow = () => {
-    setCanalesRows((prev) => [...prev, { id: uid(), canal: 'Correo', dia: '', hora: '', copy: '', segmento: 'todos' }]);
+  // ─── Etapas del ciclo ───
+  const initEtapas = () => {
+    setEtapas(ETAPA_DEFAULTS.map((d, i) => ({ id: uid(), tipo: d.tipo, nombre: d.nombre, orden: i, objetivo: d.objetivo })));
+  };
+  const updateEtapa = (id: string, field: 'nombre' | 'objetivo', value: string) =>
+    setEtapas((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  const moveEtapa = (id: string, dir: -1 | 1) => {
+    setEtapas((prev) => {
+      const sorted = [...prev].sort((a, b) => a.orden - b.orden);
+      const idx = sorted.findIndex((e) => e.id === id);
+      const swapIdx = idx + dir;
+      if (idx === -1 || swapIdx < 0 || swapIdx >= sorted.length) return prev;
+      const a = sorted[idx];
+      const b = sorted[swapIdx];
+      return prev.map((e) => {
+        if (e.id === a.id) return { ...e, orden: b.orden };
+        if (e.id === b.id) return { ...e, orden: a.orden };
+        return e;
+      });
+    });
+  };
+
+  const addCanalRow = (etapaId?: string) => {
+    setCanalesRows((prev) => [...prev, { id: uid(), canal: 'Correo', dia: '', hora: '', copy: '', segmento: 'todos', etapaId }]);
   };
   const removeCanalRow = (id: string) => setCanalesRows((prev) => prev.filter((r) => r.id !== id));
   const updateCanalRow = (id: string, field: string, value: string) =>
     setCanalesRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
-  const addLoopRow = () => {
-    setLoopsRows((prev) => [...prev, { id: uid(), disparador: '', reaccion: '', responsable: '' }]);
+  const addLoopRow = (etapaId?: string) => {
+    setLoopsRows((prev) => [...prev, { id: uid(), disparador: '', reaccion: '', responsable: '', etapaId }]);
   };
   const removeLoopRow = (id: string) => setLoopsRows((prev) => prev.filter((r) => r.id !== id));
   const updateLoopRow = (id: string, field: string, value: string) =>
@@ -484,6 +782,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         },
         canales: canalesRows,
         loops: loopsRows,
+        etapas,
+        mensajeBase,
+        motor,
         fabricaBriefs: fabricaBriefs,
         requerimientos,
         segmentLink: data.segmentLink.trim(),
@@ -518,6 +819,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       },
       canales: canalesRows,
       loops: loopsRows,
+      etapas,
+      mensajeBase,
+      motor,
       fabricaBriefs: fabricaBriefs,
       requerimientos,
       formularioConfig,
@@ -872,246 +1176,271 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                    </div>
                 </div>
               </div>
+
+              {/* ─── Base del mensaje (ELMR) ─── */}
+              <div className="border-t pt-4">
+                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
+                  Base del mensaje (ELMR)
+                </Label>
+                <p className="text-xs text-muted-foreground mb-3 italic">
+                  Los 4 pilares que sostienen el mensaje de la campaña a lo largo de todo el ciclo.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Emoción</Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="Qué siente el contacto al ver el mensaje…"
+                      value={mensajeBase.emocion}
+                      onChange={(e) => setMensajeBase((m) => ({ ...m, emocion: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Lógica</Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="El argumento racional que respalda la promesa…"
+                      value={mensajeBase.logica}
+                      onChange={(e) => setMensajeBase((m) => ({ ...m, logica: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Motivación</Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="Qué lo impulsa a actuar ahora…"
+                      value={mensajeBase.motivacion}
+                      onChange={(e) => setMensajeBase((m) => ({ ...m, motivacion: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Recompensa</Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="Qué gana al participar/convertir…"
+                      value={mensajeBase.recompensa}
+                      onChange={(e) => setMensajeBase((m) => ({ ...m, recompensa: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
           {/* STEP 3 — CANALES Y COMPORTAMIENTO */}
           {step === 2 && (
             <div className="space-y-4">
-              {/* ─── Plan de canales ─── */}
-              <div>
-                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
-                  Plan de canales
-                </Label>
-                <div className="space-y-2">
-                  {/* Header — visible solo desde md, en mobile cada fila es una tarjeta apilada */}
-                  <div className="hidden md:grid md:grid-cols-[130px_115px_90px_1fr_130px] gap-2 px-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Canal</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                      <Calendar className="h-3 w-3" /> Día
-                    </span>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                      <Clock className="h-3 w-3" /> Hora
-                    </span>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Copy / Ángulo del toque</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Segmento</span>
-                  </div>
-                  {canalesRows.map((row) => (
-                    <div
-                      key={row.id}
-                      className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-3 md:grid md:grid-cols-[130px_115px_90px_1fr_130px_24px] md:items-center md:gap-2 md:p-2"
-                    >
-                      <Select value={row.canal} onValueChange={(v) => updateCanalRow(row.id, 'canal', v)}>
-                        <SelectTrigger className="h-8 w-full gap-1.5 border-none bg-transparent px-1 text-xs font-medium shadow-none focus:ring-0 focus:ring-offset-0 md:h-auto">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CHANNELS.map(({ id, icon: Icon }) => (
-                            <SelectItem key={id} value={id} className="text-xs">
-                              <span className="flex items-center gap-2">
-                                <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                {id}
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+              {/* ─── Ecosistema cíclico: Plan de canales + Loops agrupados por etapa ─── */}
+              {etapas.length === 0 ? (
+                <div className="rounded-xl border-2 border-dashed border-border p-8 text-center space-y-3">
+                  <RefreshCw className="h-7 w-7 text-muted-foreground mx-auto" />
+                  <p className="text-sm font-medium">Organiza el ecosistema en 6 etapas cíclicas</p>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                    Atracción → Interacción → Captura → Validación → Desenlace → Reactivación (que
+                    reinicia el ciclo). Agrupa ahí el Plan de canales y los Loops de comportamiento.
+                  </p>
+                  <Button type="button" size="sm" onClick={initEtapas}>
+                    <Sparkles className="h-3.5 w-3.5" /> Inicializar las 6 etapas
+                  </Button>
+                </div>
+              ) : (
+                <div>
+                  <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
+                    Ecosistema cíclico — canales y comportamiento por etapa
+                  </Label>
+                  <Accordion type="multiple" defaultValue={etapas.map((e) => e.id)} className="space-y-2">
+                    {[...etapas].sort((a, b) => a.orden - b.orden).map((etapa, idx, sorted) => {
+                      const meta = ETAPA_TIPO_META[etapa.tipo];
+                      const Icon = meta.icon;
+                      const toques = canalesRows.filter((r) => r.etapaId === etapa.id);
+                      const etapaLoops = loopsRows.filter((r) => r.etapaId === etapa.id);
+                      return (
+                        <AccordionItem key={etapa.id} value={etapa.id} className="rounded-lg border border-border/60 bg-card px-3 last:border-b-0">
+                          <div className="flex items-center gap-1">
+                            <div className="flex flex-col shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => moveEtapa(etapa.id, -1)}
+                                disabled={idx === 0}
+                                className="text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
+                              >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveEtapa(etapa.id, 1)}
+                                disabled={idx === sorted.length - 1}
+                                className="text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                            <AccordionTrigger className="py-3">
+                              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                <span
+                                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                                  style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                                >
+                                  <Icon className="h-4 w-4" />
+                                </span>
+                                <div className="min-w-0 text-left">
+                                  <p className="text-sm font-semibold truncate">{idx + 1}. {etapa.nombre}</p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {toques.length} {toques.length === 1 ? 'toque' : 'toques'} · {etapaLoops.length} {etapaLoops.length === 1 ? 'loop' : 'loops'}
+                                  </p>
+                                </div>
+                              </div>
+                            </AccordionTrigger>
+                          </div>
+                          <AccordionContent className="space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Nombre</Label>
+                                <Input value={etapa.nombre} onChange={(e) => updateEtapa(etapa.id, 'nombre', e.target.value)} className="h-8 text-xs" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Objetivo</Label>
+                                <Input value={etapa.objetivo} onChange={(e) => updateEtapa(etapa.id, 'objetivo', e.target.value)} className="h-8 text-xs" />
+                              </div>
+                            </div>
 
-                      <div className="flex items-center gap-3 md:contents">
-                        <div
-                          className="relative flex flex-1 items-center gap-1.5 cursor-pointer md:flex-none"
-                          onClick={(e) => {
-                            const input = e.currentTarget.querySelector('input[type="date"]') as HTMLInputElement;
-                            input?.showPicker();
-                          }}
-                        >
-                          <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <span className="text-xs text-foreground truncate">
-                            {row.dia ? formatDisplay(row.dia) : <span className="text-muted-foreground/60">Fecha</span>}
-                          </span>
-                          <input
-                            type="date"
-                            value={row.dia}
-                            onChange={(e) => updateCanalRow(row.id, 'dia', e.target.value)}
-                            className="w-0 h-0 opacity-0 absolute -z-10"
-                          />
-                        </div>
-                        <div
-                          className="relative flex flex-1 items-center gap-1.5 cursor-pointer md:flex-none"
-                          onClick={(e) => {
-                            const input = e.currentTarget.querySelector('input[type="time"]') as HTMLInputElement;
-                            input?.showPicker();
-                          }}
-                        >
-                          <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <span className="text-xs text-foreground truncate">
-                            {row.hora || <span className="text-muted-foreground/60">Hora</span>}
-                          </span>
-                          <input
-                            type="time"
-                            value={row.hora ?? ''}
-                            onChange={(e) => updateCanalRow(row.id, 'hora', e.target.value)}
-                            className="w-0 h-0 opacity-0 absolute -z-10"
-                          />
-                        </div>
-                      </div>
+                            {/* Toques de esta etapa (Plan de canales) */}
+                            <div className="space-y-2 border-t border-border/40 pt-3">
+                              <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Plan de canales</Label>
+                              <div className="space-y-2">
+                                {toques.map((row) => (
+                                  <ToqueRow
+                                    key={row.id}
+                                    row={row}
+                                    segmentos={audiencia.segmentos}
+                                    etapas={etapas}
+                                    onUpdate={(field, value) => updateCanalRow(row.id, field, value)}
+                                    onRemove={() => removeCanalRow(row.id)}
+                                  />
+                                ))}
+                              </div>
+                              <button
+                                onClick={() => addCanalRow(etapa.id)}
+                                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                              >
+                                <Plus className="h-3.5 w-3.5" /> Agregar toque
+                              </button>
+                            </div>
 
-                      <input
-                        placeholder="Ángulo del toque…"
-                        value={row.copy}
-                        onChange={(e) => updateCanalRow(row.id, 'copy', e.target.value)}
-                        className="text-xs bg-transparent border-none outline-none w-full"
-                      />
-                      <div className="min-w-0 overflow-hidden" title={SEGMENTOS_LABEL[row.segmento] ?? 'Segmento General'}>
-                        <select
-                          value={row.segmento || 'todos'}
-                          onChange={(e) => updateCanalRow(row.id, 'segmento', e.target.value)}
-                          className="text-xs bg-transparent border-none outline-none w-full max-w-full cursor-pointer truncate"
-                          style={{ textOverflow: 'ellipsis' }}
-                        >
-                          <option value="todos">Segmento General</option>
-                          {audiencia.segmentos.map((segId) => (
-                            <option key={segId} value={segId}>
-                              {SEGMENTOS_LABEL[segId] ?? segId}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <button
-                        onClick={() => removeCanalRow(row.id)}
-                        className="self-end text-muted-foreground hover:text-destructive transition-colors md:self-auto"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                            {/* Loops de esta etapa */}
+                            <div className="space-y-2 border-t border-border/40 pt-3">
+                              <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Loops de comportamiento</Label>
+                              {etapaLoops.length > 0 && (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full border-collapse">
+                                    <thead>
+                                      <tr className="bg-muted text-left">
+                                        <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2 rounded-l">Disparador</th>
+                                        <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2">Reacción diseñada</th>
+                                        <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2">Responsable</th>
+                                        <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2 rounded-r">Lleva a →</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {etapaLoops.map((row) => (
+                                        <LoopRowItem
+                                          key={row.id}
+                                          row={row}
+                                          canalesRows={canalesRows}
+                                          roles={roles}
+                                          etapas={etapas}
+                                          onUpdate={(field, value) => updateLoopRow(row.id, field, value)}
+                                          onRemove={() => removeLoopRow(row.id)}
+                                        />
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                              <button
+                                onClick={() => addLoopRow(etapa.id)}
+                                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                              >
+                                <Plus className="h-3.5 w-3.5" /> Agregar disparador
+                              </button>
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      );
+                    })}
+                  </Accordion>
+                </div>
+              )}
+
+              {/* ─── Sin etapa asignada — toques/loops de proyectos anteriores a la unificación. Sin
+                 el gate de `etapas.length > 0`: si el proyecto todavía no tiene etapas, TODAS sus
+                 filas existentes deben verse aquí (no quedar ocultas detrás del botón "Inicializar
+                 etapas" de arriba) — nada se pierde ni se esconde. ─── */}
+              {(() => {
+                const etapaIds = new Set(etapas.map((e) => e.id));
+                const sueltosCanales = canalesRows.filter((r) => !r.etapaId || !etapaIds.has(r.etapaId));
+                const sueltosLoops = loopsRows.filter((r) => !r.etapaId || !etapaIds.has(r.etapaId));
+                if (sueltosCanales.length === 0 && sueltosLoops.length === 0) return null;
+                return (
+                  <div className="rounded-lg border border-dashed border-border/60 p-3 space-y-3">
+                    <div>
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sin etapa asignada</Label>
+                      <p className="text-[10px] text-muted-foreground italic">
+                        Toques y loops de antes de organizar el ciclo — asígnalos a una etapa.
+                      </p>
                     </div>
-                  ))}
-                  <button
-                    onClick={addCanalRow}
-                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Agregar toque
-                  </button>
-                </div>
-              </div>
+                    {sueltosCanales.length > 0 && (
+                      <div className="space-y-2">
+                        {sueltosCanales.map((row) => (
+                          <ToqueRow
+                            key={row.id}
+                            row={row}
+                            segmentos={audiencia.segmentos}
+                            etapas={etapas}
+                            showEtapaPicker
+                            onUpdate={(field, value) => updateCanalRow(row.id, field, value)}
+                            onRemove={() => removeCanalRow(row.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {sueltosLoops.length > 0 && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse">
+                          <thead>
+                            <tr className="bg-muted text-left">
+                              <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2 rounded-l">Disparador</th>
+                              <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2">Reacción diseñada</th>
+                              <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2">Responsable</th>
+                              <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2">Lleva a →</th>
+                              <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2 rounded-r">Etapa</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sueltosLoops.map((row) => (
+                              <LoopRowItem
+                                key={row.id}
+                                row={row}
+                                canalesRows={canalesRows}
+                                roles={roles}
+                                etapas={etapas}
+                                showEtapaPicker
+                                onUpdate={(field, value) => updateLoopRow(row.id, field, value)}
+                                onRemove={() => removeLoopRow(row.id)}
+                              />
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
-              {/* ─── Loops de comportamiento ─── */}
+              {/* ─── Requerimiento (Motor del proceso) ─── */}
               <div className="border-t pt-4">
                 <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
-                  Loops de comportamiento (estrategia de canales)
-                </Label>
-                <p className="text-xs text-muted-foreground mb-3 italic">
-                  Qué sucede después de los toques programados — cada acción del cliente dispara una reacción diseñada.
-                </p>
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="bg-muted text-left">
-                        <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2 rounded-l">Disparador</th>
-                        <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2">Reacción diseñada</th>
-                        <th className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground p-2 rounded-r">Responsable</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {loopsRows.map((row) => (
-                        <tr key={row.id} className="border-b border-border/60">
-                          <td className="p-1.5">
-                            {(() => {
-                              const emailTriggers = canalesRows
-                                .filter((c) => c.canal === 'Correo' && c.copy.trim())
-                                .map((c) => ({ label: `📧 ${c.copy.trim()}`, value: `Envío de correo: ${c.copy.trim()}` }));
-                              const standardTriggers = [
-                                'Abrió correo pero no hizo clic',
-                                'Hizo clic en el enlace',
-                                'No abrió el correo',
-                                'Respondió al correo',
-                                'Se dio de baja',
-                              ];
-                              const allPresetValues = ['', ...standardTriggers, ...emailTriggers.map((t) => t.value)];
-                              const isCustomInput = row.disparador === '__custom__' || (row.disparador !== '' && !allPresetValues.includes(row.disparador));
-                              if (emailTriggers.length > 0 && !isCustomInput) {
-                                return (
-                                  <select
-                                    value={row.disparador}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      if (val === '__custom__') {
-                                        updateLoopRow(row.id, 'disparador', '__custom__');
-                                      } else {
-                                        updateLoopRow(row.id, 'disparador', val);
-                                      }
-                                    }}
-                                    className="w-full bg-transparent border-none outline-none text-xs py-1 cursor-pointer"
-                                  >
-                                    <option value="">Seleccionar disparador…</option>
-                                    <optgroup label="Disparadores estándar">
-                                      {standardTriggers.map((t) => (
-                                        <option key={t} value={t}>{t}</option>
-                                      ))}
-                                    </optgroup>
-                                    <optgroup label="Envíos programados">
-                                      {emailTriggers.map((t, i) => (
-                                        <option key={i} value={t.value}>{t.label}</option>
-                                      ))}
-                                    </optgroup>
-                                    <option value="__custom__">✏️ Escribir personalizado…</option>
-                                  </select>
-                                );
-                              }
-                              return (
-                                <input
-                                  placeholder="Escribe el disparador personalizado…"
-                                  value={isCustomInput && row.disparador === '__custom__' ? '' : row.disparador}
-                                  onChange={(e) => updateLoopRow(row.id, 'disparador', e.target.value)}
-                                  className="w-full bg-transparent border-none outline-none text-xs py-1"
-                                />
-                              );
-                            })()}
-                          </td>
-                          <td className="p-1.5">
-                            <input
-                              placeholder="Reacción diseñada…"
-                              value={row.reaccion}
-                              onChange={(e) => updateLoopRow(row.id, 'reaccion', e.target.value)}
-                              className="w-full bg-transparent border-none outline-none text-xs py-1"
-                            />
-                          </td>
-                          <td className="p-1.5 flex items-center gap-1">
-                            <select
-                              value={row.responsable}
-                              onChange={(e) => updateLoopRow(row.id, 'responsable', e.target.value)}
-                              className="flex-1 bg-transparent border-none outline-none text-xs py-1 cursor-pointer"
-                            >
-                              <option value="">Responsable</option>
-                              {roles.map((r) => (
-                                <option key={r.id} value={r.label}>
-                                  {r.label}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              onClick={() => removeLoopRow(row.id)}
-                              className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <button
-                  onClick={addLoopRow}
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-2"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Agregar disparador
-                </button>
-              </div>
-
-              {/* ─── Requerimientos ─── */}
-              <div className="border-t pt-4">
-                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
-                  Requerimiento *
+                  Requerimiento (Motor del proceso) *
                 </Label>
                 <p className="text-xs text-muted-foreground mb-3 italic">
                   Selecciona los requerimientos del proyecto para generar las tareas correspondientes en el brief de fábrica.
@@ -1196,6 +1525,15 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                     )}
                   </div>
                 )}
+
+                <div className="mt-4 space-y-1.5">
+                  <Label className="text-xs">Fuente de validación (CRM)</Label>
+                  <Input
+                    placeholder="Ej. CRM Salesforce, hoja de renovados…"
+                    value={motor.fuenteValidacion}
+                    onChange={(e) => setMotor((m) => ({ ...m, fuenteValidacion: e.target.value }))}
+                  />
+                </div>
               </div>
             </div>
           )}

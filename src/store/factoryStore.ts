@@ -19,6 +19,9 @@ export interface CanalRow {
   hora: string;
   copy: string;
   segmento: string;
+  /** Etapa del ciclo (ver EtapaCiclo) a la que pertenece este toque. Opcional para no romper
+   *  proyectos creados antes de la unificación Plan de canales + Loops. */
+  etapaId?: string;
 }
 
 export interface LoopRow {
@@ -26,6 +29,45 @@ export interface LoopRow {
   disparador: string;
   reaccion: string;
   responsable: string;
+  /** Etapa del ciclo (ver EtapaCiclo) donde vive este loop. Opcional, ver CanalRow.etapaId. */
+  etapaId?: string;
+  /** "Lleva a →": etapa destino cuando este loop cierra o ramifica el ciclo (ej. una
+   *  reactivación que reinicia en la etapa de Atracción). Sin valor = no cierra ninguna rama. */
+  siguienteEtapaId?: string;
+}
+
+/** Las 6 etapas del ecosistema cíclico de convocatoria/conversión/reactivación. El tipo es la
+ *  clave estable que determina color/ícono por defecto en la UI (ver ETAPA_TIPO_META en
+ *  MapTab.tsx) — nombre/objetivo/orden son editables por el usuario. */
+export type EtapaTipo =
+  | 'atraccion'
+  | 'interaccion'
+  | 'captura'
+  | 'validacion'
+  | 'desenlace'
+  | 'reactivacion';
+
+export interface EtapaCiclo {
+  id: string;
+  tipo: EtapaTipo;
+  nombre: string;
+  orden: number;
+  objetivo: string;
+}
+
+/** Base del mensaje de la campaña: Emoción · Lógica · Motivación · Recompensa. */
+export interface MensajeBaseELMR {
+  emocion: string;
+  logica: string;
+  motivacion: string;
+  recompensa: string;
+}
+
+/** Motor del proceso: la validación contra CRM/fuente externa que decide el desenlace de cada
+ *  contacto. requiereLanding/requiereFormulario no se duplican aquí — se derivan de
+ *  `requerimientos` para no tener dos fuentes de verdad. */
+export interface MotorProceso {
+  fuenteValidacion: string;
 }
 
 export interface TaskComment {
@@ -178,6 +220,11 @@ export interface FactoryProject {
   promocionarEn: string[];
   formularioConfig: FormularioConfig;
   attachments: ProjectAttachment[];
+  /** Las 6 etapas del ecosistema cíclico — ver EtapaCiclo. Vacío hasta que el usuario
+   *  "inicializa" las etapas por defecto en el wizard. */
+  etapas: EtapaCiclo[];
+  mensajeBase: MensajeBaseELMR;
+  motor: MotorProceso;
 }
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -189,8 +236,8 @@ interface FactoryStore {
 
   hydrate: () => Promise<void>;
 
-  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn' | 'formularioConfig' | 'attachments'>) => string;
-  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn' | 'formularioConfig' | 'attachments'>>) => void;
+  addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn' | 'formularioConfig' | 'attachments' | 'etapas' | 'mensajeBase' | 'motor'>) => string;
+  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn' | 'formularioConfig' | 'attachments' | 'etapas' | 'mensajeBase' | 'motor'>>) => void;
   deleteProject: (id: string) => void;
 
   addRoleGroup: (projectId: string, roleId: string, roleLabel: string) => void;
@@ -455,6 +502,9 @@ const rowToProject = (row: any): FactoryProject => {
     promocionarEn: data.promocionarEn ?? [],
     formularioConfig: data.formularioConfig ?? { basico: null, camposAdicionales: '', cuadroTexto: '' },
     attachments: data.attachments ?? [],
+    etapas: data.etapas ?? [],
+    mensajeBase: data.mensajeBase ?? { emocion: '', logica: '', motivacion: '', recompensa: '' },
+    motor: data.motor ?? { fuenteValidacion: '' },
   };
 };
 
@@ -482,6 +532,9 @@ const projectToRow = (p: FactoryProject) => ({
       promocionarEn: p.promocionarEn,
       formularioConfig: p.formularioConfig,
       attachments: p.attachments,
+      etapas: p.etapas,
+      mensajeBase: p.mensajeBase,
+      motor: p.motor,
     },
 });
 
@@ -555,6 +608,9 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       promocionarEn: data.promocionarEn ?? [],
       formularioConfig: data.formularioConfig ?? { basico: null, camposAdicionales: '', cuadroTexto: '' },
       attachments: data.attachments ?? [],
+      etapas: data.etapas ?? [],
+      mensajeBase: data.mensajeBase ?? { emocion: '', logica: '', motivacion: '', recompensa: '' },
+      motor: data.motor ?? { fuenteValidacion: '' },
       id,
       createdAt: new Date().toISOString(),
       roleGroups: [],

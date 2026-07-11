@@ -4,6 +4,7 @@ import {
   FactoryProject,
   StrategyNode,
   StrategyStageType,
+  EtapaTipo,
   useFactoryStore,
 } from '@/store/factoryStore';
 
@@ -15,6 +16,7 @@ import {
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   Target, TrendingUp, Users, DollarSign, RefreshCw,
   Briefcase, Store, Handshake, PhoneCall,
+  MousePointerClick, Link2, ShieldCheck, Flag,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -648,6 +650,154 @@ export const MetricsDashboardTab = ({ project }: Props) => {
   );
 };
 
+// ─── Ecosistema cíclico — visualización de solo lectura de las 6 etapas reales del proyecto ──
+
+/** Ícono + color por tipo de etapa — mismo patrón que STAGE_BY_TYPE, y mismo mapeo que
+ *  ETAPA_TIPO_META en CreateProjectWizard.tsx (duplicado a propósito: cada archivo de UI
+ *  define su propia tabla de íconos, igual que ya hace este archivo con STAGE_BY_TYPE). */
+const ETAPA_TIPO_META: Record<EtapaTipo, { icon: typeof FileText; color: string }> = {
+  atraccion: { icon: Megaphone, color: 'hsl(var(--team-social))' },
+  interaccion: { icon: MousePointerClick, color: 'hsl(var(--team-copy))' },
+  captura: { icon: Link2, color: 'hsl(var(--team-seo))' },
+  validacion: { icon: ShieldCheck, color: 'hsl(var(--team-production))' },
+  desenlace: { icon: Flag, color: 'hsl(var(--team-direction))' },
+  reactivacion: { icon: RefreshCw, color: 'hsl(var(--team-design))' },
+};
+
+/** Diagrama de solo lectura del ecosistema cíclico real del proyecto: las etapas (orden real,
+ *  con sus toques/loops contados desde project.canales/project.loops), la flecha principal que
+ *  encadena una etapa con la siguiente (incluida la que cierra el ciclo de la última a la
+ *  primera — esa es la reactivación "de fábrica"), y flechas punteadas adicionales por cada
+ *  loop cuyo `siguienteEtapaId` salta a una etapa distinta de la siguiente natural (ramas reales
+ *  capturadas en los datos, ej. una reactivación que salta directo a Atracción). */
+const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
+  const etapas = [...(project.etapas ?? [])].sort((a, b) => a.orden - b.orden);
+  if (etapas.length === 0) return null;
+
+  const N = etapas.length;
+  const size = 460;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = 165;
+  const idIdx = new Map(etapas.map((e, i) => [e.id, i] as const));
+
+  const posOf = (i: number) => {
+    const angle = (i / N) * 360 - 90;
+    const rad = (angle * Math.PI) / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  };
+  const shrinkTowards = (a: { x: number; y: number }, b: { x: number; y: number }, amount: number) => {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    return { x: a.x + (dx / dist) * amount, y: a.y + (dy / dist) * amount };
+  };
+
+  const mainPaths = etapas.map((_, i) => {
+    const j = (i + 1) % N;
+    const a = shrinkTowards(posOf(i), posOf(j), 46);
+    const b = shrinkTowards(posOf(j), posOf(i), 46);
+    return { key: `main-${i}`, d: `M ${a.x} ${a.y} L ${b.x} ${b.y}` };
+  });
+
+  const seenBranch = new Set<string>();
+  const branchPaths: { key: string; d: string; label: string; fromIdx: number; toIdx: number }[] = [];
+  for (const loop of project.loops ?? []) {
+    if (!loop.etapaId || !loop.siguienteEtapaId) continue;
+    const i = idIdx.get(loop.etapaId);
+    const j = idIdx.get(loop.siguienteEtapaId);
+    if (i === undefined || j === undefined || i === j) continue;
+    if (j === (i + 1) % N) continue; // ya cubierto por la flecha principal
+    const key = `${i}-${j}`;
+    if (seenBranch.has(key)) continue;
+    seenBranch.add(key);
+    const a = posOf(i);
+    const b = posOf(j);
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const dx = mx - cx;
+    const dy = my - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const bow = 46;
+    const ctrl = { x: mx + (dx / dist) * bow, y: my + (dy / dist) * bow };
+    const start = shrinkTowards(a, ctrl, 46);
+    const end = shrinkTowards(b, ctrl, 46);
+    branchPaths.push({
+      key: `branch-${key}`,
+      d: `M ${start.x} ${start.y} Q ${ctrl.x} ${ctrl.y} ${end.x} ${end.y}`,
+      label: loop.disparador || loop.reaccion || 'Rama',
+      fromIdx: i,
+      toIdx: j,
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5 mb-4">
+        <RefreshCw className="h-3 w-3" />
+        Ecosistema cíclico del proyecto
+      </h3>
+      <div className="overflow-x-auto">
+        <div className="relative mx-auto" style={{ width: size, height: size }}>
+          <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0 w-full h-full pointer-events-none">
+            <defs>
+              <marker id="ecosystem-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                <path d="M0,0 L8,4 L0,8 Z" fill="hsl(var(--border))" />
+              </marker>
+              <marker id="ecosystem-arrow-branch" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                <path d="M0,0 L8,4 L0,8 Z" fill="hsl(var(--factory))" />
+              </marker>
+            </defs>
+            {mainPaths.map((p) => (
+              <path key={p.key} d={p.d} stroke="hsl(var(--border))" strokeWidth="2" fill="none" markerEnd="url(#ecosystem-arrow)" />
+            ))}
+            {branchPaths.map((p) => (
+              <path
+                key={p.key} d={p.d} stroke="hsl(var(--factory))" strokeWidth="1.75"
+                strokeDasharray="4 3" fill="none" markerEnd="url(#ecosystem-arrow-branch)" opacity="0.75"
+              />
+            ))}
+          </svg>
+
+          {etapas.map((etapa, i) => {
+            const meta = ETAPA_TIPO_META[etapa.tipo];
+            const Icon = meta.icon;
+            const pos = posOf(i);
+            const toques = (project.canales ?? []).filter((c) => c.etapaId === etapa.id).length;
+            const loopsCount = (project.loops ?? []).filter((l) => l.etapaId === etapa.id).length;
+            return (
+              <div
+                key={etapa.id}
+                className="absolute w-[128px] rounded-lg border border-border/60 bg-card p-2.5 shadow-sm text-center"
+                style={{ left: pos.x, top: pos.y, transform: 'translate(-50%, -50%)' }}
+              >
+                <div
+                  className="w-7 h-7 rounded-md flex items-center justify-center mx-auto mb-1.5"
+                  style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </div>
+                <p className="text-[11px] font-semibold leading-tight">{i + 1}. {etapa.nombre}</p>
+                <p className="text-[9px] text-muted-foreground mt-1">{toques} toques · {loopsCount} loops</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {branchPaths.length > 0 && (
+        <div className="mt-4 space-y-1 max-w-md mx-auto">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center mb-1">Ramas y reactivación</p>
+          {branchPaths.map((p) => (
+            <p key={p.key} className="text-[11px] text-muted-foreground text-center">
+              {etapas[p.fromIdx]?.nombre} → {etapas[p.toIdx]?.nombre}: <span className="text-foreground/80">{p.label}</span>
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Loop — el ciclo de comportamiento del proyecto ─────────────────────────
 
 export const LoopTab = ({ project }: Props) => {
@@ -681,6 +831,8 @@ export const LoopTab = ({ project }: Props) => {
           );
         })}
       </div>
+
+      <EcosystemCycleDiagram project={project} />
     </div>
   );
 };

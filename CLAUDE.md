@@ -657,8 +657,88 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       manualmente, muestra el diagrama completo y correcto (bifurcación de Copys incluida, fondo
       del tema, sin recortes). Typecheck y `npm run build` pasan limpio.
 
+27. **Unifica Plan de canales + Loops de comportamiento en un ecosistema cíclico de 6 etapas
+    (ELMR + Motor del proceso)** — pedido grande, se pasó primero por Plan Mode (ver
+    `~/.claude/plans/graceful-sauteeing-hollerith.md`) antes de tocar código.
+    - **Decisión de arquitectura clave — plano + `etapaId`, no anidado.** El pedido proponía
+      anidar `toques`/`loops` DENTRO de cada etapa (`Etapa.toques[]`, `Etapa.loops[]`). Se
+      recomendó en cambio mantener `project.canales: CanalRow[]` y `project.loops: LoopRow[]`
+      exactamente como arrays planos (sin cambios), agregándoles un `etapaId` opcional (+
+      `siguienteEtapaId` en los loops) y guardando en `project.etapas: EtapaCiclo[]` solo la
+      metadata de cada etapa (id/tipo/nombre/orden/objetivo), no las filas. Motivo: `syncCanalNodes`
+      (que genera los nodos KAM/BTL/Relacionamiento/Call Center/Pauta del punto 23),
+      `buildFabricaBriefs`/`canalInvolvesRole` (wizard) y el resumen de "Descripción general"
+      (`FactoryPage.tsx`) **ya leen `canales`/`loops` como arrays planos** — anidar de verdad
+      habría obligado a aplanar en los 3 para terminar con el mismo array plano, con más riesgo de
+      romper el sistema de nodos que se construyó en esta misma sesión. El usuario aprobó este
+      approach en la revisión del plan.
+    - **Modelo nuevo** (`factoryStore.ts`): `EtapaTipo` (unión de las 6 claves: atraccion,
+      interaccion, captura, validacion, desenlace, reactivacion — determina ícono/color por
+      defecto en la UI, no se persiste como string suelto), `EtapaCiclo { id, tipo, nombre, orden,
+      objetivo }`, `MensajeBaseELMR { emocion, logica, motivacion, recompensa }`, `MotorProceso {
+      fuenteValidacion }` (requiereLanding/requiereFormulario NO se duplican ahí — se derivan de
+      `requerimientos`). `CanalRow`/`LoopRow` ganan `etapaId?`/`siguienteEtapaId?`.
+      `FactoryProject` gana `etapas`/`mensajeBase`/`motor`. **Sin migración de esquema DB** — todo
+      vive en el blob JSONB `factory_projects.data`, los campos nuevos se leen con `?? default` en
+      `rowToProject`/`projectToRow`, exactamente el mismo patrón que ya usa cada campo existente.
+    - **UI del wizard** (`CreateProjectWizard.tsx`, paso "Canales y Comportamiento"): las dos
+      tablas planas se reemplazaron por un `Accordion` (nuevo `src/components/ui/accordion.tsx` —
+      wrapper shadcn estándar sobre `@radix-ui/react-accordion`, que ya estaba en
+      `package.json` como dependencia sin wrapper generado; cero paquetes nuevos instalados), uno
+      por etapa (ordenadas, con ícono/color por `tipo`, nombre/objetivo editables, botones ▲▼ para
+      reordenar vía `moveEtapa`, contador de toques+loops). Dentro de cada etapa: la tabla de
+      Toques (mismo markup de siempre, extraído a un componente `ToqueRow` reutilizable para no
+      triplicarlo) y la de Loops (extraído a `LoopRowItem`, suma una columna nueva "Lleva a →" que
+      escribe `siguienteEtapaId` — la opción vacía es "— Cierra aquí —"). Botón "Inicializar las 6
+      etapas" (`initEtapas`) visible cuando `etapas.length === 0`, siembra `ETAPA_DEFAULTS` con el
+      texto exacto de las 6 etapas del pedido. Nueva sección "Base del mensaje (ELMR)" (4 campos)
+      agregada al paso "Audiencia y Narrativa", después de "Núcleo narrativo". El bloque
+      Requerimiento se mantuvo en su lugar, retitulado "Requerimiento (Motor del proceso)", con un
+      input nuevo "Fuente de validación (CRM)" ligado a `motor.fuenteValidacion`.
+      `buildFabricaBriefs`/`canalInvolvesRole` **no se tocaron**.
+    - **Bug encontrado y corregido durante la propia verificación** (no en el plan original): la
+      sección "Sin etapa asignada" (para toques/loops de proyectos que aún no tienen `etapas`)
+      estaba gateada por `etapas.length > 0 &&`, lo que significaba que un proyecto viejo con
+      `etapas: []` pero con toques/loops ya guardados los dejaba completamente invisibles detrás
+      del botón "Inicializar etapas" — ningún dato se perdía (seguían en `canalesRows`/
+      `loopsRows`), pero no había forma de verlos ni editarlos hasta inicializar. Se quitó ese
+      gate: con `etapas: []`, el `Set` de ids de etapas queda vacío y **todas** las filas
+      existentes caen a "Sin etapa asignada" automáticamente, visibles desde el primer render.
+    - **Visualización del ciclo** (`MapTab.tsx`, dentro de `LoopTab`, debajo del `LoopDiagram`
+      estático existente — no se tocó ni reemplazó): nuevo `EcosystemCycleDiagram`, sin hooks
+      (early return simple si `etapas.length === 0`), posiciona las N etapas en un hexágono vía
+      coordenadas polares (mismo cálculo que ya usaba `LoopDiagram` para sus 4 fases,
+      generalizado a N), dibuja con un `<svg>` la flecha principal etapa[i]→etapa[i+1]→…→etapa[0]
+      (el cierre N-1→0 ES la reactivación "de fábrica", ya queda representado sin datos extra), y
+      una curva punteada adicional por cada `LoopRow` cuyo `siguienteEtapaId` salta a una etapa
+      que NO es la siguiente natural (rama real capturada en los datos), con una leyenda de texto
+      debajo listando esas ramas. Cada tarjeta de etapa muestra su conteo real de toques/loops
+      (`project.canales`/`project.loops` filtrados por `etapaId`).
+    - Verificado con Playwright: ELMR se guarda, "Inicializar las 6 etapas" siembra las 6 con los
+      textos correctos, un toque + loop agregados dentro de "Atracción multicanal" con
+      `siguienteEtapaId = Reactivación y remarketing` (una rama real, no la secuencia natural) se
+      reflejan en la tarjeta ("1 toques · 1 loops") y en el diagrama del tab Loop — la curva
+      punteada y la leyenda "Atracción multicanal → Reactivación y remarketing: Enviar
+      remarketing" aparecen correctamente; `motor.fuenteValidacion` se guarda. Regresión:
+      Flujo de trabajo sigue generando el nodo Landing + la cadena Copys→Diseño→Envíos sin
+      cambios. Typecheck y `npm run build` pasan limpio en cada fase.
+    - **No verificado**: round-trip completo reabriendo "Editar proyecto" después de crear (el
+      script de verificación no llegó a ejercitar ese paso — se limitó a crear y ver el resultado
+      en la misma sesión de navegador). Dado que la persistencia usa exactamente el mismo mecanismo
+      `?? default` que todos los demás campos del proyecto (ya probado extensamente en sesiones
+      anteriores), el riesgo es bajo, pero vale la pena confirmarlo a mano.
+    - **Pendiente de tu decisión — no se hizo commit/push todavía** (a diferencia de pedidos
+      anteriores en esta sesión, este mensaje no incluía instrucción explícita de mergear).
+
 ## Pendientes / próximos pasos
 
+- [ ] **Confirmar a mano el round-trip de "Editar proyecto"** para el punto 27 (ecosistema
+  cíclico) — crear un proyecto con etapas/ELMR/motor, cerrar el wizard, reabrir "Editar
+  proyecto" y confirmar que todo (etapas, toques/loops con `etapaId`/`siguienteEtapaId`,
+  mensajeBase, motor) se recarga igual. No se ejercitó ese paso específico con Playwright, solo
+  crear + ver el resultado en la misma sesión.
+- [ ] **Cambios del punto 27 sin commitear/pushear** — a diferencia de otros pedidos de esta
+  sesión, no vino instrucción explícita de mergear a master.
 - [ ] **Investigar `406` al hacer `upsert` a `factory_projects`** — apareció al verificar el punto
   23 en esta máquina; no se investigó la causa (¿RLS, config local desactualizada, `.env`
   desincronizado?). No se tocó nada de Supabase en esa sesión, así que no se sabe si es un problema
