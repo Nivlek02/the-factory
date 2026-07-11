@@ -49,17 +49,29 @@ interface StageMeta {
   suggestRole?: string[]; // role label hints to auto-assign
 }
 
+// Paleta propia de los diagramas (Flujo de trabajo + Ecosistema cíclico). Es distintiva a
+// propósito: los tokens globales --team-*/--board-* se neutralizaron a gris en el rediseño
+// Tremu ISO, pero estos dos diagramas necesitan color para distinguir etapas de un vistazo.
+const DIAGRAM_COLORS = {
+  purple: 'hsl(262 83% 58%)',
+  cyan:   'hsl(199 89% 48%)',
+  pink:   'hsl(340 82% 52%)',
+  green:  'hsl(160 84% 39%)',
+  orange: 'hsl(24 95% 53%)',
+  violet: 'hsl(280 70% 55%)',
+} as const;
+
 const STAGES: StageMeta[] = [
-  { type: 'formulario', label: 'Formulario',         short: 'Form',     icon: FileText,        color: 'hsl(var(--team-seo))',        suggestRole: ['Diseñador', 'SEO', 'Mercadeo'] },
-  { type: 'landing',    label: 'Landing',            short: 'Landing',  icon: LayoutPanelTop,  color: 'hsl(var(--team-design))',     suggestRole: ['Diseñador', 'SEO'] },
-  { type: 'copys',      label: 'Copys',              short: 'Copys',    icon: PenLine,         color: 'hsl(var(--team-copy))',       suggestRole: ['Copy'] },
-  { type: 'diseno',     label: 'Diseño de piezas',   short: 'Diseño',   icon: Palette,         color: 'hsl(var(--team-design))',     suggestRole: ['Diseñador'] },
-  { type: 'pauta',      label: 'Pauta en redes sociales', short: 'Pauta', icon: Megaphone,      color: 'hsl(var(--team-social))',      suggestRole: ['Trafficker'] },
-  { type: 'envios',     label: 'Envíos masivos',     short: 'Envíos',   icon: Send,            color: 'hsl(var(--team-social))',     suggestRole: ['Mercadeo', 'Social'] },
-  { type: 'kam',        label: 'KAM',                short: 'KAM',      icon: Briefcase,       color: 'hsl(var(--team-direction))',  suggestRole: ['Estratega'] },
-  { type: 'btl',        label: 'BTL',                short: 'BTL',      icon: Store,           color: 'hsl(var(--team-production))', suggestRole: ['Estratega'] },
-  { type: 'relacionamiento', label: 'Relacionamiento', short: 'Relac.', icon: Handshake,       color: 'hsl(var(--team-direction))',  suggestRole: ['Estratega'] },
-  { type: 'callcenter', label: 'Call Center',        short: 'Call Center', icon: PhoneCall,    color: 'hsl(var(--team-direction))',  suggestRole: ['Estratega'] },
+  { type: 'formulario', label: 'Formulario',         short: 'Form',     icon: FileText,        color: DIAGRAM_COLORS.green,   suggestRole: ['Diseñador', 'SEO', 'Mercadeo'] },
+  { type: 'landing',    label: 'Landing',            short: 'Landing',  icon: LayoutPanelTop,  color: DIAGRAM_COLORS.purple,  suggestRole: ['Diseñador', 'SEO'] },
+  { type: 'copys',      label: 'Copys',              short: 'Copys',    icon: PenLine,         color: DIAGRAM_COLORS.cyan,    suggestRole: ['Copy'] },
+  { type: 'diseno',     label: 'Diseño de piezas',   short: 'Diseño',   icon: Palette,         color: DIAGRAM_COLORS.purple,  suggestRole: ['Diseñador'] },
+  { type: 'pauta',      label: 'Pauta en redes sociales', short: 'Pauta', icon: Megaphone,      color: DIAGRAM_COLORS.pink,    suggestRole: ['Trafficker'] },
+  { type: 'envios',     label: 'Envíos masivos',     short: 'Envíos',   icon: Send,            color: DIAGRAM_COLORS.pink,    suggestRole: ['Mercadeo', 'Social'] },
+  { type: 'kam',        label: 'KAM',                short: 'KAM',      icon: Briefcase,       color: DIAGRAM_COLORS.violet,  suggestRole: ['Estratega'] },
+  { type: 'btl',        label: 'BTL',                short: 'BTL',      icon: Store,           color: DIAGRAM_COLORS.orange,  suggestRole: ['Estratega'] },
+  { type: 'relacionamiento', label: 'Relacionamiento', short: 'Relac.', icon: Handshake,       color: DIAGRAM_COLORS.violet,  suggestRole: ['Estratega'] },
+  { type: 'callcenter', label: 'Call Center',        short: 'Call Center', icon: PhoneCall,    color: DIAGRAM_COLORS.violet,  suggestRole: ['Estratega'] },
 ];
 
 const STAGE_BY_TYPE = Object.fromEntries(STAGES.map((s) => [s.type, s])) as Record<StrategyStageType, StageMeta>;
@@ -551,12 +563,12 @@ export const MetricsDashboardTab = ({ project }: Props) => {
  *  ETAPA_TIPO_META en CreateProjectWizard.tsx (duplicado a propósito: cada archivo de UI
  *  define su propia tabla de íconos, igual que ya hace este archivo con STAGE_BY_TYPE). */
 const ETAPA_TIPO_META: Record<EtapaTipo, { icon: typeof FileText; color: string }> = {
-  atraccion: { icon: Megaphone, color: 'hsl(var(--team-social))' },
-  interaccion: { icon: MousePointerClick, color: 'hsl(var(--team-copy))' },
-  captura: { icon: Link2, color: 'hsl(var(--team-seo))' },
-  validacion: { icon: ShieldCheck, color: 'hsl(var(--team-production))' },
-  desenlace: { icon: Flag, color: 'hsl(var(--team-direction))' },
-  reactivacion: { icon: RefreshCw, color: 'hsl(var(--team-design))' },
+  atraccion: { icon: Megaphone, color: DIAGRAM_COLORS.pink },
+  interaccion: { icon: MousePointerClick, color: DIAGRAM_COLORS.cyan },
+  captura: { icon: Link2, color: DIAGRAM_COLORS.green },
+  validacion: { icon: ShieldCheck, color: DIAGRAM_COLORS.orange },
+  desenlace: { icon: Flag, color: DIAGRAM_COLORS.violet },
+  reactivacion: { icon: RefreshCw, color: DIAGRAM_COLORS.purple },
 };
 
 /** Diagrama de solo lectura del ecosistema cíclico real del proyecto: las etapas (orden real,
