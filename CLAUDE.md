@@ -634,6 +634,29 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       ve con dos líneas; sin overflow horizontal en 1400/1200/1000px. Typecheck y `npm run build`
       pasan limpio.
 
+26. **Fix: el guion de Call Center ya no dispara Diseño + exportar el Flujo de trabajo como imagen**
+    - El usuario confirmó (tras el punto 25) que aprobar el guion de la llamada **no debe** crear
+      tarea en Diseño, solo en Call Center — y viceversa, un copy normal no debe tocar Call Center.
+      `activateNextStage` (`StrategyBriefPanels.tsx`) antes creaba una tarea en **ambos** hijos de
+      Copys (Diseño y Call Center) sin distinguir cuál brief se aprobó. Se agregó
+      `isCallCenterGuion(tarea)` (detecta "guion" + "call center" en el texto, reusado también en
+      `briefsForNode`) y `activateNextStage` ahora filtra: si el brief aprobado es el guion → solo
+      activa `callcenter`; si no → solo activa `diseno`. La deduplicación del registro de Call
+      Center (un solo checkpoint por nodo, sin importar cuántos copys se aprueben) se mantiene.
+    - **Nuevo: botón "Exportar imagen" en Flujo de trabajo** (`MapTab.tsx`) — descarga un PNG del
+      diagrama completo (nodo de inicio, conexiones y todas las tarjetas) tal como se ve en pantalla
+      en ese momento. Usa la librería `html-to-image` (`toPng`, nueva dependencia — cero
+      dependencias propias, maneja bien el `<svg>` de las conexiones y las CSS vars del tema) sobre
+      un `ref` sujeto al contenedor del diagrama (`diagramRef`); `pixelRatio: 2` para nitidez,
+      `backgroundColor` tomado del `body` computado para que no salga transparente. El nombre del
+      archivo usa el nombre del proyecto saneado (`flujo-de-trabajo-<nombre>.png`). Botón solo
+      visible cuando hay nodos que exportar.
+    - Verificado con Playwright: aprobar el guion → Diseño NO recibe tarea, Call Center sí; aprobar
+      un copy normal después → Diseño sí recibe tarea, Call Center sigue con un solo registro (sin
+      duplicar); el botón dispara una descarga real de PNG (~270KB) y el archivo, inspeccionado
+      manualmente, muestra el diagrama completo y correcto (bifurcación de Copys incluida, fondo
+      del tema, sin recortes). Typecheck y `npm run build` pasan limpio.
+
 ## Pendientes / próximos pasos
 
 - [ ] **Investigar `406` al hacer `upsert` a `factory_projects`** — apareció al verificar el punto

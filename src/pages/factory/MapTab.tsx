@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { toPng } from 'html-to-image';
 import {
   FactoryProject,
   StrategyNode,
@@ -10,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
-  MoreVertical, Trash2, Workflow, Rocket,
+  MoreVertical, Trash2, Workflow, Rocket, Download,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   Target, TrendingUp, Users, DollarSign, RefreshCw,
   Briefcase, Store, Handshake, PhoneCall,
@@ -315,6 +316,27 @@ export const WorkflowTab = ({ project }: Props) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tasksNodeId, setTasksNodeId] = useState<string | null>(null);
 
+  const diagramRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportImage = async () => {
+    if (!diagramRef.current) return;
+    setIsExporting(true);
+    try {
+      const bg = getComputedStyle(document.body).backgroundColor || '#ffffff';
+      const dataUrl = await toPng(diagramRef.current, { backgroundColor: bg, pixelRatio: 2, cacheBust: true });
+      const link = document.createElement('a');
+      const safeName = project.name.trim().replace(/[^\w\-]+/g, '_') || 'proyecto';
+      link.download = `flujo-de-trabajo-${safeName}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error('Error exportando el diagrama de Flujo de trabajo:', err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const tasksByNodeId = useMemo(() => {
     const map = new Map<string, { total: number; pending: number }>();
     nodes.forEach((n) => {
@@ -430,9 +452,17 @@ export const WorkflowTab = ({ project }: Props) => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        <Workflow className="h-3.5 w-3.5" />
-        Flujo de trabajo
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <Workflow className="h-3.5 w-3.5" />
+          Flujo de trabajo
+        </div>
+        {nodes.length > 0 && (
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExportImage} disabled={isExporting}>
+            <Download className="h-3.5 w-3.5" />
+            {isExporting ? 'Exportando…' : 'Exportar imagen'}
+          </Button>
+        )}
       </div>
 
       {nodes.length === 0 ? (
@@ -448,7 +478,7 @@ export const WorkflowTab = ({ project }: Props) => {
         const ROW_H = 116;
         const gridHeight = layout.totalRows * ROW_H;
         return (
-          <div className="flex items-stretch gap-0 w-full" style={{ minHeight: gridHeight }}>
+          <div ref={diagramRef} className="flex items-stretch gap-0 w-full p-2" style={{ minHeight: gridHeight }}>
             {/* Nodo de inicio — única entrada, centrado verticalmente frente a todas las ramas */}
             <div className="shrink-0 flex items-center pr-1">
               <div className="w-24 sm:w-28 rounded-lg shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-2 py-2.5">

@@ -46,25 +46,36 @@ const formatDateTime = (iso: string) =>
  *  cadena (ver `activateNextStage`). Copys se bifurca hacia Diseño y hacia Call Center. */
 const AUTO_ADVANCE_STAGE_TYPES: StrategyNode['stageType'][] = ['diseno', 'callcenter'];
 
-/** Al aprobar un entregable, activa automáticamente una tarea pendiente para el siguiente nodo
- *  de la cadena (ej: Copys aprobado → nueva tarea para Diseño y, si hay Call Center, su registro
- *  para la Estratega). El entregable original no se mueve — el historial de aprobación queda en su
- *  propia tarea (ver `briefsForNode`).
+/** El guion de la llamada vive como una tarea más dentro de Copys (mismo roleLabel Copywriter),
+ *  pero conceptualmente pertenece solo a la rama de Call Center — no debe disparar Diseño, y el
+ *  resto de copys no debe disparar el registro de Call Center. Ver también `briefsForNode`. */
+const isCallCenterGuion = (tarea: string) => /guion/i.test(tarea) && /call center/i.test(tarea);
+
+/** Al aprobar un entregable, activa automáticamente una tarea pendiente para el siguiente nodo de
+ *  la cadena: cualquier copy que NO sea el guion de Call Center → Diseño; el guion → el registro
+ *  de Call Center (y nada más — las dos ramas de la bifurcación de Copys no se cruzan). El
+ *  entregable original no se mueve — el historial de aprobación queda en su propia tarea (ver
+ *  `briefsForNode`).
  *  `currentNodeId` se recibe explícito (no se lee de `brief.currentNodeId`) porque entregables
  *  sembrados desde el wizard pueden no tenerlo estampado — el panel que abre el diálogo siempre
  *  sabe en qué nodo vive la tarea que se está aprobando. */
 const activateNextStage = (project: FactoryProject, currentNodeId: string, brief: FabricaBriefItem) => {
   const nodes = project.strategyNodes ?? [];
-  const nextNodes = nodes.filter(
-    (n) => n.dependsOn.includes(currentNodeId) && AUTO_ADVANCE_STAGE_TYPES.includes(n.stageType) && n.roleLabel
-  );
+  const isGuion = isCallCenterGuion(brief.tarea);
+  const nextNodes = nodes.filter((n) => {
+    if (!n.dependsOn.includes(currentNodeId) || !n.roleLabel || !AUTO_ADVANCE_STAGE_TYPES.includes(n.stageType)) {
+      return false;
+    }
+    if (n.stageType === 'callcenter') return isGuion;
+    if (n.stageType === 'diseno') return !isGuion;
+    return true;
+  });
   if (nextNodes.length === 0) return;
   const live = useFactoryStore.getState().projects.find((p) => p.id === project.id) ?? project;
   const toAdd: Omit<FabricaBriefItem, 'id' | 'checked'>[] = [];
   for (const n of nextNodes) {
     if (n.stageType === 'callcenter') {
-      // El registro de Call Center es un checkpoint único por nodo: aprobar cualquier copy lo
-      // activa, pero solo se crea una vez (no uno por cada copy aprobado).
+      // El registro de Call Center es un checkpoint único por nodo: solo se crea una vez.
       const already = (live.fabricaBriefs ?? []).some((b) => b.currentNodeId === n.id);
       if (already) continue;
       toAdd.push({
@@ -103,7 +114,7 @@ export const briefsForNode = (project: FactoryProject, node: StrategyNode): Fabr
     // El registro de Call Center (Estratega) siempre lleva currentNodeId (lo crea
     // activateNextStage), así que este texto es solo una red de seguridad. El guion de la llamada
     // vive en Copys (roleLabel Copywriter), no aquí.
-    if (node.stageType === 'callcenter') return /call center/i.test(b.tarea) && !/guion/i.test(b.tarea);
+    if (node.stageType === 'callcenter') return /call center/i.test(b.tarea) && !isCallCenterGuion(b.tarea);
     return true;
   });
 
