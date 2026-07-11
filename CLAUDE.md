@@ -727,8 +727,14 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       en la misma sesión de navegador). Dado que la persistencia usa exactamente el mismo mecanismo
       `?? default` que todos los demás campos del proyecto (ya probado extensamente en sesiones
       anteriores), el riesgo es bajo, pero vale la pena confirmarlo a mano.
-    - **Pendiente de tu decisión — no se hizo commit/push todavía** (a diferencia de pedidos
-      anteriores en esta sesión, este mensaje no incluía instrucción explícita de mergear).
+    - Pusheado a `master` (commit `babaff8`) a pedido explícito del usuario en el siguiente mensaje.
+    - **Follow-up en la misma sesión**: al usuario le gustó el nuevo diagrama pero pidió quitar el
+      "Ciclo Loop" estático de 4 fases (Estrategia/Ejecución/Resultados/Aprendizaje) que quedaba
+      arriba — nunca leía datos del proyecto, era puramente decorativo. Se eliminó por completo de
+      `LoopTab` junto con el código que quedó sin uso (`LoopDiagram`, `LOOP_PHASES`) — `LoopMetric`
+      se mantuvo porque lo sigue usando `MetricsDashboardTab`. `LoopTab` ahora renderiza
+      únicamente `EcosystemCycleDiagram`. Verificado con Playwright que el bloque viejo ya no
+      aparece y el nuevo diagrama sigue igual. Typecheck y `npm run build` limpios.
 
 ## Pendientes / próximos pasos
 
@@ -737,8 +743,6 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
   proyecto" y confirmar que todo (etapas, toques/loops con `etapaId`/`siguienteEtapaId`,
   mensajeBase, motor) se recarga igual. No se ejercitó ese paso específico con Playwright, solo
   crear + ver el resultado en la misma sesión.
-- [ ] **Cambios del punto 27 sin commitear/pushear** — a diferencia de otros pedidos de esta
-  sesión, no vino instrucción explícita de mergear a master.
 - [ ] **Investigar `406` al hacer `upsert` a `factory_projects`** — apareció al verificar el punto
   23 en esta máquina; no se investigó la causa (¿RLS, config local desactualizada, `.env`
   desincronizado?). No se tocó nada de Supabase en esa sesión, así que no se sabe si es un problema
