@@ -767,7 +767,45 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
         muestra únicamente "Copywriter" y "Gestor de canales" (los 2 roles que `canalInvolvesRole`
         asocia a Correo), no los 8 del catálogo. Typecheck y `npm run build` limpios.
 
-## PLAN PENDIENTE — Rediseño visual "Tremu ISO" (para ejecutar 2026-07-11)
+### 2026-07-11
+
+28. **EJECUTADO: rediseño visual "Tremu ISO"** (el "PLAN PENDIENTE" de abajo ya se implementó)
+    — se aplicó el sistema de diseño completo con la estrategia de remapear los **valores** de las
+    CSS vars existentes en `src/index.css` (hex→HSL), sin renombrar vars ni tocar componente por
+    componente, tal como se planeó.
+    - `index.css`: paleta remapeada a Tremu ISO (`--background` #EEF1F7, `--primary`/`--factory`/
+      `--ring` #009CF5, `--accent` #E5F5FE + `--accent-foreground` #0079BD para hovers de menús,
+      ink `#12141B`/ink-2 `#3B4150`/muted `#8A90A0`, bordes `#ECEEF3`, surface blanca/soft `#F7F8FB`,
+      sidebar a claro); radios explícitos nuevos `--radius-lg/md/sm` = 22/14/10px; sombras suave
+      (ink .04/.05) + glow de botón (accent .18/.30). **Borrado el bloque `.dark` y todos los
+      `--gradient-*`.** `@import` cambiado a solo Plus Jakarta Sans (fuera Inter/Space Grotesk/
+      Baloo 2/Open Sans); `@import` movido arriba de `@tailwind` para matar el warning de build.
+      Body/h1-3/`.font-display`/`.font-logo` → Jakarta con tracking negativo. **Semáforo
+      conservado** (state/status/priority sin cambios); **team-*/board-* neutralizados a gris
+      `223 12% 55%`** (los nodos del flowchart y las columnas del kanban pierden color decorativo —
+      heads-up ya avisado al usuario, es reversible).
+    - `tailwind.config.ts`: `fontFamily` sans/display/logo → Jakarta; se quitó `backgroundImage`
+      (gradientes); `borderRadius` lg/md/sm → `var(--radius-lg/md/sm)`.
+    - `App.tsx`: se quitó el `ThemeProvider` de next-themes (app siempre clara). `ui/sonner.tsx`:
+      `theme="light"` fijo, sin `useTheme` (next-themes queda como dep sin uso, no se desinstaló).
+    - `BitlyLinkTool.tsx`: objeto `T` reescrito a tokens Tremu ISO — `bg` sólido `#EEF1F7` (sin
+      radial), `submitBg`/`submitBgHover` `#009CF5`/`#0087D6` sólidos (sin `linear-gradient`), nueva
+      `submitShadow` de acento reusada en `PillButton`/`SubmitButton`, Plus Jakarta Sans, radios
+      22/14. Se aplanaron los rgba/hex sueltos del JSX (círculos de ícono → accent-weak, caja de
+      resultado → surface-soft).
+    - `WebinarsPage.tsx`: las tarjetas "glass" oscuras (gradientes navy + rgba) se aplanaron a
+      superficie blanca con tokens (`hsl(var(--surface))`, `--border`, `--foreground`), botón
+      primario a `#009CF5` sólido pill, labels grises `#B8C6E6` → `--muted-foreground`.
+    - Reemplazos de `bg-gradient-factory`/`bg-gradient-surface` (utilidades ya eliminadas) por
+      `bg-primary`/`bg-surface-elevated` sólidos en `AppSidebar.tsx`, `FactoryPage.tsx`,
+      `CreateProjectWizard.tsx`, `MapTab.tsx` (+ `text-factory-foreground` → `text-primary-foreground`).
+    - **Verificación:** `tsc --noEmit` exit 0 y `npm run build` limpio (sin el warning de `@import`).
+      Sin Playwright (por decisión del usuario — revisa visual en el deploy). Como es background job,
+      **no se pusheó a master directo**: rama `worktree-bitacora-rediseno-tremu` (commit `821888d`)
+      + **PR draft #1** (`https://github.com/Nivlek02/the-factory/pull/1`). Falta que el usuario
+      mergee para que salga a producción en Vercel.
+
+## PLAN EJECUTADO — Rediseño visual "Tremu ISO" (implementado 2026-07-11, ver punto 28)
 
 Sesión de grilling (2026-07-10) donde se acordó aplicar el sistema de diseño de
 `tremu-iso-style.html` (referencia que trajo el usuario) a TODA la app **sin tocar estructura,
