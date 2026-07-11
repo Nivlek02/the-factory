@@ -6,7 +6,7 @@ import {
   Video,
   Wrench,
   Factory,
-  Sparkles,
+  LayoutGrid,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuthStore, ROLE_LABELS } from '@/store/authStore';
@@ -92,9 +92,6 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
               />
               <div className="min-w-0">
                 <h1 className="font-logo text-lg leading-none text-sidebar-foreground">Tremu</h1>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/50 mt-1">
-                  La fabrica
-                </p>
               </div>
             </div>
           )}
@@ -114,7 +111,7 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
         {/* THE FACTORY */}
         <div className="px-2 mb-5">
           <SectionLabel accent>
-            <Sparkles className="h-3 w-3" />
+            <LayoutGrid className="h-3 w-3" />
             Principal
           </SectionLabel>
           <div className="space-y-0.5">
