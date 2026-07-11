@@ -104,14 +104,14 @@ function projectProgress(project: FactoryProject): number {
 
 const EmptyFactory = ({ onNew }: { onNew: () => void }) => (
   <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
-    <div className="w-16 h-16 rounded-2xl bg-gradient-factory flex items-center justify-center shadow-glow mb-5 text-factory-foreground">
+    <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center shadow-glow mb-5 text-primary-foreground">
       <FolderKanban className="h-8 w-8" />
     </div>
     <h2 className="font-display text-xl font-semibold mb-2">Crea tu primer proyecto</h2>
     <p className="text-sm text-muted-foreground max-w-xs mb-6">
       Organiza equipos, asigna roles, define requerimientos y gestiona tareas en un solo espacio colaborativo.
     </p>
-    <Button onClick={onNew} className="bg-gradient-factory text-factory-foreground shadow-glow">
+    <Button onClick={onNew} className="bg-primary text-primary-foreground shadow-glow">
       <Plus className="h-4 w-4" />
       Nuevo proyecto
     </Button>
@@ -680,7 +680,7 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
       {/* Project header */}
-      <div className="border-b border-border/60 bg-gradient-surface px-6 py-4 shrink-0">
+      <div className="border-b border-border/60 bg-surface-elevated px-6 py-4 shrink-0">
         <div className="flex items-start justify-between gap-4 mb-3">
           <div className="min-w-0">
             <h2 className="font-display text-xl font-semibold truncate">{project.name}</h2>

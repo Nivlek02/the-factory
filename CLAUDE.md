@@ -767,6 +767,145 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
         muestra únicamente "Copywriter" y "Gestor de canales" (los 2 roles que `canalInvolvesRole`
         asocia a Correo), no los 8 del catálogo. Typecheck y `npm run build` limpios.
 
+### 2026-07-11
+
+28. **EJECUTADO: rediseño visual "Tremu ISO"** (el "PLAN PENDIENTE" de abajo ya se implementó)
+    — se aplicó el sistema de diseño completo con la estrategia de remapear los **valores** de las
+    CSS vars existentes en `src/index.css` (hex→HSL), sin renombrar vars ni tocar componente por
+    componente, tal como se planeó.
+    - `index.css`: paleta remapeada a Tremu ISO (`--background` #EEF1F7, `--primary`/`--factory`/
+      `--ring` #009CF5, `--accent` #E5F5FE + `--accent-foreground` #0079BD para hovers de menús,
+      ink `#12141B`/ink-2 `#3B4150`/muted `#8A90A0`, bordes `#ECEEF3`, surface blanca/soft `#F7F8FB`,
+      sidebar a claro); radios explícitos nuevos `--radius-lg/md/sm` = 22/14/10px; sombras suave
+      (ink .04/.05) + glow de botón (accent .18/.30). **Borrado el bloque `.dark` y todos los
+      `--gradient-*`.** `@import` cambiado a solo Plus Jakarta Sans (fuera Inter/Space Grotesk/
+      Baloo 2/Open Sans); `@import` movido arriba de `@tailwind` para matar el warning de build.
+      Body/h1-3/`.font-display`/`.font-logo` → Jakarta con tracking negativo. **Semáforo
+      conservado** (state/status/priority sin cambios); **team-*/board-* neutralizados a gris
+      `223 12% 55%`** (los nodos del flowchart y las columnas del kanban pierden color decorativo —
+      heads-up ya avisado al usuario, es reversible).
+    - `tailwind.config.ts`: `fontFamily` sans/display/logo → Jakarta; se quitó `backgroundImage`
+      (gradientes); `borderRadius` lg/md/sm → `var(--radius-lg/md/sm)`.
+    - `App.tsx`: se quitó el `ThemeProvider` de next-themes (app siempre clara). `ui/sonner.tsx`:
+      `theme="light"` fijo, sin `useTheme` (next-themes queda como dep sin uso, no se desinstaló).
+    - `BitlyLinkTool.tsx`: objeto `T` reescrito a tokens Tremu ISO — `bg` sólido `#EEF1F7` (sin
+      radial), `submitBg`/`submitBgHover` `#009CF5`/`#0087D6` sólidos (sin `linear-gradient`), nueva
+      `submitShadow` de acento reusada en `PillButton`/`SubmitButton`, Plus Jakarta Sans, radios
+      22/14. Se aplanaron los rgba/hex sueltos del JSX (círculos de ícono → accent-weak, caja de
+      resultado → surface-soft).
+    - `WebinarsPage.tsx`: las tarjetas "glass" oscuras (gradientes navy + rgba) se aplanaron a
+      superficie blanca con tokens (`hsl(var(--surface))`, `--border`, `--foreground`), botón
+      primario a `#009CF5` sólido pill, labels grises `#B8C6E6` → `--muted-foreground`.
+    - Reemplazos de `bg-gradient-factory`/`bg-gradient-surface` (utilidades ya eliminadas) por
+      `bg-primary`/`bg-surface-elevated` sólidos en `AppSidebar.tsx`, `FactoryPage.tsx`,
+      `CreateProjectWizard.tsx`, `MapTab.tsx` (+ `text-factory-foreground` → `text-primary-foreground`).
+    - **Verificación:** `tsc --noEmit` exit 0 y `npm run build` limpio (sin el warning de `@import`).
+      Sin Playwright (por decisión del usuario — revisa visual en el deploy). Como es background job,
+      **no se pusheó a master directo**: rama `worktree-bitacora-rediseno-tremu` (commit `821888d`)
+      + **PR draft #1** (`https://github.com/Nivlek02/the-factory/pull/1`). Falta que el usuario
+      mergee para que salga a producción en Vercel.
+
+## PLAN EJECUTADO — Rediseño visual "Tremu ISO" (implementado 2026-07-11, ver punto 28)
+
+Sesión de grilling (2026-07-10) donde se acordó aplicar el sistema de diseño de
+`tremu-iso-style.html` (referencia que trajo el usuario) a TODA la app **sin tocar estructura,
+lógica, rutas ni textos** — solo estilo. Se acabaron los créditos antes de implementar; TODAS las
+decisiones ya están tomadas abajo, ejecutar directo sin volver a preguntar.
+
+### Sistema de diseño objetivo (tokens exactos de la referencia)
+- Color: `--bg:#EEF1F7` (fondo app) · `--surface:#FFFFFF` (paneles/cards) ·
+  `--surface-soft:#F7F8FB` (inputs/zonas 2rias) · `--border:#ECEEF3` · `--border-soft:#F1F3F7` ·
+  `--ink:#12141B` (texto ppal) · `--ink-2:#3B4150` (2rio) · `--muted:#8A90A0` (3rio/placeholder) ·
+  `--muted-2:#A7ADBB` · `--accent:#009CF5` (ÚNICO acento de marca) · `--accent-hover:#0087D6` ·
+  `--accent-weak:#E5F5FE` (fondos activo/seleccionado/hover) · `--accent-ink:#0079BD`.
+- Radios: `lg:22px` (paneles) · `md:14px` (inputs/botones 2rios) · `sm:10px` (nav items).
+- Sombras: suave `0 1px 2px rgba(18,20,27,.04), 0 8px 24px rgba(18,20,27,.05)` ·
+  botón `0 1px 2px rgba(0,156,245,.18), 0 10px 26px rgba(0,156,245,.30)`.
+- Tipografía: **Plus Jakarta Sans** (400/500/600/700/800). Títulos 700–800 con tracking negativo
+  (-.3 a -.5px). Eyebrows 10–11px MAYÚS tracking ~1px en `--muted`. Cuerpo 13–14px 400–500.
+- **CERO gradientes** en cualquier elemento (logos, avatares, íconos, fondos, botones): todo color sólido.
+- Botones "pill" (`border-radius:999px`); primario = `--accent` + texto blanco + sombra de botón,
+  hover → `--accent-hover` y sube 1px.
+
+### Decisiones cerradas con el usuario (AskUserQuestion, no re-preguntar)
+1. **Acento único, conservar semáforo.** `#009CF5` es el único color de marca (botones, activos,
+   links, logo, avatares). Se **CONSERVAN los colores funcionales** que comunican significado:
+   rojo=bloqueado, verde=hecho, ámbar=revisión, prioridades P0–P3 (mantener las tonalidades
+   actuales de `index.css`, no repintarlas). Los colores **decorativos de equipo/board** (design=
+   morado, copy=cian, social=rosa, seo=verde, etc.) se **neutralizan a gris/azul**. ⚠️ Heads-up ya
+   avisado al usuario: las columnas del kanban perderán distinción por color y se diferenciarán por
+   etiqueta — si al verlo no le gusta, es reversible.
+2. **Quitar el modo oscuro por completo.** Eliminar el bloque `.dark` de `index.css` y el
+   `ThemeProvider` de `App.tsx`. **Mantener el paquete `next-themes` instalado** solo para que
+   `src/components/ui/sonner.tsx` (usa `useTheme`) no rompa → forzar `theme="light"` ahí.
+3. **Todo a Plus Jakarta Sans.** Quitar Inter, Space Grotesk, Baloo 2 y **Open Sans** del `@import`
+   de `index.css`. `.font-display` y `.font-logo` apuntan a Jakarta (títulos con tracking negativo).
+   Actualizar `fontFamily` en `tailwind.config.ts` (`sans`/`display`/`logo` → Jakarta).
+4. **Recolorear dentro del layout actual.** NO adoptar el "shell flotante" de 3 paneles con gaps de
+   la referencia (eso es cambio de layout). Sidebar pasa a claro vía tokens, sin tocar el HTML de
+   `AppSidebar.tsx`. Estructura/rutas/lógica intactas.
+5. **Herramientas (`BitlyLinkTool.tsx`) aplanado total.** Quitar el fondo radial y el gradiente del
+   botón; superficie blanca plana, `#009CF5` sólido, Plus Jakarta Sans, radios/sombras del sistema.
+   Reescribir el objeto `T` (líneas ~42-60) a los tokens nuevos: `bg` sólido `#FFFFFF` o `#EEF1F7`,
+   `submitBg`/`submitBgHover` → `#009CF5`/`#0087D6` sólidos (sin `linear-gradient`), `font` →
+   `'Plus Jakarta Sans'`, `focusBorder`/`focusShadow` a la familia `#009CF5`, radios 14/10.
+   OJO: **NO es un JSON** (el prompt del usuario asumía eso) — es una constante TS en el componente.
+6. **Verificación: solo `tsc --noEmit` + `npm run build`.** Sin Playwright. El usuario revisa
+   visualmente en el deploy.
+7. **Entrega: push directo a master** → deploy de producción en Vercel (patrón de siempre).
+   ⚠️ Recordatorio operativo: si se ejecuta como background job, los guardrails bloquean push directo
+   a master; en ese caso pushear la rama y dejar el comando de merge. En sesión interactiva normal,
+   push a master directo como siempre.
+
+### Estrategia de implementación (centralización de tokens)
+- **Remapear los VALORES de las variables existentes** en `src/index.css` a la paleta de la
+  referencia (convertir los hex a los triples HSL que ya consumen las vars `hsl(var(--x))`). Los
+  nombres de var y el mapeo de `tailwind.config.ts` NO cambian, así `bg-primary`/`bg-background`/
+  `text-muted-foreground`/`bg-card`/etc. en los ~12 archivos se voltean solos sin editar componente
+  por componente. Este es el "centralizar tokens" que pidió el usuario.
+- Mapeos clave (hex → convertir a HSL para las vars actuales):
+  - `--primary` → `#009CF5` (antes navy `217 65% 29%`). `--primary-foreground` → blanco.
+  - `--background` → `#EEF1F7`. `--foreground` → `#12141B`.
+  - `--card`/`--surface` → `#FFFFFF`. `--surface-elevated` → `#F7F8FB`.
+  - `--secondary`/`--muted` (fondos) → `#F7F8FB`/`#EEF1F7`; `--muted-foreground` → `#8A90A0`.
+  - `--border`/`--input` → `#ECEEF3`. `--ring` → `#009CF5`.
+  - **shadcn `--accent` → `#E5F5FE`** (fondos hover/activos de menús/ghost — NO azul brillante) y
+    `--accent-foreground` → `#0079BD`. Ojo: en el theme actual `--accent` es un azul medio usado
+    como hover; si se mapea a `#009CF5` brillante, todos los hovers de dropdown/menú quedan chillones.
+  - `--radius` → `0.875rem` (14px) para que `md` calce; ajustar `borderRadius` en tailwind si hace
+    falta para lograr lg:22/md:14/sm:10 (hoy es `lg:var(--radius)`, `md:-2px`, `sm:-4px` → revisar
+    que dé los valores de la referencia; puede requerir tokens de radio explícitos).
+  - `--sidebar-background` → `#FFFFFF` (o `#F7F8FB`), `--sidebar-foreground` → `#3B4150`,
+    `--sidebar-accent` (hover/activo) → `#E5F5FE`, `--sidebar-accent-foreground` → `#0079BD`,
+    `--sidebar-primary` → `#009CF5`, `--sidebar-border` → `#ECEEF3`. Verificar contraste de los
+    íconos/labels del sidebar sobre fondo claro (hoy asumen navy oscuro).
+  - Sombras `--shadow-*` → las dos de la referencia (suave y de botón). `--shadow-glow`/`--shadow-
+    card-hover` → derivar de la de botón/suave sin gradiente.
+- **Eliminar gradientes:** borrar `--gradient-factory*` de `index.css`, quitar `backgroundImage`
+  (`gradient-factory*`) de `tailwind.config.ts`, y reemplazar los usos `bg-gradient-*`/`from-*`/
+  `to-*` en `MapTab.tsx`, `FactoryPage.tsx`, `CreateProjectWizard.tsx`, `AppSidebar.tsx`,
+  `WebinarsPage.tsx` por `#009CF5` sólido (logo, avatares, íconos de estado vacío, headers).
+- **Neutralizar decorativos:** los tokens `team-*`/`board-*` (y usos directos, 117 ocurrencias en
+  12 archivos — buscar `team-|status-|priority-|board-|state-`) → los `team-*`/`board-*` a gris/
+  `--muted`/`#009CF5`; **conservar** `status-*`/`state-*`/`priority-*` (semáforo) con sus hues.
+- Archivos con hex hardcodeado a revisar (grep `#[0-9a-fA-F]{3,6}|hsl(|rgb(`): `CreateProjectWizard
+  .tsx`, `MapTab.tsx` (colores de conectores/bezier del flowchart → `--border`/`--muted`, nodos →
+  `--accent`), `FactoryPage.tsx`, `WebinarsPage.tsx`, `BitlyLinkTool.tsx`, `ui/sidebar.tsx`.
+
+### Checklist de ejecución para mañana
+- [ ] `index.css`: remapear todas las vars `:root` a la paleta nueva; borrar bloque `.dark`; borrar
+  `--gradient-*`; cambiar `@import` de fuentes a solo Plus Jakarta Sans; `.font-display`/`.font-logo`
+  → Jakarta; body font-family → Jakarta.
+- [ ] `tailwind.config.ts`: `fontFamily` sans/display/logo → Jakarta; quitar `backgroundImage`
+  de gradientes; ajustar `borderRadius` a 22/14/10 si el `--radius` no lo da; revisar `boxShadow`.
+- [ ] `App.tsx`: quitar `ThemeProvider` de `next-themes` (dejar el árbol sin el wrapper).
+- [ ] `ui/sonner.tsx`: quitar `useTheme`, hardcodear `theme="light"`.
+- [ ] `BitlyLinkTool.tsx`: reescribir objeto `T` a tokens nuevos, aplanar (sin radial, sin gradiente).
+- [ ] Reemplazar usos de `bg-gradient-*`/`from-*`/`to-*` y hex hardcodeados por acento sólido/tokens.
+- [ ] Neutralizar `team-*`/`board-*`; conservar `status/state/priority`.
+- [ ] `tsc --noEmit` + `npm run build` limpios.
+- [ ] Commit + push a master (o rama + comando de merge si background job); revisar en el deploy.
+
 ## Pendientes / próximos pasos
 
 - [ ] **Confirmar a mano el round-trip de "Editar proyecto"** para el punto 27 (ecosistema

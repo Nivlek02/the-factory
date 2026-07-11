@@ -137,7 +137,7 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
       {/* Footer */}
       <div className={`p-3 border-t border-sidebar-border ${collapsed ? 'flex flex-col items-center gap-2' : ''}`}>
         <div className="flex items-center gap-3 px-1">
-          <div className="w-8 h-8 rounded-full bg-gradient-factory flex items-center justify-center text-[11px] font-semibold text-factory-foreground shadow-sm">
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-[11px] font-semibold text-primary-foreground shadow-sm">
             {currentUser?.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2) || 'U'}
           </div>
           <div className="flex-1 min-w-0">

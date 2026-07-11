@@ -378,7 +378,7 @@ export const WorkflowTab = ({ project }: Props) => {
           <div ref={diagramRef} className="flex items-stretch gap-0 w-full p-2" style={{ minHeight: gridHeight }}>
             {/* Nodo de inicio — única entrada, centrado verticalmente frente a todas las ramas */}
             <div className="shrink-0 flex items-center pr-1">
-              <div className="w-24 sm:w-28 rounded-lg shadow-glow text-factory-foreground bg-gradient-factory flex flex-col items-center justify-center text-center px-2 py-2.5">
+              <div className="w-24 sm:w-28 rounded-lg shadow-glow text-primary-foreground bg-primary flex flex-col items-center justify-center text-center px-2 py-2.5">
                 <Rocket className="h-4 w-4 mb-1" />
                 <p className="text-[11px] font-semibold leading-tight">Inicia el proyecto</p>
                 <p className="text-[9px] opacity-80 truncate max-w-full">{project.name}</p>
