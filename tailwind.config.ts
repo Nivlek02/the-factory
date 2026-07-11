@@ -14,9 +14,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        display: ['Space Grotesk', 'Inter', 'sans-serif'],
-        logo: ['Baloo 2', 'Space Grotesk', 'Inter', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        display: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        logo: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -114,15 +114,10 @@ export default {
           direction: "hsl(var(--team-direction))",
         },
       },
-      backgroundImage: {
-        'gradient-factory': 'var(--gradient-factory)',
-        'gradient-factory-soft': 'var(--gradient-factory-soft)',
-        'gradient-surface': 'var(--gradient-surface)',
-      },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        lg: "var(--radius-lg)",
+        md: "var(--radius-md)",
+        sm: "var(--radius-sm)",
       },
       boxShadow: {
         sm: "var(--shadow-sm)",

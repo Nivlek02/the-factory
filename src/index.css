@@ -1,57 +1,61 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Baloo+2:wght@400;500;600;700;800&family=Open+Sans:wght@400;600;700&display=swap');
-
 @layer base {
   :root {
-    --background: 214 70% 95%;
-    --foreground: 216 56% 12%;
+    /* Tremu ISO — base surfaces */
+    --background: 220 36% 95%;        /* #EEF1F7 */
+    --foreground: 227 20% 9%;         /* #12141B ink */
 
-    --card: 0 0% 100%;
-    --card-foreground: 216 56% 12%;
+    --card: 0 0% 100%;                /* #FFFFFF surface */
+    --card-foreground: 227 20% 9%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 216 56% 12%;
+    --popover-foreground: 227 20% 9%;
 
-    --primary: 217 65% 29%;
+    --primary: 202 100% 48%;          /* #009CF5 accent */
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 217 60% 42%;
+    --primary-glow: 202 100% 42%;     /* #0087D6 accent-hover */
 
-    --secondary: 214 50% 90%;
-    --secondary-foreground: 216 56% 12%;
+    --secondary: 220 33% 97%;         /* #F7F8FB surface-soft */
+    --secondary-foreground: 227 20% 9%;
 
-    --muted: 214 50% 93%;
-    --muted-foreground: 216 30% 35%;
+    --muted: 220 33% 97%;             /* #F7F8FB */
+    --muted-foreground: 223 11% 58%;  /* #8A90A0 */
 
-    --accent: 217 60% 42%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 202 93% 95%;            /* #E5F5FE accent-weak (hover/active bg) */
+    --accent-foreground: 202 100% 37%;/* #0079BD accent-ink */
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 50% 88%;
-    --input: 214 50% 88%;
-    --ring: 217 60% 42%;
+    --border: 223 23% 94%;            /* #ECEEF3 */
+    --input: 223 23% 94%;
+    --ring: 202 100% 48%;             /* #009CF5 */
 
-    --radius: 0.625rem;
+    --radius: 0.875rem;               /* 14px (md) */
+    --radius-lg: 22px;
+    --radius-md: 14px;
+    --radius-sm: 10px;
 
-    /* THE FACTORY — operational tokens */
-    --factory: 217 60% 42%;
+    /* THE FACTORY — brand accent (was navy gradient) */
+    --factory: 202 100% 48%;
     --factory-foreground: 0 0% 100%;
-    --factory-glow: 217 60% 42%;
-    --factory-soft: 214 70% 92%;
+    --factory-glow: 202 100% 48%;
+    --factory-soft: 202 93% 95%;
 
-    --surface: 0 0% 100%;
-    --surface-elevated: 214 50% 97%;
-    --surface-overlay: 216 56% 12%;
+    --surface: 0 0% 100%;             /* #FFFFFF */
+    --surface-elevated: 220 33% 97%;  /* #F7F8FB */
+    --surface-overlay: 227 20% 9%;
 
-    /* Operational states */
+    /* Operational states — SEMÁFORO funcional, se conserva */
     --state-planning: 216 30% 40%;
     --state-planning-bg: 214 50% 93%;
-    --state-progress: 217 65% 29%;
-    --state-progress-bg: 214 70% 93%;
+    --state-progress: 202 100% 48%;
+    --state-progress-bg: 202 93% 95%;
     --state-review: 38 92% 50%;
     --state-review-bg: 38 100% 95%;
     --state-blocked: 0 84% 60%;
@@ -59,30 +63,25 @@
     --state-done: 142 71% 45%;
     --state-done-bg: 142 76% 95%;
 
-    /* Priorities */
+    /* Priorities — SEMÁFORO funcional, se conserva */
     --priority-p0: 0 84% 55%;
     --priority-p1: 25 95% 53%;
     --priority-p2: 38 92% 50%;
     --priority-p3: 216 30% 60%;
 
-    /* Teams */
-    --team-design: 262 83% 58%;
-    --team-copy: 199 89% 48%;
-    --team-social: 340 82% 52%;
-    --team-seo: 160 84% 39%;
-    --team-production: 24 95% 53%;
-    --team-direction: 280 70% 55%;
-
-    /* Gradients */
-    --gradient-factory: linear-gradient(135deg, hsl(217 65% 29%), hsl(217 60% 42%));
-    --gradient-factory-soft: linear-gradient(135deg, hsl(217 65% 29% / 0.08), hsl(217 60% 42% / 0.04));
-    --gradient-surface: linear-gradient(180deg, hsl(0 0% 100%), hsl(214 50% 95%));
+    /* Teams — decorativos neutralizados a gris */
+    --team-design: 223 12% 55%;
+    --team-copy: 223 12% 55%;
+    --team-social: 223 12% 55%;
+    --team-seo: 223 12% 55%;
+    --team-production: 223 12% 55%;
+    --team-direction: 223 12% 55%;
 
     /* Elevated shadows */
-    --shadow-elevated: 0 8px 32px -8px hsl(216 56% 12% / 0.08), 0 2px 6px -2px hsl(216 56% 12% / 0.04);
-    --shadow-glow: 0 0 0 1px hsl(217 60% 42% / 0.1), 0 8px 24px -8px hsl(217 60% 42% / 0.25);
+    --shadow-elevated: 0 1px 2px hsl(227 20% 9% / 0.04), 0 8px 24px hsl(227 20% 9% / 0.05);
+    --shadow-glow: 0 1px 2px hsl(202 100% 48% / 0.18), 0 10px 26px hsl(202 100% 48% / 0.30);
 
-    /* Custom status colors */
+    /* Custom status colors — SEMÁFORO funcional, se conserva */
     --status-pending: 216 30% 40%;
     --status-pending-bg: 214 50% 93%;
     --status-progress: 38 92% 50%;
@@ -90,58 +89,28 @@
     --status-completed: 142 71% 45%;
     --status-completed-bg: 142 76% 95%;
 
-    /* Board colors */
-    --board-design: 262 83% 58%;
-    --board-copys: 199 89% 48%;
-    --board-social: 340 82% 52%;
-    --board-seo: 160 84% 39%;
+    /* Board colors — decorativos neutralizados a gris */
+    --board-design: 223 12% 55%;
+    --board-copys: 223 12% 55%;
+    --board-social: 223 12% 55%;
+    --board-seo: 223 12% 55%;
 
-    /* Sidebar — Navy dark from palette */
-    --sidebar-background: 216 56% 12%;
-    --sidebar-foreground: 214 50% 92%;
-    --sidebar-primary: 217 60% 42%;
+    /* Sidebar — claro (Tremu ISO) */
+    --sidebar-background: 0 0% 100%;      /* #FFFFFF */
+    --sidebar-foreground: 223 15% 27%;    /* #3B4150 ink-2 */
+    --sidebar-primary: 202 100% 48%;      /* #009CF5 */
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 216 40% 18%;
-    --sidebar-accent-foreground: 214 50% 96%;
-    --sidebar-border: 216 40% 18%;
-    --sidebar-ring: 217 60% 42%;
+    --sidebar-accent: 202 93% 95%;        /* #E5F5FE accent-weak */
+    --sidebar-accent-foreground: 202 100% 37%; /* #0079BD accent-ink */
+    --sidebar-border: 223 23% 94%;        /* #ECEEF3 */
+    --sidebar-ring: 202 100% 48%;
 
-    /* Shadows */
-    --shadow-sm: 0 1px 2px 0 hsl(216 56% 12% / 0.05);
-    --shadow-md: 0 4px 6px -1px hsl(216 56% 12% / 0.1), 0 2px 4px -2px hsl(216 56% 12% / 0.1);
-    --shadow-lg: 0 10px 15px -3px hsl(216 56% 12% / 0.1), 0 4px 6px -4px hsl(216 56% 12% / 0.1);
-    --shadow-card: 0 1px 3px 0 hsl(216 56% 12% / 0.1), 0 1px 2px -1px hsl(216 56% 12% / 0.1);
-    --shadow-card-hover: 0 4px 12px 0 hsl(216 56% 12% / 0.15), 0 2px 4px -2px hsl(216 56% 12% / 0.1);
-  }
-
-  .dark {
-    --background: 222 47% 11%;
-    --foreground: 220 14% 96%;
-
-    --card: 217 32% 17%;
-    --card-foreground: 220 14% 96%;
-
-    --popover: 217 32% 17%;
-    --popover-foreground: 220 14% 96%;
-
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 217 32% 17%;
-    --secondary-foreground: 220 14% 96%;
-
-    --muted: 217 32% 17%;
-    --muted-foreground: 220 9% 64%;
-
-    --accent: 217 32% 17%;
-    --accent-foreground: 220 14% 96%;
-
-    --destructive: 0 62% 30%;
-    --destructive-foreground: 220 14% 96%;
-
-    --border: 217 32% 17%;
-    --input: 217 32% 17%;
-    --ring: 212 26% 83%;
+    /* Shadows — Tremu ISO (suave) */
+    --shadow-sm: 0 1px 2px 0 hsl(227 20% 9% / 0.04);
+    --shadow-md: 0 1px 2px hsl(227 20% 9% / 0.04), 0 8px 24px hsl(227 20% 9% / 0.05);
+    --shadow-lg: 0 1px 2px hsl(227 20% 9% / 0.04), 0 12px 32px hsl(227 20% 9% / 0.07);
+    --shadow-card: 0 1px 2px hsl(227 20% 9% / 0.04), 0 8px 24px hsl(227 20% 9% / 0.05);
+    --shadow-card-hover: 0 1px 2px hsl(227 20% 9% / 0.05), 0 12px 32px hsl(227 20% 9% / 0.09);
   }
 }
 
@@ -152,19 +121,18 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-family: 'Inter', sans-serif;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
   }
 
   h1, h2, h3, .font-display {
-    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
     letter-spacing: -0.02em;
   }
 
   .font-logo {
-    font-family: 'Baloo 2', 'Space Grotesk', 'Inter', sans-serif;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.02em;
   }
 }
 

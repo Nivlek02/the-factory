@@ -1606,7 +1606,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
             {step === 0 ? 'Cancelar' : (<><ChevronLeft className="h-4 w-4" /> Atrás</>)}
           </Button>
           {isLast ? (
-            <Button className="bg-gradient-factory text-factory-foreground shadow-glow" onClick={handleCreate} disabled={!data.name.trim() || !hasLandingOrFormulario}>
+            <Button className="bg-primary text-primary-foreground shadow-glow" onClick={handleCreate} disabled={!data.name.trim() || !hasLandingOrFormulario}>
               <Check className="h-4 w-4" /> Crear proyecto
             </Button>
           ) : (

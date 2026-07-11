@@ -37,26 +37,29 @@ interface BitlyResult {
 type Status = 'idle' | 'form' | 'submitting' | 'error-submit' | 'success';
 type QrStatus = 'idle' | 'downloading' | 'error';
 
-// Design tokens tal cual el HTML que hoy genera n8n para este formulario —
-// se mantienen locales al componente para no ensuciar el theme global de la app.
+// Design tokens Tremu ISO — superficie plana, acento sólido #009CF5, sin gradientes.
+// Se mantienen locales al componente (inline styles); espejan la paleta global de index.css.
 const T = {
-  font: "'Open Sans', sans-serif",
-  bg: 'radial-gradient(120% 120% at 50% 0%, #f7f9ff 0%, #eef3ff 55%, #e1ebff 100%)',
-  cardBg: '#ffffff',
-  cardBorder: '#e0e6ff',
-  cardShadow: 'rgba(80, 112, 255, 0.18)',
-  header: '#1f2a4d',
-  label: '#4b5268',
-  inputBorder: '#d6defa',
-  inputText: '#30354a',
-  placeholder: '#9ca3c4',
-  focusBorder: '#4c6fff',
-  focusShadow: 'rgba(83, 115, 255, 0.35)',
-  submitBg: 'linear-gradient(135deg, #2563ff, #4c8dff)',
-  submitBgHover: 'linear-gradient(135deg, #1f57e6, #3f7bf0)',
-  required: '#ff6d5a',
-  cardRadius: '18px',
-  inputRadius: '10px',
+  font: "'Plus Jakarta Sans', system-ui, sans-serif",
+  bg: '#EEF1F7',
+  cardBg: '#FFFFFF',
+  cardBorder: '#ECEEF3',
+  cardShadow: 'rgba(18, 20, 27, 0.06)',
+  header: '#12141B',
+  label: '#3B4150',
+  inputBorder: '#ECEEF3',
+  inputText: '#12141B',
+  placeholder: '#8A90A0',
+  focusBorder: '#009CF5',
+  focusShadow: 'rgba(0, 156, 245, 0.20)',
+  submitBg: '#009CF5',
+  submitBgHover: '#0087D6',
+  submitShadow: '0 1px 2px rgba(0, 156, 245, 0.18), 0 10px 26px rgba(0, 156, 245, 0.30)',
+  accentWeak: '#E5F5FE',
+  surfaceSoft: '#F7F8FB',
+  required: '#EF4444',
+  cardRadius: '22px',
+  inputRadius: '14px',
 } as const;
 
 const isValidUrl = (value: string) => {
@@ -214,7 +217,7 @@ const BitlyLinkTool = () => {
           <div className="p-5 sm:p-7 text-center" style={cardStyle}>
             <div
               className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full"
-              style={{ background: 'rgba(37,99,255,0.1)' }}
+              style={{ background: T.accentWeak }}
             >
               <QrCode className="h-5 w-5" style={{ color: T.focusBorder }} />
             </div>
@@ -263,7 +266,7 @@ const BitlyLinkTool = () => {
           <div className="p-5 sm:p-6 text-center" style={cardStyle}>
             <div
               className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full"
-              style={{ background: 'rgba(37,99,255,0.1)' }}
+              style={{ background: T.accentWeak }}
             >
               <Check className="h-5 w-5" style={{ color: T.focusBorder }} />
             </div>
@@ -275,7 +278,7 @@ const BitlyLinkTool = () => {
             <div
               className="mb-4 break-all px-3.5 py-2.5 text-sm font-medium"
               style={{
-                background: '#f4f7ff',
+                background: T.surfaceSoft,
                 border: `1px solid ${T.inputBorder}`,
                 borderRadius: T.inputRadius,
                 color: T.focusBorder,
@@ -346,7 +349,7 @@ const PillButton = ({
         background: isPrimary ? T.submitBg : '#ffffff',
         color: isPrimary ? '#ffffff' : T.focusBorder,
         border: isPrimary ? 'none' : `1px solid ${T.inputBorder}`,
-        boxShadow: isPrimary ? '0 10px 24px rgba(37,99,255,.4)' : 'none',
+        boxShadow: isPrimary ? T.submitShadow : 'none',
         fontFamily: T.font,
       }}
       onMouseEnter={(e) => {
@@ -391,7 +394,7 @@ const FieldInput = ({
     padding: '9px 12px',
     outline: 'none',
     transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
-    background: disabled ? '#f6f8ff' : '#ffffff',
+    background: disabled ? T.surfaceSoft : '#ffffff',
   };
 
   return (
@@ -433,7 +436,7 @@ const SubmitButton = ({ submitting, label }: { submitting: boolean; label: strin
       background: T.submitBg,
       color: '#ffffff',
       fontFamily: T.font,
-      boxShadow: '0 10px 24px rgba(37,99,255,.4)',
+      boxShadow: T.submitShadow,
     }}
     onMouseEnter={(e) => {
       if (submitting) return;

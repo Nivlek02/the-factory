@@ -46,31 +46,30 @@ type ProyectosData = {
 };
 
 const cardStyle: React.CSSProperties = {
-  border: '1px solid rgba(255,255,255,.10)',
-  borderRadius: 16,
+  border: '1px solid hsl(var(--border))',
+  borderRadius: 14,
   padding: 14,
-  color: '#EAF1FF',
-  background:
-    'radial-gradient(900px 260px at 12% -40%, rgba(77,163,255,.16), transparent 55%), linear-gradient(180deg, #0F1729, #0B1324 55%, #080F1E)',
-  boxShadow: '0 18px 45px rgba(3, 8, 20, .22), inset 0 1px 0 rgba(255,255,255,.04)',
+  color: 'hsl(var(--foreground))',
+  background: 'hsl(var(--surface))',
+  boxShadow: 'var(--shadow-card)',
   display: 'flex',
   flexDirection: 'column',
   gap: 12,
 };
 
 const kvStyle: React.CSSProperties = {
-  border: '1px solid rgba(255,255,255,.07)',
-  background: 'rgba(255,255,255,.04)',
-  borderRadius: 12,
+  border: '1px solid hsl(var(--border))',
+  background: 'hsl(var(--surface-elevated))',
+  borderRadius: 10,
   padding: 10,
 };
 
 const pillStyle: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 700,
-  color: '#d7e6ff',
-  background: 'rgba(77,163,255,.12)',
-  border: '1px solid rgba(77,163,255,.22)',
+  color: 'hsl(var(--accent-foreground))',
+  background: 'hsl(var(--accent))',
+  border: '1px solid hsl(var(--accent))',
   padding: '6px 10px',
   borderRadius: 999,
   whiteSpace: 'nowrap',
@@ -79,13 +78,13 @@ const pillStyle: React.CSSProperties = {
 const primaryBtn: React.CSSProperties = {
   cursor: 'pointer',
   border: 'none',
-  borderRadius: 10,
-  padding: '8px 10px',
+  borderRadius: 999,
+  padding: '8px 14px',
   fontWeight: 600,
   fontSize: 12,
-  background: 'linear-gradient(135deg, rgba(77,163,255,.95), rgba(47,124,255,.95))',
-  color: 'white',
-  boxShadow: '0 12px 26px rgba(47,124,255,.18)',
+  background: 'hsl(var(--primary))',
+  color: 'hsl(var(--primary-foreground))',
+  boxShadow: 'var(--shadow-glow)',
   textDecoration: 'none',
   display: 'flex',
   alignItems: 'center',
@@ -96,10 +95,10 @@ const primaryBtn: React.CSSProperties = {
 
 const secondaryBtn: React.CSSProperties = {
   ...primaryBtn,
-  background: 'rgba(255,255,255,.08)',
-  border: '1px solid rgba(255,255,255,.16)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,.04)',
-  color: '#EAF1FF',
+  background: 'hsl(var(--surface-elevated))',
+  border: '1px solid hsl(var(--border))',
+  boxShadow: 'none',
+  color: 'hsl(var(--foreground))',
 };
 
 const WebinarsPage = () => {
@@ -321,7 +320,7 @@ const WebinarsPage = () => {
 
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                         <div style={kvStyle}>
-                          <div style={{ color: '#B8C6E6', fontSize: 10, letterSpacing: '.5px', textTransform: 'uppercase', marginBottom: 4 }}>
+                          <div style={{ color: 'hsl(var(--muted-foreground))', fontSize: 10, letterSpacing: '.5px', textTransform: 'uppercase', marginBottom: 4 }}>
                             Fecha inicio
                           </div>
                           <div style={{ fontSize: 12, fontFamily: 'ui-monospace,Consolas,monospace' }}>
@@ -329,7 +328,7 @@ const WebinarsPage = () => {
                           </div>
                         </div>
                         <div style={kvStyle}>
-                          <div style={{ color: '#B8C6E6', fontSize: 10, letterSpacing: '.5px', textTransform: 'uppercase', marginBottom: 4 }}>
+                          <div style={{ color: 'hsl(var(--muted-foreground))', fontSize: 10, letterSpacing: '.5px', textTransform: 'uppercase', marginBottom: 4 }}>
                             Inscritos
                           </div>
                           <div style={{ fontSize: 12, fontFamily: 'ui-monospace,Consolas,monospace' }}>
@@ -351,7 +350,7 @@ const WebinarsPage = () => {
                             </button>
                           </>
                         ) : (
-                          <span style={{ color: '#B8C6E6', fontSize: 12, fontStyle: 'italic' }}>Sin link</span>
+                          <span style={{ color: 'hsl(var(--muted-foreground))', fontSize: 12, fontStyle: 'italic' }}>Sin link</span>
                         )}
                       </div>
                     </article>
