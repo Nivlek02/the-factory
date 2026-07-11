@@ -139,7 +139,13 @@ const ToqueRow = ({
 }) => (
   <div
     className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-3 md:grid md:items-center md:gap-2 md:p-2"
-    style={{ gridTemplateColumns: showEtapaPicker ? '130px 115px 90px 1fr 130px 140px 24px' : '130px 115px 90px 1fr 130px 24px' }}
+    style={{
+      // Ángulo del toque es texto libre sin truncado (a diferencia de Segmento/Etapa, que ya
+      // truncan con "…" + tooltip) — se le da el piso más generoso de todos los campos.
+      gridTemplateColumns: showEtapaPicker
+        ? '95px 75px 58px minmax(150px, 1fr) minmax(60px, 90px) minmax(60px, 90px) 20px'
+        : '95px 75px 58px minmax(150px, 1fr) minmax(60px, 90px) 20px',
+    }}
   >
     <Select value={row.canal} onValueChange={(v) => onUpdate('canal', v)}>
       <SelectTrigger className="h-8 w-full gap-1.5 border-none bg-transparent px-1 text-xs font-medium shadow-none focus:ring-0 focus:ring-offset-0 md:h-auto">
@@ -254,37 +260,40 @@ const LoopRowItem = ({
   etapas: EtapaCiclo[];
   showEtapaPicker?: boolean;
 }) => {
-  const emailTriggers = canalesRows
-    .filter((c) => c.canal === 'Correo' && c.copy.trim())
-    .map((c) => ({ label: `📧 ${c.copy.trim()}`, value: `Envío de correo: ${c.copy.trim()}` }));
+  // El disparador debe salir de una salida real del Plan de canales (cualquier canal con un
+  // ángulo de toque definido, no solo Correo) — así el loop siempre queda atado a un toque
+  // existente en vez de a texto libre desconectado del plan.
+  const canalTriggers = canalesRows
+    .filter((c) => c.copy.trim())
+    .map((c) => ({ label: `${c.canal} · ${c.copy.trim()}`, value: `Salida de ${c.canal}: ${c.copy.trim()}` }));
   const standardTriggers = [
-    'Abrió correo pero no hizo clic',
+    'Abrió pero no hizo clic',
     'Hizo clic en el enlace',
-    'No abrió el correo',
-    'Respondió al correo',
+    'No abrió/no vio el toque',
+    'Respondió',
     'Se dio de baja',
   ];
-  const allPresetValues = ['', ...standardTriggers, ...emailTriggers.map((t) => t.value)];
+  const allPresetValues = ['', ...standardTriggers, ...canalTriggers.map((t) => t.value)];
   const isCustomInput = row.disparador === '__custom__' || (row.disparador !== '' && !allPresetValues.includes(row.disparador));
 
   return (
     <tr className="border-b border-border/60">
       <td className="p-1.5">
-        {emailTriggers.length > 0 && !isCustomInput ? (
+        {canalTriggers.length > 0 && !isCustomInput ? (
           <select
             value={row.disparador}
             onChange={(e) => onUpdate('disparador', e.target.value)}
             className="w-full bg-transparent border-none outline-none text-xs py-1 cursor-pointer"
           >
             <option value="">Seleccionar disparador…</option>
+            <optgroup label="Salidas del Plan de canales">
+              {canalTriggers.map((t, i) => (
+                <option key={i} value={t.value}>{t.label}</option>
+              ))}
+            </optgroup>
             <optgroup label="Disparadores estándar">
               {standardTriggers.map((t) => (
                 <option key={t} value={t}>{t}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Envíos programados">
-              {emailTriggers.map((t, i) => (
-                <option key={i} value={t.value}>{t.label}</option>
               ))}
             </optgroup>
             <option value="__custom__">✏️ Escribir personalizado…</option>
@@ -729,6 +738,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     };
     return map[canal]?.includes(roleId) ?? false;
   };
+
+  // "Responsable" de un loop debe salir de los roles que el Plan de canales ya involucra (según
+  // los canales elegidos), no del catálogo completo de roles. Si todavía no hay canales que
+  // impliquen ningún rol, se muestran todos como fallback para no bloquear el selector.
+  const involvedRoleIds = new Set(
+    canalesRows.flatMap((c) => roles.filter((r) => canalInvolvesRole(c.canal, r.id)).map((r) => r.id))
+  );
+  const involvedRoles = involvedRoleIds.size > 0 ? roles.filter((r) => involvedRoleIds.has(r.id)) : roles;
 
   // Rebuild when canales, loops, requerimientos or formularioConfig change
   useEffect(() => {
@@ -1347,7 +1364,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                           key={row.id}
                                           row={row}
                                           canalesRows={canalesRows}
-                                          roles={roles}
+                                          roles={involvedRoles}
                                           etapas={etapas}
                                           onUpdate={(field, value) => updateLoopRow(row.id, field, value)}
                                           onRemove={() => removeLoopRow(row.id)}
@@ -1422,7 +1439,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                 key={row.id}
                                 row={row}
                                 canalesRows={canalesRows}
-                                roles={roles}
+                                roles={involvedRoles}
                                 etapas={etapas}
                                 showEtapaPicker
                                 onUpdate={(field, value) => updateLoopRow(row.id, field, value)}

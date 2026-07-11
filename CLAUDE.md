@@ -735,6 +735,37 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       se mantuvo porque lo sigue usando `MetricsDashboardTab`. `LoopTab` ahora renderiza
       únicamente `EcosystemCycleDiagram`. Verificado con Playwright que el bloque viejo ya no
       aparece y el nuevo diagrama sigue igual. Typecheck y `npm run build` limpios.
+    - **Otro follow-up en la misma sesión — 3 ajustes a Loops de comportamiento**:
+      1. **"Ángulo del toque" se veía roto** (`ToqueRow`) — la grilla de la fila usaba las mismas
+         6-7 columnas de ancho fijo de antes de anidar todo dentro del Accordion por etapa, pero
+         el contenedor ahora es más angosto (nesting del Accordion + padding del item). Medido con
+         Playwright: el input de Ángulo quedaba en **41px** de ancho real (`getComputedStyle` →
+         `gridTemplateColumns` resolvía el track a 41px), prácticamente invisible. Se rebalancearon
+         los anchos de columna (`canal 95px · día 75px · hora 58px · ángulo minmax(150px, 1fr) ·
+         segmento minmax(60px, 90px) [· etapa minmax(60px, 90px)] · borrar 20px`) — Ángulo es texto
+         libre sin truncado (a diferencia de Segmento/Etapa, que sí truncan con "…" + `title`), así
+         que se le dio el piso más generoso; quedó en ~192px verificado. No se tocó nada del resto
+         de la fila (mismo Select de canal, mismos date/time pickers).
+      2. **El disparador ahora sale del Plan de canales, de cualquier canal** — antes
+         `emailTriggers` solo tomaba toques de canal `Correo`. Se generalizó a `canalTriggers`:
+         cualquier fila de `canalesRows` con `copy` (ángulo) no vacío aparece como opción, con
+         label `"{canal} · {ángulo}"` y value `"Salida de {canal}: {ángulo}"` — así el loop siempre
+         queda atado a una salida real del plan en vez de a un evento inventado. Los "Disparadores
+         estándar" (abrió/clic/etc.) se mantienen como fallback genérico, ya no mencionan "correo"
+         específicamente en el texto (eran de email únicamente).
+      3. **Responsable filtrado a los roles que el Plan de canales involucra** — antes el
+         `<select>` listaba el catálogo completo de `useRolesStore()` (los 8 roles, incluidos los
+         3 internos no asignables). Ahora, en `CreateProjectWizard`, se calcula
+         `involvedRoleIds`/`involvedRoles` reusando `canalInvolvesRole()` (la misma función que ya
+         usaba `buildFabricaBriefs` para decidir qué roles participan según los canales elegidos) y
+         se pasa como prop `roles` a `LoopRowItem` en vez del catálogo completo. Si todavía no hay
+         canales que impliquen ningún rol (proyecto recién creado), cae de vuelta al catálogo
+         completo como fallback para no bloquear el selector con una lista vacía.
+      - Verificado con Playwright: ancho del input de Ángulo antes/después (41px → 192px, texto
+        largo visible completo sin recorte); disparador muestra "Correo · Convocatoria inicial del
+        evento" como opción real del plan; con solo un toque de Correo en el proyecto, Responsable
+        muestra únicamente "Copywriter" y "Gestor de canales" (los 2 roles que `canalInvolvesRole`
+        asocia a Correo), no los 8 del catálogo. Typecheck y `npm run build` limpios.
 
 ## Pendientes / próximos pasos
 
