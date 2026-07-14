@@ -1273,6 +1273,10 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                       const Icon = meta.icon;
                       const toques = canalesRows.filter((r) => r.etapaId === etapa.id);
                       const etapaLoops = loopsRows.filter((r) => r.etapaId === etapa.id);
+                      // La etapa de Atracción no lleva loops: la audiencia recién entra al
+                      // ecosistema, todavía no hay comportamiento que disparar. Los loops
+                      // aparecen a partir de Interacción.
+                      const showLoops = etapa.tipo !== 'atraccion';
                       return (
                         <AccordionItem key={etapa.id} value={etapa.id} className="rounded-lg border border-border/60 bg-card px-3 last:border-b-0">
                           <div className="flex items-center gap-1">
@@ -1305,7 +1309,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                 <div className="min-w-0 text-left">
                                   <p className="text-sm font-semibold truncate">{idx + 1}. {etapa.nombre}</p>
                                   <p className="text-[10px] text-muted-foreground">
-                                    {toques.length} {toques.length === 1 ? 'toque' : 'toques'} · {etapaLoops.length} {etapaLoops.length === 1 ? 'loop' : 'loops'}
+                                    {toques.length} {toques.length === 1 ? 'toque' : 'toques'}
+                                    {showLoops && ` · ${etapaLoops.length} ${etapaLoops.length === 1 ? 'loop' : 'loops'}`}
                                   </p>
                                 </div>
                               </div>
@@ -1346,7 +1351,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                               </button>
                             </div>
 
-                            {/* Loops de esta etapa */}
+                            {/* Loops de esta etapa — no se muestran en Atracción (ver showLoops) */}
+                            {showLoops && (
                             <div className="space-y-2 border-t border-border/40 pt-3">
                               <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Loops de comportamiento</Label>
                               {etapaLoops.length > 0 && (
@@ -1383,6 +1389,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                 <Plus className="h-3.5 w-3.5" /> Agregar disparador
                               </button>
                             </div>
+                            )}
                           </AccordionContent>
                         </AccordionItem>
                       );
