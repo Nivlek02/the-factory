@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { toPng } from 'html-to-image';
+import { toPng, toJpeg } from 'html-to-image';
 import {
   FactoryProject,
   StrategyNode,
@@ -587,6 +587,27 @@ const CATEGORY_META: Record<string, { icon: typeof FileText; color: string }> = 
  *  loop cuyo `siguienteEtapaId` salta a una etapa distinta de la siguiente natural (ramas reales
  *  capturadas en los datos, ej. una reactivación que salta directo a Atracción). */
 const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
+  const cycleRef = useRef<HTMLDivElement>(null);
+  const [isExportingCycle, setIsExportingCycle] = useState(false);
+
+  const handleExportCycle = async () => {
+    if (!cycleRef.current) return;
+    setIsExportingCycle(true);
+    try {
+      const bg = getComputedStyle(document.body).backgroundColor || '#ffffff';
+      const dataUrl = await toJpeg(cycleRef.current, { backgroundColor: bg, pixelRatio: 2, quality: 0.95, cacheBust: true });
+      const link = document.createElement('a');
+      const safeName = project.name.trim().replace(/[^\w\-]+/g, '_') || 'campana';
+      link.download = `ecosistema-ciclico-${safeName}.jpg`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error('Error exportando el diagrama del Ecosistema cíclico:', err);
+    } finally {
+      setIsExportingCycle(false);
+    }
+  };
+
   const etapas = [...(project.etapas ?? [])].sort((a, b) => a.orden - b.orden);
   if (etapas.length === 0) return null;
 
@@ -691,12 +712,21 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
 
   return (
     <div className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5 mb-4">
-        <RefreshCw className="h-3 w-3" />
-        Ecosistema cíclico de la {project.name}
-      </h3>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex-1" />
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5">
+          <RefreshCw className="h-3 w-3" />
+          Ecosistema cíclico de la {project.name}
+        </h3>
+        <div className="flex-1 flex justify-end">
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExportCycle} disabled={isExportingCycle}>
+            <Download className="h-3.5 w-3.5" />
+            {isExportingCycle ? 'Exportando…' : 'Exportar JPG'}
+          </Button>
+        </div>
+      </div>
       <div className="overflow-x-auto">
-        <div className="relative mx-auto" style={{ width: size, height: size }}>
+        <div ref={cycleRef} className="relative mx-auto" style={{ width: size, height: size }}>
           <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0 w-full h-full pointer-events-none">
             <defs>
               <marker id="ecosystem-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
