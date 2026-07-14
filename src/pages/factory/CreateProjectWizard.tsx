@@ -1609,7 +1609,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           </Button>
           {isLast ? (
             <Button className="bg-primary text-primary-foreground shadow-glow" onClick={handleCreate} disabled={!data.name.trim() || !reqSatisfied}>
-              <Check className="h-4 w-4" /> Crear campaña
+              <Check className="h-4 w-4" /> {isEditing ? 'Actualizar campaña' : 'Crear campaña'}
             </Button>
           ) : (
             <Button onClick={() => setStep((s) => s + 1)} disabled={!canNext}>

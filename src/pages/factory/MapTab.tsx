@@ -16,7 +16,7 @@ import {
   MoreVertical, Trash2, Workflow, Rocket, Download,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   Target, TrendingUp, Users, DollarSign, RefreshCw,
-  Briefcase, Store, Handshake, PhoneCall,
+  Briefcase, Store, Handshake, PhoneCall, Mail,
   MousePointerClick, Link2, ShieldCheck, Flag,
 } from 'lucide-react';
 import {
@@ -572,6 +572,14 @@ const ETAPA_TIPO_META: Record<EtapaTipo, { icon: typeof FileText; color: string 
   reactivacion: { icon: RefreshCw, color: DIAGRAM_COLORS.purple },
 };
 
+/** Ícono + color por categoría de canal (ver CANAL_CATEGORIAS en factoryStore), para las
+ *  sub-cajas que se despliegan alrededor de la etapa de Atracción en el diagrama del ciclo. */
+const CATEGORY_META: Record<string, { icon: typeof FileText; color: string }> = {
+  directos: { icon: Mail, color: DIAGRAM_COLORS.cyan },
+  pauta: { icon: Megaphone, color: DIAGRAM_COLORS.pink },
+  relacionamiento: { icon: Handshake, color: DIAGRAM_COLORS.violet },
+};
+
 /** Diagrama de solo lectura del ecosistema cíclico real del proyecto: las etapas (orden real,
  *  con sus toques/loops contados desde project.canales/project.loops), la flecha principal que
  *  encadena una etapa con la siguiente (incluida la que cierra el ciclo de la última a la
@@ -583,10 +591,13 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
   if (etapas.length === 0) return null;
 
   const N = etapas.length;
-  const size = 460;
+  // Padding extra alrededor del hexágono para dejar aire a las sub-cajas de canales que se
+  // despliegan desde la etapa de Atracción, sin que se recorten contra el borde del lienzo.
+  const PAD = 86;
+  const r = 165;
+  const size = 460 + PAD * 2;
   const cx = size / 2;
   const cy = size / 2;
-  const r = 165;
   const idIdx = new Map(etapas.map((e, i) => [e.id, i] as const));
 
   const posOf = (i: number) => {
@@ -639,6 +650,45 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
     });
   }
 
+  // ─── Sub-cajas de categorías de canal alrededor de la etapa de Atracción ───
+  // Se despliega una caja secundaria por cada categoría con al menos un canal usado en el
+  // Plan de canales de Atracción, con el detalle de esos canales (sin duplicados). Se abanican
+  // hacia afuera del nodo; la cantidad y posición salen de los datos, así que agregar/quitar un
+  // canal reacomoda el layout solo (sin huecos ni cajas fijas).
+  const atrIdx = etapas.findIndex((e) => e.tipo === 'atraccion');
+  const atrSubBoxes: { key: string; catId: string; label: string; detalle: string; x: number; y: number; fromX: number; fromY: number }[] = [];
+  if (atrIdx >= 0) {
+    const atr = etapas[atrIdx];
+    const usados = Array.from(
+      new Set((project.canales ?? []).filter((c) => c.etapaId === atr.id).map((c) => c.canal.trim()).filter(Boolean))
+    );
+    const matched = categoriasDeCanales(usados).map((cat) => ({
+      cat,
+      canales: cat.canales.filter((c) => usados.includes(c)),
+    }));
+    const node = posOf(atrIdx);
+    const ux = node.x - cx;
+    const uy = node.y - cy;
+    const ulen = Math.sqrt(ux * ux + uy * uy) || 1;
+    const un = { x: ux / ulen, y: uy / ulen };            // hacia afuera del centro
+    const pn = { x: -un.y, y: un.x };                     // perpendicular (abanico)
+    const OUT = 104;
+    const SP = 128;
+    matched.forEach((m, k) => {
+      const off = (k - (matched.length - 1) / 2) * SP;
+      atrSubBoxes.push({
+        key: `atrbox-${m.cat.id}`,
+        catId: m.cat.id,
+        label: m.cat.label,
+        detalle: m.canales.join(' · '),
+        x: node.x + un.x * OUT + pn.x * off,
+        y: node.y + un.y * OUT + pn.y * off,
+        fromX: node.x,
+        fromY: node.y,
+      });
+    });
+  }
+
   return (
     <div className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm">
       <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5 mb-4">
@@ -658,6 +708,12 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
             </defs>
             {mainPaths.map((p) => (
               <path key={p.key} d={p.d} stroke="hsl(var(--border))" strokeWidth="2" fill="none" markerEnd="url(#ecosystem-arrow)" />
+            ))}
+            {atrSubBoxes.map((b) => (
+              <line
+                key={`${b.key}-line`} x1={b.fromX} y1={b.fromY} x2={b.x} y2={b.y}
+                stroke="hsl(var(--border))" strokeWidth="1.5"
+              />
             ))}
             {branchPaths.map((p) => (
               <path
@@ -710,6 +766,28 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
                 ) : (
                   <p className="text-[9px] text-muted-foreground mt-1">{toquesRows.length} toques · {loopsCount} loops</p>
                 )}
+              </div>
+            );
+          })}
+
+          {atrSubBoxes.map((b) => {
+            const cm = CATEGORY_META[b.catId];
+            const CIcon = cm?.icon ?? Megaphone;
+            const color = cm?.color ?? DIAGRAM_COLORS.pink;
+            return (
+              <div
+                key={b.key}
+                className="absolute w-[118px] rounded-lg border border-border/60 bg-card p-2 shadow-sm text-center"
+                style={{ left: b.x, top: b.y, transform: 'translate(-50%, -50%)' }}
+              >
+                <div
+                  className="w-6 h-6 rounded-md flex items-center justify-center mx-auto mb-1"
+                  style={{ backgroundColor: `${color}1a`, color }}
+                >
+                  <CIcon className="h-3 w-3" />
+                </div>
+                <p className="text-[10px] font-semibold leading-tight">{b.label}</p>
+                <p className="text-[8px] text-muted-foreground mt-0.5 leading-snug">{b.detalle}</p>
               </div>
             );
           })}
