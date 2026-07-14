@@ -264,20 +264,20 @@ const LoopRowItem = ({
   etapas: EtapaCiclo[];
   showEtapaPicker?: boolean;
 }) => {
-  // El disparador debe salir de una salida real del Plan de canales (cualquier canal con un
-  // ángulo de toque definido, no solo Correo) — así el loop siempre queda atado a un toque
-  // existente en vez de a texto libre desconectado del plan.
+  // El disparador debe salir de una acción real del Plan de canales: basta con que la fila
+  // tenga acción (canal) y fecha definidas — el ángulo del toque ya no es requisito. Así el
+  // loop queda atado a un toque existente apenas se programa, en vez de a texto libre.
   const canalTriggers = canalesRows
-    .filter((c) => c.copy.trim())
-    .map((c) => ({ label: `${c.canal} · ${c.copy.trim()}`, value: `Salida de ${c.canal}: ${c.copy.trim()}` }));
-  const standardTriggers = [
-    'Abrió pero no hizo clic',
-    'Hizo clic en el enlace',
-    'No abrió/no vio el toque',
-    'Respondió',
-    'Se dio de baja',
-  ];
-  const allPresetValues = ['', ...standardTriggers, ...canalTriggers.map((t) => t.value)];
+    .filter((c) => c.canal.trim() && c.dia.trim())
+    .map((c) => {
+      const fecha = formatDisplay(c.dia) || c.dia;
+      const detalle = c.copy.trim() ? ` · ${c.copy.trim()}` : '';
+      return {
+        label: `${c.canal} · ${fecha}${detalle}`,
+        value: `Salida de ${c.canal} (${fecha})${c.copy.trim() ? `: ${c.copy.trim()}` : ''}`,
+      };
+    });
+  const allPresetValues = ['', ...canalTriggers.map((t) => t.value)];
   const isCustomInput = row.disparador === '__custom__' || (row.disparador !== '' && !allPresetValues.includes(row.disparador));
 
   return (
@@ -290,14 +290,9 @@ const LoopRowItem = ({
             className="w-full bg-transparent border-none outline-none text-xs py-1 cursor-pointer"
           >
             <option value="">Seleccionar disparador…</option>
-            <optgroup label="Salidas del Plan de canales">
+            <optgroup label="Acciones del Plan de canales">
               {canalTriggers.map((t, i) => (
                 <option key={i} value={t.value}>{t.label}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Disparadores estándar">
-              {standardTriggers.map((t) => (
-                <option key={t} value={t}>{t}</option>
               ))}
             </optgroup>
             <option value="__custom__">✏️ Escribir personalizado…</option>
