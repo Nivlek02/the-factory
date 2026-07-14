@@ -96,6 +96,8 @@ export default {
           "review-bg": "hsl(var(--state-review-bg))",
           blocked: "hsl(var(--state-blocked))",
           "blocked-bg": "hsl(var(--state-blocked-bg))",
+          cancelled: "hsl(var(--state-cancelled))",
+          "cancelled-bg": "hsl(var(--state-cancelled-bg))",
           done: "hsl(var(--state-done))",
           "done-bg": "hsl(var(--state-done-bg))",
         },

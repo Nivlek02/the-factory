@@ -2,7 +2,15 @@ import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import type { Attachment } from '@/components/ui/file-upload';
 
-export type ProjectState = 'planning' | 'in_progress' | 'review' | 'blocked' | 'done';
+export type ProjectState = 'planning' | 'in_progress' | 'cancelled' | 'done';
+
+/** Migra estados viejos ('review'/'blocked', eliminados) al nuevo esquema. Proyectos
+ *  persistidos antes de este cambio pueden traer esos valores en Supabase. */
+const migrateState = (state: string): ProjectState => {
+  if (state === 'review' || state === 'blocked') return 'in_progress';
+  if (state === 'planning' || state === 'in_progress' || state === 'cancelled' || state === 'done') return state;
+  return 'planning';
+};
 
 export interface AudienciaNarrativaData {
   segmentos: string[];
@@ -483,7 +491,7 @@ const rowToProject = (row: any): FactoryProject => {
     name: row.name,
     description: row.description ?? '',
     client: row.client ?? '',
-    state: row.state as ProjectState,
+    state: migrateState(row.state),
     priority: (['P0', 'P1', 'P2'] as const).includes(row.priority) ? row.priority as ProjectPriority : 'P2',
     startDate: data.startDate ?? null,
     dueDate: row.due_date,

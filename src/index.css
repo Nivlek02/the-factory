@@ -60,6 +60,8 @@
     --state-review-bg: 38 100% 95%;
     --state-blocked: 0 84% 60%;
     --state-blocked-bg: 0 84% 96%;
+    --state-cancelled: 0 0% 45%;
+    --state-cancelled-bg: 0 0% 94%;
     --state-done: 142 71% 45%;
     --state-done-bg: 142 76% 95%;
 

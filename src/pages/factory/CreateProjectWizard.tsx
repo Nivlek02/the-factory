@@ -52,6 +52,9 @@ const SEGMENTOS_LABEL: Record<string, string> = {
 const REQUERIMIENTOS = [
   { id: 'landing', label: 'Landing' },
   { id: 'formulario', label: 'Formulario de inscripción' },
+  // Opción excluyente: la campaña no necesita landing ni formulario. Permite avanzar sin
+  // generar ninguna tarea de esos entregables.
+  { id: 'ninguno', label: 'No requiere formulario/landing' },
 ] as const;
 
 type ReqId = (typeof REQUERIMIENTOS)[number]['id'];
@@ -63,6 +66,7 @@ const REQ_ROLE_TAREAS: Record<ReqId, Record<string, string[]>> = {
   // — este mapa ya no debe agregar una segunda tarea "Landing" duplicada vía canales.
   landing: {},
   formulario: {},
+  ninguno: {},
 };
 
 /** Convierte YYYY-MM-DD a DD/MM para mostrar. Si no es fecha ISO, devuelve el texto original. */
@@ -772,11 +776,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   };
 
   const hasLandingOrFormulario = requerimientos.includes('landing') || requerimientos.includes('formulario');
+  // El paso de Requerimiento queda satisfecho con Landing/Formulario o con "No requiere
+  // formulario/landing" (deja pasar sin generar tareas de esos entregables).
+  const reqSatisfied = hasLandingOrFormulario || requerimientos.includes('ninguno');
 
   const canNext = step === 0
     ? data.name.trim().length > 0
     : step === 2
-    ? hasLandingOrFormulario && (!requerimientos.includes('formulario') || formularioConfig.basico !== null)
+    ? reqSatisfied && (!requerimientos.includes('formulario') || formularioConfig.basico !== null)
     : true;
   const isLast = step === STEPS.length - 1;
 
@@ -852,7 +859,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     <Dialog open={open} onOpenChange={(v) => v ? onOpenChange(v) : close()}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Editar proyecto' : 'Nuevo proyecto'}</DialogTitle>
+          <DialogTitle>{isEditing ? 'Editar campaña' : 'Nueva campaña'}</DialogTitle>
         </DialogHeader>
 
         {/* Stepper */}
@@ -993,11 +1000,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                     Promocionar en
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Proyectos existentes con la misma categoría y fechas a ±7 días de distancia.
+                    Campañas existentes con la misma categoría y fechas a ±7 días de distancia.
                   </p>
                   {matchingProjects.length === 0 ? (
                     <p className="text-xs text-muted-foreground italic">
-                      No hay proyectos existentes que coincidan con la categoría y el rango de fechas.
+                      No hay campañas existentes que coincidan con la categoría y el rango de fechas.
                     </p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
@@ -1460,11 +1467,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   Requerimiento (Motor del proceso) *
                 </Label>
                 <p className="text-xs text-muted-foreground mb-3 italic">
-                  Selecciona los requerimientos del proyecto para generar las tareas correspondientes en el brief de fábrica.
+                  Selecciona los requerimientos de la campaña para generar las tareas correspondientes en el brief de fábrica.
                 </p>
-                {!hasLandingOrFormulario && (
+                {!reqSatisfied && (
                   <p className="text-xs mb-3 -mt-2 font-medium text-destructive">
-                    Debes elegir al menos "Landing" o "Formulario de inscripción" para continuar.
+                    Debes elegir "Landing", "Formulario de inscripción" o "No requiere formulario/landing" para continuar.
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
@@ -1475,11 +1482,12 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                         key={req.id}
                         type="button"
                         onClick={() =>
-                          setRequerimientos((prev) =>
-                            active
-                              ? prev.filter((r) => r !== req.id)
-                              : [...prev, req.id]
-                          )
+                          setRequerimientos((prev) => {
+                            if (active) return prev.filter((r) => r !== req.id);
+                            // "ninguno" es excluyente con landing/formulario y viceversa.
+                            if (req.id === 'ninguno') return ['ninguno'];
+                            return [...prev.filter((r) => r !== 'ninguno'), req.id];
+                          })
                         }
                         className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
                           active
@@ -1543,14 +1551,6 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   </div>
                 )}
 
-                <div className="mt-4 space-y-1.5">
-                  <Label className="text-xs">Fuente de validación (CRM)</Label>
-                  <Input
-                    placeholder="Ej. CRM Salesforce, hoja de renovados…"
-                    value={motor.fuenteValidacion}
-                    onChange={(e) => setMotor((m) => ({ ...m, fuenteValidacion: e.target.value }))}
-                  />
-                </div>
               </div>
             </div>
           )}
@@ -1606,8 +1606,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
             {step === 0 ? 'Cancelar' : (<><ChevronLeft className="h-4 w-4" /> Atrás</>)}
           </Button>
           {isLast ? (
-            <Button className="bg-primary text-primary-foreground shadow-glow" onClick={handleCreate} disabled={!data.name.trim() || !hasLandingOrFormulario}>
-              <Check className="h-4 w-4" /> Crear proyecto
+            <Button className="bg-primary text-primary-foreground shadow-glow" onClick={handleCreate} disabled={!data.name.trim() || !reqSatisfied}>
+              <Check className="h-4 w-4" /> Crear campaña
             </Button>
           ) : (
             <Button onClick={() => setStep((s) => s + 1)} disabled={!canNext}>

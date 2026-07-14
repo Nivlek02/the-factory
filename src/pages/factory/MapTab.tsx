@@ -380,7 +380,7 @@ export const WorkflowTab = ({ project }: Props) => {
           <p className="text-sm font-medium mb-1">Preparando tu estrategia de mercadeo</p>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto">
             Las etapas (Copys, Diseño, Envíos, etc.) se generan automáticamente a partir de los
-            canales y loops definidos al crear el proyecto.
+            canales y loops definidos al crear la campaña.
           </p>
         </div>
       ) : (() => {
@@ -392,7 +392,7 @@ export const WorkflowTab = ({ project }: Props) => {
             <div className="shrink-0 flex items-center pr-1">
               <div className="w-24 sm:w-28 rounded-lg shadow-glow text-primary-foreground bg-primary flex flex-col items-center justify-center text-center px-2 py-2.5">
                 <Rocket className="h-4 w-4 mb-1" />
-                <p className="text-[11px] font-semibold leading-tight">Inicia el proyecto</p>
+                <p className="text-[11px] font-semibold leading-tight">Inicia la campaña</p>
                 <p className="text-[9px] opacity-80 truncate max-w-full">{project.name}</p>
               </div>
             </div>
@@ -642,7 +642,7 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
     <div className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm">
       <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5 mb-4">
         <RefreshCw className="h-3 w-3" />
-        Ecosistema cíclico del proyecto
+        Ecosistema cíclico de la campaña
       </h3>
       <div className="overflow-x-auto">
         <div className="relative mx-auto" style={{ width: size, height: size }}>

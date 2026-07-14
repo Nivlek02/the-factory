@@ -57,10 +57,9 @@ import { DeliverableSummary, BriefStatusBadge, isMetricsBrief, isUrlBrief } from
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
   planning:    { label: 'En planeación', cls: 'bg-state-planning-bg text-state-planning' },
-  in_progress: { label: 'En proceso',  cls: 'bg-state-progress-bg text-state-progress' },
-  review:      { label: 'En revisión', cls: 'bg-state-review-bg text-state-review' },
-  blocked:     { label: 'Bloqueado',   cls: 'bg-state-blocked-bg text-state-blocked' },
-  done:        { label: 'Completado',  cls: 'bg-state-done-bg text-state-done' },
+  in_progress: { label: 'En proceso',   cls: 'bg-state-progress-bg text-state-progress' },
+  cancelled:   { label: 'Cancelado',    cls: 'bg-state-cancelled-bg text-state-cancelled' },
+  done:        { label: 'Finalizado',   cls: 'bg-state-done-bg text-state-done' },
 };
 
 const TASK_STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -109,13 +108,13 @@ const EmptyFactory = ({ onNew }: { onNew: () => void }) => (
     <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center shadow-glow mb-5 text-primary-foreground">
       <FolderKanban className="h-8 w-8" />
     </div>
-    <h2 className="font-display text-xl font-semibold mb-2">Crea tu primer proyecto</h2>
+    <h2 className="font-display text-xl font-semibold mb-2">Crea tu primera campaña</h2>
     <p className="text-sm text-muted-foreground max-w-xs mb-6">
       Organiza equipos, asigna roles, define requerimientos y gestiona tareas en un solo espacio colaborativo.
     </p>
     <Button onClick={onNew} className="bg-primary text-primary-foreground shadow-glow">
       <Plus className="h-4 w-4" />
-      Nuevo proyecto
+      Nueva campaña
     </Button>
   </div>
 );
@@ -125,11 +124,11 @@ const NoSelection = ({ onNew }: { onNew: () => void }) => (
     <div className="w-12 h-12 rounded-xl bg-factory-soft flex items-center justify-center mb-4">
       <ChevronRight className="h-6 w-6 text-factory" />
     </div>
-    <h3 className="font-semibold mb-1">Selecciona un proyecto</h3>
+    <h3 className="font-semibold mb-1">Selecciona una campaña</h3>
     <p className="text-sm text-muted-foreground mb-4">O crea uno nuevo para empezar.</p>
     <Button variant="outline" size="sm" onClick={onNew}>
       <Plus className="h-4 w-4" />
-      Nuevo proyecto
+      Nueva campaña
     </Button>
   </div>
 );
@@ -474,7 +473,7 @@ const TeamTasksTab = ({
             Sin tareas pendientes
           </p>
           <p className="text-xs text-muted-foreground/60 max-w-xs">
-            Agrega un rol con responsabilidades para empezar a llenar la hoja de fábrica del proyecto.
+            Agrega un rol con responsabilidades para empezar a llenar la hoja de fábrica de la campaña.
           </p>
         </div>
       ) : (
@@ -699,11 +698,11 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setEditWizardOpen(true)}>
                 <Pencil className="h-3.5 w-3.5 mr-2" />
-                Editar proyecto
+                Editar campaña
               </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive" onClick={() => { deleteProject(project.id); setActiveProject(null); }}>
                 <Trash2 className="h-3.5 w-3.5 mr-2" />
-                Eliminar proyecto
+                Eliminar campaña
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -817,7 +816,7 @@ const FactoryPage = () => {
             </div>
             <Button size="sm" onClick={() => setCreateOpen(true)} className="bg-factory text-factory-foreground hover:bg-factory/90">
               <Plus className="h-4 w-4" />
-              Nuevo proyecto
+              Nueva campaña
             </Button>
           </div>
         </header>
@@ -833,7 +832,7 @@ const FactoryPage = () => {
                   size="icon"
                   className="h-7 w-7 text-muted-foreground hover:text-foreground"
                   onClick={() => setProjectsCollapsed(false)}
-                  title="Mostrar proyectos"
+                  title="Mostrar campañas"
                 >
                   <PanelLeftOpen className="h-4 w-4" />
                 </Button>
@@ -847,7 +846,7 @@ const FactoryPage = () => {
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <FolderKanban className="h-3 w-3" />
-                  Proyectos
+                  Campañas
                 </p>
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-muted-foreground">{filteredProjects.length}/{projects.length}</span>
@@ -856,14 +855,14 @@ const FactoryPage = () => {
                     size="icon"
                     className="h-6 w-6 -mr-1 text-muted-foreground hover:text-foreground"
                     onClick={() => setProjectsCollapsed(true)}
-                    title="Ocultar proyectos"
+                    title="Ocultar campañas"
                   >
                     <PanelLeftClose className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </div>
               <Input
-                placeholder="Buscar proyecto…"
+                placeholder="Buscar campaña…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="h-7 text-xs"
@@ -884,14 +883,15 @@ const FactoryPage = () => {
               {filteredProjects.length === 0 && (
                 <div className="px-3 py-6 text-center">
                   <p className="text-xs text-muted-foreground">
-                    {projects.length === 0 ? 'Sin proyectos aún.' : 'Sin coincidencias.'}
+                    {projects.length === 0 ? 'Sin campañas aún.' : 'Sin coincidencias.'}
                   </p>
                 </div>
               )}
               {[
                 { label: 'En planeación', states: ['planning'] },
-                { label: 'En proceso', states: ['in_progress', 'review', 'blocked'] },
-                { label: 'Completados', states: ['done'] },
+                { label: 'En proceso', states: ['in_progress'] },
+                { label: 'Cancelados', states: ['cancelled'] },
+                { label: 'Finalizados', states: ['done'] },
               ].map((group) => {
                 const groupProjects = filteredProjects.filter((p) => group.states.includes(p.state));
                 if (groupProjects.length === 0) return null;
@@ -908,8 +908,7 @@ const FactoryPage = () => {
                         const stateDot =
                           p.state === 'done' ? 'state-done' :
                           p.state === 'in_progress' ? 'state-progress' :
-                          p.state === 'review' ? 'state-review' :
-                          p.state === 'blocked' ? 'state-blocked' : 'state-planning';
+                          p.state === 'cancelled' ? 'state-cancelled' : 'state-planning';
                         return (
                           <button
                             key={p.id}
@@ -954,7 +953,7 @@ const FactoryPage = () => {
                   onClick={() => setCreateOpen(true)}
                 >
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
-                  Nuevo proyecto
+                  Nueva campaña
                 </Button>
               </div>
             )}
