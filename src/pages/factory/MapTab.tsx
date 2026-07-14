@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { toPng, toJpeg } from 'html-to-image';
+import { toPng } from 'html-to-image';
 import {
   FactoryProject,
   StrategyNode,
@@ -595,10 +595,10 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
     setIsExportingCycle(true);
     try {
       const bg = getComputedStyle(document.body).backgroundColor || '#ffffff';
-      const dataUrl = await toJpeg(cycleRef.current, { backgroundColor: bg, pixelRatio: 2, quality: 0.95, cacheBust: true });
+      const dataUrl = await toPng(cycleRef.current, { backgroundColor: bg, pixelRatio: 2, cacheBust: true });
       const link = document.createElement('a');
       const safeName = project.name.trim().replace(/[^\w\-]+/g, '_') || 'campana';
-      link.download = `ecosistema-ciclico-${safeName}.jpg`;
+      link.download = `ecosistema-ciclico-${safeName}.png`;
       link.href = dataUrl;
       link.click();
     } catch (err) {
@@ -721,7 +721,7 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
         <div className="flex-1 flex justify-end">
           <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExportCycle} disabled={isExportingCycle}>
             <Download className="h-3.5 w-3.5" />
-            {isExportingCycle ? 'Exportando…' : 'Exportar JPG'}
+            {isExportingCycle ? 'Exportando…' : 'Exportar PNG'}
           </Button>
         </div>
       </div>
@@ -730,19 +730,19 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
           <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0 w-full h-full pointer-events-none">
             <defs>
               <marker id="ecosystem-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-                <path d="M0,0 L8,4 L0,8 Z" fill="hsl(var(--border))" />
+                <path d="M0,0 L8,4 L0,8 Z" fill="hsl(var(--muted-foreground))" />
               </marker>
               <marker id="ecosystem-arrow-branch" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
                 <path d="M0,0 L8,4 L0,8 Z" fill="hsl(var(--factory))" />
               </marker>
             </defs>
             {mainPaths.map((p) => (
-              <path key={p.key} d={p.d} stroke="hsl(var(--border))" strokeWidth="2" fill="none" markerEnd="url(#ecosystem-arrow)" />
+              <path key={p.key} d={p.d} stroke="hsl(var(--muted-foreground))" strokeWidth="2" fill="none" markerEnd="url(#ecosystem-arrow)" />
             ))}
             {atrSubBoxes.map((b) => (
               <line
                 key={`${b.key}-line`} x1={b.fromX} y1={b.fromY} x2={b.x} y2={b.y}
-                stroke="hsl(var(--border))" strokeWidth="1.5"
+                stroke="hsl(var(--muted-foreground))" strokeWidth="1.75"
               />
             ))}
             {branchPaths.map((p) => (
