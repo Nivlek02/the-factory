@@ -5,6 +5,7 @@ import {
   StrategyNode,
   StrategyStageType,
   EtapaTipo,
+  categoriasDeCanales,
   useFactoryStore,
 } from '@/store/factoryStore';
 
@@ -642,7 +643,7 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
     <div className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm">
       <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5 mb-4">
         <RefreshCw className="h-3 w-3" />
-        Ecosistema cíclico de la campaña
+        Ecosistema cíclico de la {project.name}
       </h3>
       <div className="overflow-x-auto">
         <div className="relative mx-auto" style={{ width: size, height: size }}>
@@ -670,8 +671,13 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
             const meta = ETAPA_TIPO_META[etapa.tipo];
             const Icon = meta.icon;
             const pos = posOf(i);
-            const toques = (project.canales ?? []).filter((c) => c.etapaId === etapa.id).length;
+            const toquesRows = (project.canales ?? []).filter((c) => c.etapaId === etapa.id);
             const loopsCount = (project.loops ?? []).filter((l) => l.etapaId === etapa.id).length;
+            // La etapa de Atracción resume los canales usados por categoría (Canales directos /
+            // Pauta digital / Relacionamiento) en vez del conteo de toques/loops.
+            const categorias = etapa.tipo === 'atraccion'
+              ? categoriasDeCanales(toquesRows.map((c) => c.canal))
+              : [];
             return (
               <div
                 key={etapa.id}
@@ -685,7 +691,25 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
                   <Icon className="h-3.5 w-3.5" />
                 </div>
                 <p className="text-[11px] font-semibold leading-tight">{i + 1}. {etapa.nombre}</p>
-                <p className="text-[9px] text-muted-foreground mt-1">{toques} toques · {loopsCount} loops</p>
+                {etapa.tipo === 'atraccion' ? (
+                  categorias.length > 0 ? (
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      {categorias.map((cat) => (
+                        <span
+                          key={cat.id}
+                          className="text-[8px] font-medium leading-tight rounded px-1 py-0.5"
+                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                        >
+                          {cat.label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[9px] text-muted-foreground mt-1">Sin canales</p>
+                  )
+                ) : (
+                  <p className="text-[9px] text-muted-foreground mt-1">{toquesRows.length} toques · {loopsCount} loops</p>
+                )}
               </div>
             );
           })}

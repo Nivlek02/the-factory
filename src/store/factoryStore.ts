@@ -32,6 +32,28 @@ export interface CanalRow {
   etapaId?: string;
 }
 
+/** Categorías de canales del Plan de canales. Agrupan los canales sueltos para mostrarlos
+ *  resumidos en el diagrama del ecosistema (etapa de Atracción). Es el "catálogo" que vive en
+ *  la capa de datos; la UI solo lo consume. */
+export interface CanalCategoria {
+  id: string;
+  label: string;
+  canales: string[];
+}
+
+export const CANAL_CATEGORIAS: CanalCategoria[] = [
+  { id: 'directos', label: 'Canales directos', canales: ['Correo', 'WhatsApp', 'SMS'] },
+  { id: 'pauta', label: 'Pauta digital', canales: ['Facebook', 'Instagram', 'Google Ads', 'TikTok'] },
+  { id: 'relacionamiento', label: 'Relacionamiento', canales: ['Call Center', 'BTL', 'KAM', 'Relacionamiento'] },
+];
+
+/** Devuelve las categorías (en orden de CANAL_CATEGORIAS) representadas por un conjunto de
+ *  nombres de canal — usado para pintar las categorías activas en el diagrama del ciclo. */
+export const categoriasDeCanales = (canales: string[]): CanalCategoria[] => {
+  const usados = new Set(canales.map((c) => c.trim()).filter(Boolean));
+  return CANAL_CATEGORIAS.filter((cat) => cat.canales.some((c) => usados.has(c)));
+};
+
 export interface LoopRow {
   id: string;
   disparador: string;
