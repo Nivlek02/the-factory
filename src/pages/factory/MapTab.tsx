@@ -712,21 +712,20 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
 
   return (
     <div className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-2 mb-4">
-        <div className="flex-1" />
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5">
-          <RefreshCw className="h-3 w-3" />
-          Ecosistema cíclico de la {project.name}
-        </h3>
-        <div className="flex-1 flex justify-end">
-          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExportCycle} disabled={isExportingCycle}>
-            <Download className="h-3.5 w-3.5" />
-            {isExportingCycle ? 'Exportando…' : 'Exportar PNG'}
-          </Button>
-        </div>
+      <div className="flex justify-end mb-2">
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleExportCycle} disabled={isExportingCycle}>
+          <Download className="h-3.5 w-3.5" />
+          {isExportingCycle ? 'Exportando…' : 'Exportar PNG'}
+        </Button>
       </div>
       <div className="overflow-x-auto">
-        <div ref={cycleRef} className="relative mx-auto" style={{ width: size, height: size }}>
+        {/* Envoltura capturada por el export: título centrado + diagrama, ancho fijo = size. */}
+        <div ref={cycleRef} className="mx-auto" style={{ width: size }}>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5 mb-4">
+            <RefreshCw className="h-3 w-3" />
+            Ecosistema cíclico de la {project.name}
+          </h3>
+          <div className="relative mx-auto" style={{ width: size, height: size }}>
           <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0 w-full h-full pointer-events-none">
             <defs>
               <marker id="ecosystem-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
@@ -821,6 +820,7 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
               </div>
             );
           })}
+          </div>
         </div>
       </div>
       {branchPaths.length > 0 && (
