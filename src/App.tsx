@@ -12,13 +12,14 @@ import SettingsPage from "./pages/SettingsPage";
 import WebinarsPage from "./pages/WebinarsPage";
 import HerramientasPage from "./pages/HerramientasPage";
 import NotFound from "./pages/NotFound";
+import LoginPage from "./pages/LoginPage";
 import FactoryPage from "./pages/factory/FactoryPage";
 import VersionUpdateBanner from "./components/VersionUpdateBanner";
 
 const queryClient = new QueryClient();
 
 const AppRoutes = () => {
-  const { initialize } = useAuthStore();
+  const { initialize, isAuthenticated } = useAuthStore();
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
@@ -29,8 +30,19 @@ const AppRoutes = () => {
     return null;
   }
 
+  // Sin sesión, todo cae al login (incluido /board/:id y cualquier URL profunda).
+  if (!isAuthenticated) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
+  }
+
   return (
     <Routes>
+      <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/" element={<FactoryPage />} />
       <Route path="/factory" element={<Navigate to="/" replace />} />
       <Route path="/inicio" element={<Index />} />

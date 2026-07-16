@@ -251,6 +251,42 @@ export type Database = {
         }
         Relationships: []
       }
+      usuarios_roles: {
+        Row: {
+          created_at: string
+          debe_cambiar_password: boolean
+          email: string
+          id: string
+          nombre_completo: string
+          rol: string
+          updated_at: string
+          user_id: string | null
+          usuario: string
+        }
+        Insert: {
+          created_at?: string
+          debe_cambiar_password?: boolean
+          email: string
+          id?: string
+          nombre_completo: string
+          rol: string
+          updated_at?: string
+          user_id?: string | null
+          usuario: string
+        }
+        Update: {
+          created_at?: string
+          debe_cambiar_password?: boolean
+          email?: string
+          id?: string
+          nombre_completo?: string
+          rol?: string
+          updated_at?: string
+          user_id?: string | null
+          usuario?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

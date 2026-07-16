@@ -7,6 +7,7 @@ import {
   Wrench,
   Factory,
   LayoutGrid,
+  LogOut,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuthStore, ROLE_LABELS } from '@/store/authStore';
@@ -19,7 +20,7 @@ interface AppSidebarProps {
 }
 
 const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
-  const { currentUser } = useAuthStore();
+  const { currentUser, logout } = useAuthStore();
 
   const NavItem = ({
     to,
@@ -142,10 +143,42 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
               {currentUser?.fullName || 'Usuario'}
             </p>
             <p className="text-[11px] text-sidebar-foreground/55 truncate">
-              Demo · {currentUser ? ROLE_LABELS[currentUser.role] : ''}
+              {currentUser ? ROLE_LABELS[currentUser.role] : ''}
             </p>
           </div>
+          {!collapsed && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Cerrar sesión"
+                  onClick={() => logout()}
+                  className="h-8 w-8 shrink-0 text-sidebar-foreground/55 hover:text-sidebar-foreground"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Cerrar sesión</TooltipContent>
+            </Tooltip>
+          )}
         </div>
+        {collapsed && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Cerrar sesión"
+                onClick={() => logout()}
+                className="h-8 w-8 text-sidebar-foreground/55 hover:text-sidebar-foreground"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Cerrar sesión</TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </aside>
   );

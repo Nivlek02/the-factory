@@ -22,72 +22,72 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   trafficker: 'Trafficker',
 };
 
+/** usuarios_roles.rol guarda la etiqueta ('Copywriter'); acá la volvemos al id interno. */
+const ROLE_IDS: Record<string, AppRole> = Object.fromEntries(
+  Object.entries(ROLE_LABELS).map(([id, label]) => [label, id as AppRole])
+);
+
+/** Fila de usuarios_roles → AppUser. */
+type UsuarioRolRow = {
+  id: string;
+  user_id: string | null;
+  usuario: string;
+  email: string;
+  nombre_completo: string;
+  rol: string;
+  created_at: string;
+};
+
+const rowToUser = (row: UsuarioRolRow): AppUser => ({
+  id: row.id,
+  // Los usuarios sin cuenta de auth todavía caen a su id de tabla: siguen siendo
+  // asignables en tareas, pero no pueden iniciar sesión hasta que tengan user_id.
+  userId: row.user_id ?? row.id,
+  username: row.usuario,
+  email: row.email,
+  fullName: row.nombre_completo,
+  role: ROLE_IDS[row.rol] ?? 'soporte',
+  createdAt: row.created_at,
+});
+
 // Fetch user profile with role
 export const fetchUserProfile = async (userId: string): Promise<AppUser | null> => {
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
+  const { data, error } = await supabase
+    .from('usuarios_roles')
     .select('*')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
-  if (profileError || !profile) {
-    console.error('Error fetching profile:', profileError);
+  if (error) {
+    console.error('Error fetching usuario_rol:', error);
     return null;
   }
 
-  const { data: roleData, error: roleError } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', userId)
-    .single();
-
-  if (roleError) {
-    console.error('Error fetching role:', roleError);
-  }
-
-  return {
-    id: profile.id,
-    userId: profile.user_id,
-    username: profile.username,
-    email: profile.email,
-    fullName: profile.full_name,
-    role: (roleData?.role as AppRole) || 'soporte',
-    createdAt: profile.created_at,
-  };
+  return data ? rowToUser(data) : null;
 };
 
-// Fetch all users (for mercadeo role only)
+// Fetch all users — requiere sesión (RLS de usuarios_roles solo abre a authenticated).
 export const fetchAllUsers = async (): Promise<AppUser[]> => {
-  const { data: profiles, error: profilesError } = await supabase
-    .from('profiles')
+  const { data, error } = await supabase
+    .from('usuarios_roles')
     .select('*')
-    .order('created_at', { ascending: true });
+    .order('nombre_completo', { ascending: true });
 
-  if (profilesError || !profiles) {
-    console.error('Error fetching profiles:', profilesError);
+  if (error || !data) {
+    console.error('Error fetching usuarios_roles:', error);
     return [];
   }
 
-  const { data: roles, error: rolesError } = await supabase
-    .from('user_roles')
-    .select('user_id, role');
-
-  if (rolesError) {
-    console.error('Error fetching roles:', rolesError);
-  }
-
-  const roleMap = new Map(roles?.map(r => [r.user_id, r.role as AppRole]) || []);
-
-  return profiles.map(profile => ({
-    id: profile.id,
-    userId: profile.user_id,
-    username: profile.username,
-    email: profile.email,
-    fullName: profile.full_name,
-    role: roleMap.get(profile.user_id) || 'soporte',
-    createdAt: profile.created_at,
-  }));
+  return data.map(rowToUser);
 };
+
+// ---------------------------------------------------------------------------
+// OBSOLETO: createUser / updateUserProfile / deleteUserProfile todavía escriben en
+// profiles + user_roles, que quedaron vacías y con el enum de roles viejo. La lectura
+// (login, lista de equipo) ya usa usuarios_roles. Nada las llama hoy — SettingsPage
+// invoca addUser/updateUser/deleteUser del authStore, que no existen (bug preexistente).
+// Si se van a conectar, primero hay que reescribirlas contra usuarios_roles.
+// ---------------------------------------------------------------------------
 
 // Sign up a new user (used by mercadeo to create team members)
 export const createUser = async (
@@ -252,7 +252,8 @@ export const loginUser = async (
   const profile = await fetchUserProfile(data.user.id);
 
   if (!profile) {
-    // No profile means the account was deleted — deny access immediately.
+    // Sin fila en usuarios_roles (o sin user_id enlazado) no hay acceso: la cuenta
+    // de auth existe pero nadie la vinculó a una persona del equipo.
     await supabase.auth.signOut();
     return { success: false, error: 'Tu cuenta ha sido desactivada. Contacta al administrador.' };
   }
