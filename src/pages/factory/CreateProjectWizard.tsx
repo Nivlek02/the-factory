@@ -552,6 +552,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   const [motor, setMotor] = useState({
     fuenteValidacion: editProject?.motor?.fuenteValidacion ?? '',
     validacionSegmentos: editProject?.motor?.validacionSegmentos ?? [] as string[],
+    desenlaces: editProject?.motor?.desenlaces ?? {} as Record<string, string>,
   });
   const [validacionCustom, setValidacionCustom] = useState('');
   const [requerimientos, setRequerimientos] = useState<string[]>(
@@ -586,7 +587,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           if (parsed.loopsRows) setLoopsRows(parsed.loopsRows);
           if (parsed.etapas) setEtapas(parsed.etapas);
           if (parsed.mensajeBase) setMensajeBase(parsed.mensajeBase);
-          if (parsed.motor) setMotor({ validacionSegmentos: [], ...parsed.motor });
+          if (parsed.motor) setMotor({ validacionSegmentos: [], desenlaces: {}, ...parsed.motor });
           if (parsed.requerimientos) setRequerimientos(parsed.requerimientos);
           if (parsed.formularioConfig) setFormularioConfig(parsed.formularioConfig);
           if (parsed.attachments) setAttachments(parsed.attachments);
@@ -632,7 +633,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     setLoopsRows([]);
     setEtapas([]);
     setMensajeBase({ emocion: '', logica: '', motivacion: '', recompensa: '' });
-    setMotor({ fuenteValidacion: '', validacionSegmentos: [] });
+    setMotor({ fuenteValidacion: '', validacionSegmentos: [], desenlaces: {} });
     setRequerimientos([]);
     setFormularioConfig({ basico: null, camposAdicionales: '', cuadroTexto: '' });
     setAttachments([]);
@@ -694,6 +695,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       return cur.includes(v) ? m : { ...m, validacionSegmentos: [...cur, v] };
     });
   };
+  // Desenlace: texto corto de la rama de cada segmento de validación.
+  const setDesenlaceTexto = (seg: string, texto: string) =>
+    setMotor((m) => ({ ...m, desenlaces: { ...(m.desenlaces ?? {}), [seg]: texto } }));
   const addLoopRow = (etapaId?: string) => {
     setLoopsRows((prev) => [...prev, { id: uid(), disparador: '', reaccion: '', responsable: '', etapaId }]);
   };
@@ -1463,7 +1467,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                       const isInteraccion = etapa.tipo === 'interaccion';
                       const isCaptura = etapa.tipo === 'captura';
                       const isValidacion = etapa.tipo === 'validacion';
-                      const isSpecial = isInteraccion || isCaptura || isValidacion;
+                      const isDesenlace = etapa.tipo === 'desenlace';
+                      const isSpecial = isInteraccion || isCaptura || isValidacion || isDesenlace;
+                      const validacionSegs = motor.validacionSegmentos ?? [];
                       const atraccionEtapa = sorted.find((e) => e.tipo === 'atraccion');
                       const atraccionToques = atraccionEtapa
                         ? canalesRows.filter((r) => r.etapaId === atraccionEtapa.id)
@@ -1512,7 +1518,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                         ? capturaReqs.map((r) => (r === 'landing' ? 'Landing' : 'Formulario')).join(' · ')
                                         : 'Sin mapear'
                                     ) : isValidacion ? (
-                                      `${(motor.validacionSegmentos ?? []).length} ${(motor.validacionSegmentos ?? []).length === 1 ? 'segmento' : 'segmentos'}`
+                                      `${validacionSegs.length} ${validacionSegs.length === 1 ? 'segmento' : 'segmentos'}`
+                                    ) : isDesenlace ? (
+                                      `${validacionSegs.filter((s) => (motor.desenlaces?.[s] ?? '').trim()).length}/${validacionSegs.length} ${validacionSegs.length === 1 ? 'rama' : 'ramas'}`
                                     ) : (
                                       <>
                                         {toques.length} {toques.length === 1 ? 'toque' : 'toques'}
@@ -1632,6 +1640,33 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                     className="h-8 w-36 rounded-md border border-dashed border-input bg-background px-2 text-[11px] outline-none focus:ring-1 focus:ring-ring"
                                   />
                                 </div>
+                              </div>
+                            ) : isDesenlace ? (
+                              /* Desenlace: rama por cada segmento de Validación, con texto corto. */
+                              <div className="space-y-2 border-t border-border/40 pt-3">
+                                <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Desenlace por segmento</Label>
+                                {validacionSegs.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground italic">
+                                    Primero elige los segmentos en la etapa de <span className="font-medium">Validación</span>.
+                                  </p>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <p className="text-[11px] text-muted-foreground italic">
+                                      Describe en pocas palabras el desenlace de cada segmento (ej. Renovado → "Confirmación + agradecimiento").
+                                    </p>
+                                    {validacionSegs.map((seg) => (
+                                      <div key={seg} className="flex flex-col gap-1.5 rounded-lg border border-border/60 bg-card p-2 sm:flex-row sm:items-center">
+                                        <span className="text-xs font-medium shrink-0 sm:w-[150px] truncate" title={seg}>{seg}</span>
+                                        <input
+                                          placeholder="Texto corto del desenlace…"
+                                          value={motor.desenlaces?.[seg] ?? ''}
+                                          onChange={(e) => setDesenlaceTexto(seg, e.target.value)}
+                                          className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             ) : (
                             <>

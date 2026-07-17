@@ -110,6 +110,10 @@ export interface MotorProceso {
    *  el paso "Canales y comportamiento" y se refleja en el nodo de Validación del ciclo. Opcional
    *  para no romper campañas creadas antes de esta funcionalidad. */
   validacionSegmentos?: string[];
+  /** Desenlace por segmento de validación: texto corto que describe la rama de cada segmento
+   *  (ej. "Renovado" → "Confirmación + agradecimiento"). Se llena en la etapa de Desenlace a
+   *  partir de los `validacionSegmentos` y se refleja en el nodo de Desenlace del ciclo. */
+  desenlaces?: Record<string, string>;
 }
 
 export interface TaskComment {

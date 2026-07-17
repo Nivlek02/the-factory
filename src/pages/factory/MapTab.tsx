@@ -793,6 +793,10 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
             const validacionSegs = etapa.tipo === 'validacion'
               ? (project.motor?.validacionSegmentos ?? [])
               : [];
+            // Desenlace: rama por segmento de Validación con su texto corto.
+            const desenlaces = etapa.tipo === 'desenlace'
+              ? (project.motor?.validacionSegmentos ?? []).map((seg) => ({ seg, texto: project.motor?.desenlaces?.[seg] ?? '' }))
+              : [];
             return (
               <div
                 key={etapa.id}
@@ -871,6 +875,23 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
                     </div>
                   ) : (
                     <p className="text-[9px] text-muted-foreground mt-1">Sin validación</p>
+                  )
+                ) : etapa.tipo === 'desenlace' ? (
+                  desenlaces.length > 0 ? (
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      {desenlaces.map((d) => (
+                        <span
+                          key={d.seg}
+                          className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
+                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                          title={d.texto ? `${d.seg}: ${d.texto}` : d.seg}
+                        >
+                          {d.seg}{d.texto ? `: ${d.texto}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[9px] text-muted-foreground mt-1">Sin desenlace</p>
                   )
                 ) : (
                   <p className="text-[9px] text-muted-foreground mt-1">{toquesRows.length} toques · {loopsCount} loops</p>
