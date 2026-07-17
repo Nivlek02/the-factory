@@ -1,20 +1,35 @@
 # The Factory — notas del proyecto
 
 App interna de mercadeo (Vite + React + shadcn/ui + Zustand + Supabase). Desplegada en Vercel
-como proyecto `the-factory` (team `nivlek02s-projects`), dominio `https://the-factory-seven.vercel.app/`.
+en el team `nivlek02s-projects`, **dominio `https://tremubaq.vercel.app/`** (el proyecto se
+renombró a `tremu`; el viejo `the-factory-seven.vercel.app` ya da 404).
 Repo: `Nivlek02/the-factory`, rama de producción `master`.
 
 ## Estado de infraestructura
 
-- **Supabase activo:** proyecto `yvzpfdwswmjcnipcgclg` (el anterior `mjjhssqclqxrxpbbalft` quedó
-  reemplazado). `.env` local y `supabase/config.toml` ya apuntan al nuevo.
-- **La app no usa autenticación real de Supabase Auth** — `authStore.ts` usa un `DEMO_USER` fijo.
-  Por eso todas las tablas necesitan políticas RLS con `TO anon, authenticated` (no solo
-  `authenticated`), si no, los inserts se rechazan en silencio (el error solo se loguea en
-  consola del navegador, nunca se muestra en la UI).
+- **Supabase activo:** proyecto `yvzpfdwswmjcnipcgclg`. El anterior (`mjjhssqclqxrxpbbalft`) **ya
+  no existe** — no está en la cuenta, así que los datos que tuviera son irrecuperables. Solo se
+  migró el esquema (las 25 migraciones), nunca los datos.
+- **Desde 2026-07-16 la app SÍ usa Supabase Auth real** (login en `/login`, ver punto 29). Ya no
+  hay `DEMO_USER`. Matices importantes:
+  - Solo `ktrujillo` tiene cuenta en `auth.users`. Los otros 21 de `usuarios_roles` tienen
+    `user_id` nulo: aparecen en la lista de equipo y son asignables, pero no pueden entrar.
+  - **El resto de las tablas sigue con RLS `TO anon, authenticated`** y no se tocó. La sesión hoy
+    no restringe nada fuera de `usuarios_roles`. Si esas policies se cierran a `authenticated`,
+    hay que verificar que todo el tráfico ya vaya autenticado.
+  - Regla de siempre: un insert rechazado por RLS **falla en silencio** (solo se loguea en la
+    consola del navegador, nunca se ve en la UI).
+- **`vercel.json` necesita el bloque `rewrites`** para que las rutas profundas (`/login`,
+  `/settings`, `/board/:id`) no den 404 — `dist/` solo contiene `index.html`. No lo quites.
 - Vercel env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) se gestionan por API con
   un token personal (`vcp_...`, no guardado aquí). Ojo al pegar keys manualmente en el dashboard:
   ya pasó una vez que un salto de línea se convirtió en espacios en medio del JWT y lo invalidó.
+  Los valores en `.env` van **entre comillas** — al parsearlos hay que quitarlas, y no partir por
+  `=` a secas porque los JWT llevan `=` de padding.
+- **Ojo con el typecheck:** `npx tsc --noEmit` a secas **no compila nada** (el `tsconfig.json` raíz
+  tiene `"files": []` + `references`) y da exit 0 falso. El real es
+  `npx tsc --noEmit -p tsconfig.app.json` → hoy salen **4 errores preexistentes** (3 en
+  `SettingsPage.tsx` por `addUser`/`updateUser`/`deleteUser`, 1 en `CreateProjectWizard.tsx:376`).
 
 ## Bitácora
 
@@ -802,109 +817,74 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
     - **Verificación:** `tsc --noEmit` exit 0 y `npm run build` limpio (sin el warning de `@import`).
       Sin Playwright (por decisión del usuario — revisa visual en el deploy). Como es background job,
       **no se pusheó a master directo**: rama `worktree-bitacora-rediseno-tremu` (commit `821888d`)
-      + **PR draft #1** (`https://github.com/Nivlek02/the-factory/pull/1`). Falta que el usuario
-      mergee para que salga a producción en Vercel.
+      + **PR #1** (`https://github.com/Nivlek02/the-factory/pull/1`), **mergeado el 2026-07-11** —
+      el rediseño está en producción (confirmado visualmente el 2026-07-16). La rama
+      `worktree-bitacora-rediseno-tremu` sigue existiendo en el remoto; se puede borrar.
 
-## PLAN EJECUTADO — Rediseño visual "Tremu ISO" (implementado 2026-07-11, ver punto 28)
+### 2026-07-16
 
-Sesión de grilling (2026-07-10) donde se acordó aplicar el sistema de diseño de
-`tremu-iso-style.html` (referencia que trajo el usuario) a TODA la app **sin tocar estructura,
-lógica, rutas ni textos** — solo estilo. Se acabaron los créditos antes de implementar; TODAS las
-decisiones ya están tomadas abajo, ejecutar directo sin volver a preguntar.
+29. **Tabla `usuarios_roles` (perfiles + roles en una sola) + login real de Supabase Auth + fix de
+    rutas SPA en Vercel** — commits `6fb75db`, `85465d7`, `5bec390`, los tres en `master`.
+    - **Hallazgo que cambió el pedido:** el usuario pidió "consolidar" `profiles` + `user_roles`
+      mapeando los roles viejos (`mercadeo`→Estratega, etc.). Al revisar la base **las tres tablas
+      estaban vacías** (`auth.users`, `profiles`, `user_roles`: 0 filas) — los datos viejos se
+      quedaron en el proyecto Supabase reemplazado, que **ya no existe** (`projects list` devuelve
+      solo `yvzpfdwswmjcnipcgclg`). O sea, no había nada que mapear: la lista de 22 personas que
+      trajo el usuario es la única fuente de verdad. Se le avisó antes de tocar nada.
+    - **`usuarios_roles`** (migración `20260716000000`): `id`, `user_id` (uuid nullable → FK a
+      `auth.users`, `ON DELETE SET NULL`), `usuario`, `nombre_completo`, `email`, `rol` (text con
+      **check constraint** de los 6 roles), `debe_cambiar_password` (bool, default true),
+      `created_at`/`updated_at`. 22 registros; **nadie en Trafficker**. `profiles` y `user_roles`
+      **NO se borraron** (pedido explícito) — quedan vacías y con el enum `app_role` viejo.
+    - **Decisión: no se guarda ninguna contraseña en la tabla.** El pedido original mencionaba una
+      columna `password_temporal`, pero la lista de columnas del propio usuario no la incluía. Las
+      credenciales viven solo en `auth.users` (hasheadas por GoTrue). El usuario decidió a mitad de
+      camino asignar él las contraseñas desde el frontend, así que **no se generó ninguna
+      contraseña temporal ni existe archivo de contraseñas**.
+    - **RLS de `usuarios_roles`: solo `authenticated` (SELECT), a propósito** — es la única tabla
+      que NO abre a `anon`, a diferencia del resto (ver "Estado de infraestructura"). Motivo: es un
+      directorio con 22 nombres y correos (varios gmail personales) y la publishable key es pública
+      y va en el bundle. Verificado: logueado devuelve 22 filas, sin sesión devuelve **0**.
+    - **Login real** (`85465d7`): se eliminó `DEMO_USER`. `LoginPage.tsx` nueva en `/login`;
+      `App.tsx` redirige toda ruta a `/login` sin sesión y `/login`→`/` con sesión; `authStore`
+      restaura la sesión en `initialize()` y suma `login()`/`logout()`; `AppSidebar` tiene botón de
+      cerrar sesión y ya no dice "Demo ·". `authService.fetchUserProfile`/`fetchAllUsers` ahora
+      leen `usuarios_roles` (`rol` guarda la **etiqueta**, así que se mapea a `AppRole` con un mapa
+      inverso de `ROLE_LABELS`). Los usuarios sin `user_id` caen a su id de tabla como `userId`:
+      siguen siendo asignables, pero `loginUser` los rechaza.
+    - **`createUser`/`updateUserProfile`/`deleteUserProfile` quedaron marcadas OBSOLETAS** en
+      `authService.ts` — siguen escribiendo en `profiles`/`user_roles` (vacías, enum viejo) mientras
+      toda la lectura ya usa `usuarios_roles`. Nadie las llama (`SettingsPage` invoca
+      `addUser`/`updateUser`/`deleteUser` del store, que no existen). Si se conectan, hay que
+      reescribirlas primero contra `usuarios_roles`.
+    - **Fix: `vercel.json` no tenía `rewrites`** (`5bec390`) — **todas** las rutas menos `/` daban
+      404 en producción (`/settings`, `/reports`, `/board/:id`), porque `dist/` solo tiene
+      `index.html`. Estaba roto desde siempre y no se notaba porque se navegaba client-side desde la
+      raíz; el login lo volvió fatal (un refresh en `/login` = 404). El rewrite excluye `/assets/`
+      para no romper los archivos con hash (verificado: siguen sirviéndose como
+      `application/javascript`).
+    - **El `406` del pendiente viejo: al menos esta instancia NO es de `factory_projects`.** Es
+      `app_version?select=version&limit=1` con `.single()` sobre una tabla **vacía** → PostgREST
+      responde `PGRST116` / 406. Viene del `VersionUpdateBanner`. Es ruido de consola, no rompe
+      nada. Puede que el 406 del `upsert` de `factory_projects` sea algo distinto.
+    - **Se descubrió que `npx tsc --noEmit` no verificaba nada** (tsconfig raíz con `"files": []`).
+      Con `-p tsconfig.app.json` salen los 4 errores preexistentes ya documentados. Los cambios de
+      esta sesión no agregan ninguno. `npm run build` limpio.
+    - **Verificado con Playwright contra producción real** (`https://tremubaq.vercel.app`, no solo
+      local): sin sesión toda ruta cae a `/login` sin filtrar la app; contraseña incorrecta muestra
+      error y no entra; login entra; el sidebar muestra "Kelvin Trujillo / Soporte"; la sesión
+      sobrevive un reload; logout vuelve al login y no revive al recargar; Ajustes lista los 22
+      ("Página 1 de 5", `USERS_PER_PAGE = 5`) con los roles nuevos. Se confirmó que el hash del
+      bundle en prod coincide con el del build local.
+    - **Limpieza del repo**: `supabase/.temp/` agregado al `.gitignore` (contiene la URL del pooler
+      y era ruido untracked permanente).
 
-### Sistema de diseño objetivo (tokens exactos de la referencia)
-- Color: `--bg:#EEF1F7` (fondo app) · `--surface:#FFFFFF` (paneles/cards) ·
-  `--surface-soft:#F7F8FB` (inputs/zonas 2rias) · `--border:#ECEEF3` · `--border-soft:#F1F3F7` ·
-  `--ink:#12141B` (texto ppal) · `--ink-2:#3B4150` (2rio) · `--muted:#8A90A0` (3rio/placeholder) ·
-  `--muted-2:#A7ADBB` · `--accent:#009CF5` (ÚNICO acento de marca) · `--accent-hover:#0087D6` ·
-  `--accent-weak:#E5F5FE` (fondos activo/seleccionado/hover) · `--accent-ink:#0079BD`.
-- Radios: `lg:22px` (paneles) · `md:14px` (inputs/botones 2rios) · `sm:10px` (nav items).
-- Sombras: suave `0 1px 2px rgba(18,20,27,.04), 0 8px 24px rgba(18,20,27,.05)` ·
-  botón `0 1px 2px rgba(0,156,245,.18), 0 10px 26px rgba(0,156,245,.30)`.
-- Tipografía: **Plus Jakarta Sans** (400/500/600/700/800). Títulos 700–800 con tracking negativo
-  (-.3 a -.5px). Eyebrows 10–11px MAYÚS tracking ~1px en `--muted`. Cuerpo 13–14px 400–500.
-- **CERO gradientes** en cualquier elemento (logos, avatares, íconos, fondos, botones): todo color sólido.
-- Botones "pill" (`border-radius:999px`); primario = `--accent` + texto blanco + sombra de botón,
-  hover → `--accent-hover` y sube 1px.
+## Rediseño visual "Tremu ISO" — CERRADO
 
-### Decisiones cerradas con el usuario (AskUserQuestion, no re-preguntar)
-1. **Acento único, conservar semáforo.** `#009CF5` es el único color de marca (botones, activos,
-   links, logo, avatares). Se **CONSERVAN los colores funcionales** que comunican significado:
-   rojo=bloqueado, verde=hecho, ámbar=revisión, prioridades P0–P3 (mantener las tonalidades
-   actuales de `index.css`, no repintarlas). Los colores **decorativos de equipo/board** (design=
-   morado, copy=cian, social=rosa, seo=verde, etc.) se **neutralizan a gris/azul**. ⚠️ Heads-up ya
-   avisado al usuario: las columnas del kanban perderán distinción por color y se diferenciarán por
-   etiqueta — si al verlo no le gusta, es reversible.
-2. **Quitar el modo oscuro por completo.** Eliminar el bloque `.dark` de `index.css` y el
-   `ThemeProvider` de `App.tsx`. **Mantener el paquete `next-themes` instalado** solo para que
-   `src/components/ui/sonner.tsx` (usa `useTheme`) no rompa → forzar `theme="light"` ahí.
-3. **Todo a Plus Jakarta Sans.** Quitar Inter, Space Grotesk, Baloo 2 y **Open Sans** del `@import`
-   de `index.css`. `.font-display` y `.font-logo` apuntan a Jakarta (títulos con tracking negativo).
-   Actualizar `fontFamily` en `tailwind.config.ts` (`sans`/`display`/`logo` → Jakarta).
-4. **Recolorear dentro del layout actual.** NO adoptar el "shell flotante" de 3 paneles con gaps de
-   la referencia (eso es cambio de layout). Sidebar pasa a claro vía tokens, sin tocar el HTML de
-   `AppSidebar.tsx`. Estructura/rutas/lógica intactas.
-5. **Herramientas (`BitlyLinkTool.tsx`) aplanado total.** Quitar el fondo radial y el gradiente del
-   botón; superficie blanca plana, `#009CF5` sólido, Plus Jakarta Sans, radios/sombras del sistema.
-   Reescribir el objeto `T` (líneas ~42-60) a los tokens nuevos: `bg` sólido `#FFFFFF` o `#EEF1F7`,
-   `submitBg`/`submitBgHover` → `#009CF5`/`#0087D6` sólidos (sin `linear-gradient`), `font` →
-   `'Plus Jakarta Sans'`, `focusBorder`/`focusShadow` a la familia `#009CF5`, radios 14/10.
-   OJO: **NO es un JSON** (el prompt del usuario asumía eso) — es una constante TS en el componente.
-6. **Verificación: solo `tsc --noEmit` + `npm run build`.** Sin Playwright. El usuario revisa
-   visualmente en el deploy.
-7. **Entrega: push directo a master** → deploy de producción en Vercel (patrón de siempre).
-   ⚠️ Recordatorio operativo: si se ejecuta como background job, los guardrails bloquean push directo
-   a master; en ese caso pushear la rama y dejar el comando de merge. En sesión interactiva normal,
-   push a master directo como siempre.
-
-### Estrategia de implementación (centralización de tokens)
-- **Remapear los VALORES de las variables existentes** en `src/index.css` a la paleta de la
-  referencia (convertir los hex a los triples HSL que ya consumen las vars `hsl(var(--x))`). Los
-  nombres de var y el mapeo de `tailwind.config.ts` NO cambian, así `bg-primary`/`bg-background`/
-  `text-muted-foreground`/`bg-card`/etc. en los ~12 archivos se voltean solos sin editar componente
-  por componente. Este es el "centralizar tokens" que pidió el usuario.
-- Mapeos clave (hex → convertir a HSL para las vars actuales):
-  - `--primary` → `#009CF5` (antes navy `217 65% 29%`). `--primary-foreground` → blanco.
-  - `--background` → `#EEF1F7`. `--foreground` → `#12141B`.
-  - `--card`/`--surface` → `#FFFFFF`. `--surface-elevated` → `#F7F8FB`.
-  - `--secondary`/`--muted` (fondos) → `#F7F8FB`/`#EEF1F7`; `--muted-foreground` → `#8A90A0`.
-  - `--border`/`--input` → `#ECEEF3`. `--ring` → `#009CF5`.
-  - **shadcn `--accent` → `#E5F5FE`** (fondos hover/activos de menús/ghost — NO azul brillante) y
-    `--accent-foreground` → `#0079BD`. Ojo: en el theme actual `--accent` es un azul medio usado
-    como hover; si se mapea a `#009CF5` brillante, todos los hovers de dropdown/menú quedan chillones.
-  - `--radius` → `0.875rem` (14px) para que `md` calce; ajustar `borderRadius` en tailwind si hace
-    falta para lograr lg:22/md:14/sm:10 (hoy es `lg:var(--radius)`, `md:-2px`, `sm:-4px` → revisar
-    que dé los valores de la referencia; puede requerir tokens de radio explícitos).
-  - `--sidebar-background` → `#FFFFFF` (o `#F7F8FB`), `--sidebar-foreground` → `#3B4150`,
-    `--sidebar-accent` (hover/activo) → `#E5F5FE`, `--sidebar-accent-foreground` → `#0079BD`,
-    `--sidebar-primary` → `#009CF5`, `--sidebar-border` → `#ECEEF3`. Verificar contraste de los
-    íconos/labels del sidebar sobre fondo claro (hoy asumen navy oscuro).
-  - Sombras `--shadow-*` → las dos de la referencia (suave y de botón). `--shadow-glow`/`--shadow-
-    card-hover` → derivar de la de botón/suave sin gradiente.
-- **Eliminar gradientes:** borrar `--gradient-factory*` de `index.css`, quitar `backgroundImage`
-  (`gradient-factory*`) de `tailwind.config.ts`, y reemplazar los usos `bg-gradient-*`/`from-*`/
-  `to-*` en `MapTab.tsx`, `FactoryPage.tsx`, `CreateProjectWizard.tsx`, `AppSidebar.tsx`,
-  `WebinarsPage.tsx` por `#009CF5` sólido (logo, avatares, íconos de estado vacío, headers).
-- **Neutralizar decorativos:** los tokens `team-*`/`board-*` (y usos directos, 117 ocurrencias en
-  12 archivos — buscar `team-|status-|priority-|board-|state-`) → los `team-*`/`board-*` a gris/
-  `--muted`/`#009CF5`; **conservar** `status-*`/`state-*`/`priority-*` (semáforo) con sus hues.
-- Archivos con hex hardcodeado a revisar (grep `#[0-9a-fA-F]{3,6}|hsl(|rgb(`): `CreateProjectWizard
-  .tsx`, `MapTab.tsx` (colores de conectores/bezier del flowchart → `--border`/`--muted`, nodos →
-  `--accent`), `FactoryPage.tsx`, `WebinarsPage.tsx`, `BitlyLinkTool.tsx`, `ui/sidebar.tsx`.
-
-### Checklist de ejecución para mañana
-- [ ] `index.css`: remapear todas las vars `:root` a la paleta nueva; borrar bloque `.dark`; borrar
-  `--gradient-*`; cambiar `@import` de fuentes a solo Plus Jakarta Sans; `.font-display`/`.font-logo`
-  → Jakarta; body font-family → Jakarta.
-- [ ] `tailwind.config.ts`: `fontFamily` sans/display/logo → Jakarta; quitar `backgroundImage`
-  de gradientes; ajustar `borderRadius` a 22/14/10 si el `--radius` no lo da; revisar `boxShadow`.
-- [ ] `App.tsx`: quitar `ThemeProvider` de `next-themes` (dejar el árbol sin el wrapper).
-- [ ] `ui/sonner.tsx`: quitar `useTheme`, hardcodear `theme="light"`.
-- [ ] `BitlyLinkTool.tsx`: reescribir objeto `T` a tokens nuevos, aplanar (sin radial, sin gradiente).
-- [ ] Reemplazar usos de `bg-gradient-*`/`from-*`/`to-*` y hex hardcodeados por acento sólido/tokens.
-- [ ] Neutralizar `team-*`/`board-*`; conservar `status/state/priority`.
-- [ ] `tsc --noEmit` + `npm run build` limpios.
-- [ ] Commit + push a master (o rama + comando de merge si background job); revisar en el deploy.
+El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
+así que el rediseño ya está en producción (acento `#009CF5`, Plus Jakarta Sans, sin modo oscuro,
+sin gradientes). Se quitó el plan de este archivo por ser ruido — el estado real es el código.
+El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
 
 ## Pendientes / próximos pasos
 
@@ -913,10 +893,22 @@ decisiones ya están tomadas abajo, ejecutar directo sin volver a preguntar.
   proyecto" y confirmar que todo (etapas, toques/loops con `etapaId`/`siguienteEtapaId`,
   mensajeBase, motor) se recarga igual. No se ejercitó ese paso específico con Playwright, solo
   crear + ver el resultado en la misma sesión.
-- [ ] **Investigar `406` al hacer `upsert` a `factory_projects`** — apareció al verificar el punto
-  23 en esta máquina; no se investigó la causa (¿RLS, config local desactualizada, `.env`
-  desincronizado?). No se tocó nada de Supabase en esa sesión, así que no se sabe si es un problema
-  real o solo de esta máquina/entorno de verificación.
+- [ ] **Dar acceso a los otros 21 usuarios** — hoy solo `ktrujillo` tiene cuenta en `auth.users`.
+  Para cada uno: crear la cuenta (Admin API o el frontend) y **enlazar `usuarios_roles.user_id`**
+  con el id de `auth.users`; sin ese enlace `loginUser` los rechaza con "Tu cuenta ha sido
+  desactivada". El usuario dijo que asigna él las contraseñas desde el frontend.
+- [ ] **`debe_cambiar_password` no lo hace cumplir nadie** — es solo una columna (default `true`
+  en los 22). Falta el gate en el login que fuerce el cambio en el primer ingreso.
+- [ ] **Cambiar la contraseña inicial de `ktrujillo`** — se fijó `Colombia2026*` a pedido del
+  usuario, en texto plano en un chat, como acceso temporal.
+- [ ] **Revocar el access token de Supabase (`sbp_...`)** usado el 2026-07-16 para aplicar la
+  migración — se pegó en el chat y da acceso a **toda la cuenta**, no solo a este proyecto:
+  https://supabase.com/dashboard/account/tokens
+- [ ] **Borrar la rama `origin/worktree-bitacora-rediseno-tremu`** — su PR #1 ya se mergeó.
+- [ ] **Investigar el `406` del `upsert` a `factory_projects`** — apareció al verificar el punto 23.
+  Ojo: el 406 que se ve en la consola del navegador **no es ese** — es `app_version` + `.single()`
+  sobre tabla vacía (ver punto 29). Si el de `factory_projects` sigue apareciendo, es otra cosa.
+  Sospecha razonable: el mismo patrón `.single()` contra 0 filas.
 - [ ] Probar en producción quitar un canal ya guardado (ej. desmarcar BTL/KAM/Relacionamiento/Call
   Center en "Editar proyecto") y confirmar que `syncCanalNodes` (`factoryStore.ts`, punto 23) borra
   el nodo correspondiente en Flujo de trabajo — la lógica es simétrica a `syncRequerimientoNodes`
@@ -941,7 +933,11 @@ decisiones ya están tomadas abajo, ejecutar directo sin volver a preguntar.
   a la vez — Landing + Formulario + Pauta simultáneos — en producción real).
 - [ ] Si se quiere que "Nuevo Usuario"/"Editar Usuario" funcionen de verdad en Ajustes, hay que:
   (a) implementar `addUser`/`updateUser`/`deleteUser` en `authStore.ts` (hoy no existen, bug
-  preexistente), y (b) migrar el enum `user_roles.role` en Supabase a los 5 roles nuevos.
+  preexistente — son 3 de los 4 errores de `tsc -p tsconfig.app.json`), y (b) reescribir
+  `createUser`/`updateUserProfile`/`deleteUserProfile` de `authService.ts` contra `usuarios_roles`
+  (hoy escriben en `profiles`/`user_roles`, ver punto 29). **Ya no hace falta migrar el enum
+  `user_roles.role`**: ese camino quedó muerto, los roles nuevos viven en `usuarios_roles.rol` como
+  texto con check constraint.
 - [ ] Confirmar con el usuario en producción: historial de aprobación con fecha/hora, activación
   automática de la siguiente tarea al aprobar, y el selector de roles fijos en Equipo — no se
   tocaron en esta sesión y siguen sin verificación visual.
@@ -949,11 +945,15 @@ decisiones ya están tomadas abajo, ejecutar directo sin volver a preguntar.
   Relacionamiento)~~ — confirmado explícitamente por el usuario en el punto 23: BTL/KAM/
   Relacionamiento/Call Center → Estratega (con nodo propio de "hecho sí/no + fecha"),
   Facebook/Instagram/TikTok/Google Ads → nuevo rol Trafficker.
-- [ ] RLS más estricta por rol — quedó pendiente a propósito ("las RLS las creamos después"),
-  ahorita todo es `anon`-abierto porque no hay sesión real de Supabase Auth.
-- [ ] Si se quiere probar UI con Playwright en esta máquina, revisar por qué la descarga de
-  Chromium se traba (posible exclusión de Windows Defender a agregar en
-  `%LOCALAPPDATA%\ms-playwright`).
+- [ ] RLS más estricta por rol — quedó pendiente a propósito ("las RLS las creamos después"). Todas
+  las tablas siguen `anon`-abiertas **menos `usuarios_roles`** (solo `authenticated`, ver punto 29).
+  Desde 2026-07-16 ya hay sesión real, así que cerrar las demás a `authenticated` es viable — pero
+  hay que confirmar antes que ningún camino escriba sin sesión, porque un rechazo de RLS **falla en
+  silencio**.
+- [x] ~~Revisar por qué se traba la descarga de Chromium para Playwright~~ — resuelto (punto 9).
+  Chromium `chromium-1228` está completo en `%LOCALAPPDATA%\ms-playwright`. Recordatorio:
+  `chromium.launch()` **necesita `executablePath`** apuntando a
+  `chromium-1228/chrome-win64/chrome.exe` (no se descargó `chrome-headless-shell`).
 - [ ] Edge functions (`create-initial-user`, `admin-set-password`, `send-notification`,
   `update-user-password`) no se redespliegan con `supabase db push` — están en el proyecto nuevo
   como código pero no se ha confirmado que estén desplegadas ahí.

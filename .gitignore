@@ -30,3 +30,6 @@ remix-of-tremu-main/
 .env
 .env.local
 .env.*.local
+
+# Estado local del CLI de Supabase (incluye la URL del pooler)
+supabase/.temp/
