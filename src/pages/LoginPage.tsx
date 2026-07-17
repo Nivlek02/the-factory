@@ -41,7 +41,7 @@ const LoginPage = () => {
         <div className="bg-card border border-border rounded-lg shadow-sm p-6">
           <h2 className="text-lg font-semibold tracking-tight mb-1">Iniciar sesión</h2>
           <p className="text-sm text-muted-foreground mb-6">
-            Entra con tu correo del equipo.
+            Ingresa con el correo suministrado por el administrador.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
@@ -55,7 +55,6 @@ const LoginPage = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tucorreo@camarabaq.org.co"
               />
             </div>
 
@@ -88,7 +87,7 @@ const LoginPage = () => {
                   Entrando…
                 </>
               ) : (
-                'Entrar'
+                'Iniciar Sesión'
               )}
             </Button>
           </form>
