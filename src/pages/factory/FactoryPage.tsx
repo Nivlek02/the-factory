@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from '@/components/layout/Layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -44,16 +44,32 @@ import {
   BarChart3,
   RefreshCw,
   Pencil,
+  FileDown,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
 import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup, CanalRow, FabricaBriefItem } from '@/store/factoryStore';
+import { campaignToMarkdown, markdownFileName } from '@/lib/campaignMarkdown';
+import { iniciales } from './CreateProjectWizard';
 import { useRolesStore, ASSIGNABLE_ROLE_IDS } from '@/store/rolesStore';
 import CreateProjectWizard from './CreateProjectWizard';
 import { WorkflowTab, MetricsDashboardTab, LoopTab } from './MapTab';
 import { DeliverableSummary, BriefStatusBadge, isMetricsBrief, isUrlBrief } from '@/components/factory/DeliverableSummary';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+/** Arma el .md en memoria y lo baja como archivo — todo local, sin pasar por el servidor. */
+const descargarMarkdown = (project: FactoryProject) => {
+  const blob = new Blob([campaignToMarkdown(project)], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = markdownFileName(project);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
   planning:    { label: 'En planeación', cls: 'bg-state-planning-bg text-state-planning' },
@@ -700,6 +716,10 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
                 <Pencil className="h-3.5 w-3.5 mr-2" />
                 Editar campaña
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => descargarMarkdown(project)}>
+                <FileDown className="h-3.5 w-3.5 mr-2" />
+                Descargar Markdown
+              </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive" onClick={() => { deleteProject(project.id); setActiveProject(null); }}>
                 <Trash2 className="h-3.5 w-3.5 mr-2" />
                 Eliminar campaña
@@ -721,6 +741,17 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Calendar className="h-3 w-3" />
               {new Date(project.dueDate).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
+            </span>
+          )}
+          {project.strategistName && (
+            <span
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+              title="Estratega a cargo"
+            >
+              <span className="w-4 h-4 rounded-full bg-primary/10 text-primary text-[8px] font-semibold flex items-center justify-center">
+                {iniciales(project.strategistName)}
+              </span>
+              {project.strategistName}
             </span>
           )}
           <div className="flex items-center gap-1.5 ml-auto">
@@ -789,14 +820,34 @@ const FactoryPage = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [stateFilter, setStateFilter] = useState<'all' | FactoryProject['state']>('all');
+  const [strategistFilter, setStrategistFilter] = useState<string>('all');
   const [projectsCollapsed, setProjectsCollapsed] = useState(false);
 
+  // Solo las estrategas que realmente tienen campañas: filtrar por alguien sin campañas
+  // vaciaría la lista y no sirve de nada. Sale del dato de las campañas, no del equipo.
+  const estrategasConCampanas = useMemo(
+    () =>
+      [...new Set(projects.map((p) => p.strategistName?.trim()).filter((n): n is string => !!n))]
+        .sort((a, b) => a.localeCompare(b)),
+    [projects]
+  );
+
+  // Si la estratega filtrada deja de tener campañas (se borró la última, o se le reasignó),
+  // el filtro quedaría apuntando a nadie y la lista vacía sin explicación: se resetea solo.
+  useEffect(() => {
+    if (strategistFilter !== 'all' && !estrategasConCampanas.includes(strategistFilter)) {
+      setStrategistFilter('all');
+    }
+  }, [estrategasConCampanas, strategistFilter]);
+
   const filteredProjects = projects.filter((p) => {
+    // La búsqueda ahora también encuentra por estratega, coherente con que sea filtrable.
     const matchesQ = query.trim()
-      ? `${p.name} ${p.client}`.toLowerCase().includes(query.trim().toLowerCase())
+      ? `${p.name} ${p.client} ${p.strategistName ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())
       : true;
     const matchesS = stateFilter === 'all' ? true : p.state === stateFilter;
-    return matchesQ && matchesS;
+    const matchesE = strategistFilter === 'all' ? true : p.strategistName?.trim() === strategistFilter;
+    return matchesQ && matchesS && matchesE;
   });
 
   return (
@@ -878,6 +929,28 @@ const FactoryPage = () => {
                   ))}
                 </SelectContent>
               </Select>
+              {/* Aparece en cuanto alguna campaña tenga estratega; si ninguna la tiene, filtrar
+                  por eso no tendría sentido y el selector solo estorbaría. */}
+              {estrategasConCampanas.length > 0 && (
+                <Select value={strategistFilter} onValueChange={setStrategistFilter}>
+                  <SelectTrigger className="h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las estrategas</SelectItem>
+                    {estrategasConCampanas.map((nombre) => (
+                      <SelectItem key={nombre} value={nombre}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full bg-primary/10 text-primary text-[8px] font-semibold flex items-center justify-center shrink-0">
+                            {iniciales(nombre)}
+                          </span>
+                          {nombre}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto py-2 px-2 space-y-3">
               {filteredProjects.length === 0 && (
@@ -925,7 +998,15 @@ const FactoryPage = () => {
                               <span className={`text-[9px] font-semibold ${PRIORITY_META[p.priority].cls}`}>{PRIORITY_META[p.priority].label}</span>
                             </div>
                             {p.client && (
-                              <p className="text-[10px] text-muted-foreground truncate mb-1.5 pl-3.5">{p.client}</p>
+                              <p className="text-[10px] text-muted-foreground truncate mb-1 pl-3.5">{p.client}</p>
+                            )}
+                            {p.strategistName && (
+                              <p className="flex items-center gap-1 text-[10px] text-muted-foreground truncate mb-1.5 pl-3.5">
+                                <span className="w-3.5 h-3.5 rounded-full bg-primary/10 text-primary text-[7px] font-semibold flex items-center justify-center shrink-0">
+                                  {iniciales(p.strategistName)}
+                                </span>
+                                <span className="truncate">{p.strategistName}</span>
+                              </p>
                             )}
                             <div className="flex items-center gap-2 pl-3.5">
                               <div className="flex-1 h-0.5 rounded-full bg-border/60 overflow-hidden">

@@ -10,6 +10,7 @@ import {
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { useFactoryStore, type FabricaBriefItem, type EtapaCiclo, type EtapaTipo } from '@/store/factoryStore';
 import { useRolesStore } from '@/store/rolesStore';
+import { useAuthStore } from '@/store/authStore';
 import RichTextEditor from '@/components/ui/rich-text-editor';
 import {
   Cog, Plus, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, FolderKanban, Check, Target, GitBranch, Calendar, Clock,
@@ -68,6 +69,14 @@ const REQ_ROLE_TAREAS: Record<ReqId, Record<string, string[]>> = {
   formulario: {},
   ninguno: {},
 };
+
+/** Radix Select no admite value="" (lo reserva para limpiar), así que "sin asignar" necesita
+ *  un centinela propio que se traduce a '' al guardar. */
+const SIN_ESTRATEGA = '__sin_estratega__';
+
+/** "Yeinis Zapata" → "YZ" — para el avatar del selector. */
+export const iniciales = (nombre: string) =>
+  nombre.trim().split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase();
 
 /** Convierte YYYY-MM-DD a DD/MM para mostrar. Si no es fecha ISO, devuelve el texto original. */
 const formatFecha = (dateStr: string) => {
@@ -365,6 +374,15 @@ const LoopRowItem = ({
 const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Props) => {
   const { addProject, updateProject, projects: allProjects } = useFactoryStore();
   const { roles } = useRolesStore();
+  const { users } = useAuthStore();
+
+  // Estrategas reales del equipo (usuarios_roles con rol Estratega), para no escribir el nombre
+  // a mano. Se guarda el nombre en `strategistName` —no el id— para no romper las campañas que
+  // ya lo tienen como texto libre ni obligar a migrar el dato.
+  const estrategas = useMemo(
+    () => users.filter((u) => u.role === 'estratega').map((u) => u.fullName).sort((a, b) => a.localeCompare(b)),
+    [users]
+  );
   const isEditing = !!editProject;
 
   const [step, setStep] = useState(0);
@@ -965,11 +983,45 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
               <div className="grid grid-cols-4 gap-3">
                 <div className="space-y-1.5">
                   <Label>Estratega</Label>
-                  <Input
-                    placeholder="Nombre del estratega"
-                    value={data.strategistName}
-                    onChange={(e) => setData((d) => ({ ...d, strategistName: e.target.value }))}
-                  />
+                  <Select
+                    value={data.strategistName || SIN_ESTRATEGA}
+                    onValueChange={(v) =>
+                      setData((d) => ({ ...d, strategistName: v === SIN_ESTRATEGA ? '' : v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Elige una estratega" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={SIN_ESTRATEGA}>
+                        <span className="text-muted-foreground">Sin asignar</span>
+                      </SelectItem>
+                      {estrategas.map((nombre) => (
+                        <SelectItem key={nombre} value={nombre}>
+                          <span className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[9px] font-semibold flex items-center justify-center shrink-0">
+                              {iniciales(nombre)}
+                            </span>
+                            {nombre}
+                          </span>
+                        </SelectItem>
+                      ))}
+                      {/* Si la campaña trae un estratega que ya no está en la lista (texto libre
+                          viejo, o alguien que cambió de rol), se ofrece igual: si no, el Select
+                          saldría vacío y al guardar borraría el dato en silencio. */}
+                      {data.strategistName && !estrategas.includes(data.strategistName) && (
+                        <SelectItem value={data.strategistName}>
+                          <span className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground text-[9px] font-semibold flex items-center justify-center shrink-0">
+                              {iniciales(data.strategistName)}
+                            </span>
+                            {data.strategistName}
+                            <span className="text-[10px] text-muted-foreground">(fuera del equipo)</span>
+                          </span>
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Estado inicial</Label>
