@@ -14,13 +14,20 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
   hay `DEMO_USER`. Matices importantes:
   - Solo `ktrujillo` tiene cuenta en `auth.users`. Los otros 21 de `usuarios_roles` tienen
     `user_id` nulo: aparecen en la lista de equipo y son asignables, pero no pueden entrar.
-  - **El resto de las tablas sigue con RLS `TO anon, authenticated`** y no se tocó. La sesión hoy
-    no restringe nada fuera de `usuarios_roles`. Si esas policies se cierran a `authenticated`,
-    hay que verificar que todo el tráfico ya vaya autenticado.
+  - **El resto de las tablas sigue con RLS `TO anon, authenticated`** y no se tocó. La sesión no
+    restringe nada fuera de `usuarios_roles`. Si esas policies se cierran a `authenticated`, hay que
+    verificar que todo el tráfico ya vaya autenticado.
+  - **`usuarios_roles` es la excepción**: SELECT para cualquier autenticado, pero escribir solo si
+    el rol es Estratega o Soporte (vía `puede_gestionar_usuarios()`, SECURITY DEFINER — ver punto
+    30). Es el único lugar donde el rol **decide permisos** y no es solo informativo.
   - Regla de siempre: un insert rechazado por RLS **falla en silencio** (solo se loguea en la
-    consola del navegador, nunca se ve en la UI).
+    consola del navegador, nunca se ve en la UI). Y ojo con el UPDATE: RLS **filtra filas en vez de
+    rechazar el comando**, así que sin permiso vuelve *sin error* y con 0 filas — hay que mirar el
+    conteo con `.select()`, no solo `error`.
 - **`vercel.json` necesita el bloque `rewrites`** para que las rutas profundas (`/login`,
   `/settings`, `/board/:id`) no den 404 — `dist/` solo contiene `index.html`. No lo quites.
+  El rewrite excluye `assets/` y `version.json`: **cualquier archivo estático nuevo en la raíz hay
+  que excluirlo ahí o Vercel devolverá `index.html` en su lugar** (ya pasó con `version.json`).
 - Vercel env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) se gestionan por API con
   un token personal (`vcp_...`, no guardado aquí). Ojo al pegar keys manualmente en el dashboard:
   ya pasó una vez que un salto de línea se convirtió en espacios en medio del JWT y lo invalidó.
@@ -879,6 +886,74 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
     - **Limpieza del repo**: `supabase/.temp/` agregado al `.gitignore` (contiene la URL del pooler
       y era ruido untracked permanente).
 
+### 2026-07-17
+
+30. **Gestión de usuarios en Ajustes (arreglada + restringida por rol), fechas semaforizadas en
+    Flujo de trabajo, banner de versión funcional y fixes de UI** — commits `3dabecb`, `7301e81`.
+    - **Fix: "Guardar" en Ajustes se quedaba colgado en "Guardando…"** — `SettingsPage` llamaba
+      `addUser`/`updateUser`/`deleteUser` del `authStore`, que **nunca existieron** (los 3 errores
+      de `tsc` documentados hace meses): la llamada tiraba `TypeError`, el `setIsSaving(false)`
+      siguiente no corría y el botón quedaba muerto. Implementados los tres contra `usuarios_roles`.
+      **`tsc -p tsconfig.app.json` bajó de 4 errores a 1** (queda el de `CreateProjectWizard:376`).
+    - **Segunda capa del mismo bug, esta introducida por mí:** la migración `20260716000000` creó
+      `usuarios_roles` con RLS activa y **solo policy de SELECT**. El INSERT devolvía `42501`, pero
+      **el UPDATE devolvía éxito afectando 0 filas** (RLS *filtra* filas, no rechaza el comando).
+      Arreglar solo el JS habría dado "Usuario actualizado" sin guardar nada. Migración
+      `20260717000000` agrega las policies de escritura. **Lección: al escribir con RLS hay que
+      mirar el conteo de filas (`.select()`), no solo `error`** — `updateUser`/`deleteUser` lo hacen.
+    - **Gestión de usuarios restringida a Estratega y Soporte** (`20260717010000`): las policies de
+      escritura pasan por `public.puede_gestionar_usuarios(uuid)`, **SECURITY DEFINER** — obligatorio,
+      porque una policy sobre `usuarios_roles` que consulte `usuarios_roles` se evalúa recursivamente
+      contra sí misma (mismo patrón que el `has_role()` original). SELECT sigue abierto a cualquier
+      autenticado: la app necesita la lista del equipo para asignar tareas. `authStore.canManageUsers()`
+      espeja la regla en el front (solo decide qué se muestra; la base es la que manda) y `SettingsPage`
+      muestra un aviso de solo lectura + oculta los controles.
+      **Verificado con un usuario Diseñador real** (creado y borrado en la prueba): lee el equipo pero
+      no puede editar a otros, crear, borrar **ni ascenderse a sí mismo a Estratega**.
+      ⚠️ Esto es lo primero que hace que el rol **decida permisos** — hasta ahora era informativo
+      (ver punto 8). Si se agregan más reglas por rol, este es el patrón a seguir.
+    - **"Nuevo Usuario" ya no pide contraseña.** No puede crear cuentas de acceso: el Admin API exige
+      service_role (imposible en el navegador) y `signUp` tampoco sirve — **el proyecto tiene
+      `mailer_autoconfirm: false` y no tiene SMTP propio**, así que el usuario creado no podría
+      confirmar el correo ni entrar nunca. Ahora agrega la persona al directorio (asignable en tareas)
+      y el diálogo avisa que no podrá iniciar sesión hasta que le creen la cuenta.
+    - **Fecha por acción + semáforo** (pedido del usuario): `FabricaBriefItem.fechaAccion` (ISO),
+      sembrada desde `CanalRow.dia` y **editable desde la tarea** (decisión confirmada:
+      "del plan + editable"). Cortes confirmados: **rojo ≤2d (incl. vencidas), amarillo ≤7d, verde
+      >7d** — la regla vive en `src/lib/urgencia.ts` (probada en todos los bordes: 2→roja, 3→amarilla,
+      7→amarilla, 8→verde). Ojo: `parseISOLocal` parsea a mano porque `new Date('2026-07-20')` se
+      interpreta como UTC y en Colombia (UTC-5) mostraría el día anterior. En `buildFabricaBriefs` la
+      fecha se hereda vía una variable de bucle (`fechaCanalActual`) para no repetirla en los ~10
+      `addItem` del switch — **se resetea a null al salir del bucle** o Landing/Loops heredarían la
+      fecha del último canal. El `NodeCard` del diagrama muestra la más urgente de sus pendientes.
+    - **Fix: nodo "Inicia la campaña"** — el nombre tenía `truncate`, así que técnicamente no
+      desbordaba, pero se cortaba a un renglón (incluso "Campaña de renovación Julio" ya se cortaba).
+      Ahora envuelve hasta 2 líneas con `line-clamp-2 break-words` + `title`. Verificado con un
+      nombre de 90+ caracteres sin espacios: la tarjeta mantiene su ancho y no genera scroll.
+    - **Regresión propia detectada al verificar:** al meter el chip de urgencia en `NodeCard`, el
+      `justify-between` + `truncate` aplastaba el `roleLabel` hasta desaparecerlo ("Copywriter" se
+      esfumó). La fila ahora es `flex-wrap`; de paso "Gestor de canales" dejó de truncarse.
+    - **Iconos del Dashboard de métricas**: estaban cruzados — **Clics tenía un signo de dólar**,
+      Apertura una diana, Enviados una flecha de tendencia. Ahora `Send`/`MailOpen`/
+      `MousePointerClick`. `Target` y `DollarSign` quedaron sin uso y se quitaron del import.
+    - **VersionUpdateBanner: ahora sí funciona.** Leía `app_version` de Supabase, pero **esa fila
+      seguía en `1.0.0` desde su creación porque nadie la actualizaba nunca** — el banner no se
+      mostró jamás. Se reemplazó por un `BUILD_ID` (sha del commit, vía `VERCEL_GIT_COMMIT_SHA` o
+      `git rev-parse`) horneado por Vite con `define`, más un `version.json` emitido en cada build;
+      el hook lo consulta con `cache:'no-store'` al volver a la pestaña y cada 5 min. **Se actualiza
+      solo en cada deploy, sin tocar la base.** La tabla `app_version` quedó sin uso (no se borró).
+    - **Trampa encontrada al verificar:** el rewrite de SPA (`5bec390`) **se tragaba `/version.json`**
+      y devolvía HTML — el `fetch` moría en `res.json()` y el banner nunca habría aparecido. El
+      rewrite ahora excluye `version.json` además de `assets/`, y le fija `Cache-Control:
+      must-revalidate`. **Cuidado al agregar cualquier archivo estático nuevo en la raíz: hay que
+      excluirlo del rewrite o Vercel devolverá index.html.**
+    - **El `406` de `app_version` desapareció** (ya no se lee esa tabla): la consola de producción
+      quedó sin errores.
+    - Verificado con Playwright **contra producción** (`tremubaq.vercel.app`): login, `version.json`
+      legible, sin banner falso, aviso de rol correcto para Diseñador y controles para Soporte, los
+      4 iconos de métricas, y el nodo inicial con nombre largo. Los 3 colores del semáforo probados
+      en la UI. Las fechas de prueba que quedaron escritas en el proyecto real se limpiaron.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
@@ -899,6 +974,14 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
   desactivada". El usuario dijo que asigna él las contraseñas desde el frontend.
 - [ ] **`debe_cambiar_password` no lo hace cumplir nadie** — es solo una columna (default `true`
   en los 22). Falta el gate en el login que fuerce el cambio en el primer ingreso.
+- [ ] **Desplegar una edge function con service_role para crear cuentas de acceso** — es la pieza
+  que falta para que "Nuevo Usuario" cree logins de verdad y para resetear contraseñas desde la
+  app. Hay 4 en el repo (`create-initial-user`, `admin-set-password`, `update-user-password`,
+  `send-notification`) y **ninguna está desplegada** (`supabase functions list` → vacío). Sin eso,
+  el frontend solo puede escribir en `usuarios_roles`, nunca en `auth.users`. Ver punto 30.
+- [ ] **Considerar SMTP propio en Supabase Auth** — hoy `mailer_autoconfirm: false` (exige
+  confirmar el correo) y no hay SMTP configurado, así que el mailer por defecto está muy limitado.
+  Eso bloquea cualquier flujo de alta/recuperación por correo.
 - [ ] **Cambiar la contraseña inicial de `ktrujillo`** — se fijó `Colombia2026*` a pedido del
   usuario, en texto plano en un chat, como acceso temporal.
 - [ ] **Revocar el access token de Supabase (`sbp_...`)** usado el 2026-07-16 para aplicar la
@@ -906,9 +989,10 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
   https://supabase.com/dashboard/account/tokens
 - [ ] **Borrar la rama `origin/worktree-bitacora-rediseno-tremu`** — su PR #1 ya se mergeó.
 - [ ] **Investigar el `406` del `upsert` a `factory_projects`** — apareció al verificar el punto 23.
-  Ojo: el 406 que se ve en la consola del navegador **no es ese** — es `app_version` + `.single()`
-  sobre tabla vacía (ver punto 29). Si el de `factory_projects` sigue apareciendo, es otra cosa.
-  Sospecha razonable: el mismo patrón `.single()` contra 0 filas.
+  Ojo: el 406 de la consola **no era ese** — era `app_version` + `.single()` sin sesión, y **ya no
+  ocurre** (el punto 30 dejó de leer esa tabla; la consola de producción quedó limpia). Si el de
+  `factory_projects` reaparece, es otra cosa. Sospecha razonable: el mismo patrón `.single()`
+  contra 0 filas.
 - [ ] Probar en producción quitar un canal ya guardado (ej. desmarcar BTL/KAM/Relacionamiento/Call
   Center en "Editar proyecto") y confirmar que `syncCanalNodes` (`factoryStore.ts`, punto 23) borra
   el nodo correspondiente en Flujo de trabajo — la lógica es simétrica a `syncRequerimientoNodes`
@@ -931,13 +1015,13 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
 - [x] ~~Prioridad alta: revisar visualmente el nuevo diagrama de Flujo de trabajo en producción~~ —
   verificado con Playwright el 2026-07-08 (rama única probada; falta ver un caso con las 3 ramas
   a la vez — Landing + Formulario + Pauta simultáneos — en producción real).
-- [ ] Si se quiere que "Nuevo Usuario"/"Editar Usuario" funcionen de verdad en Ajustes, hay que:
-  (a) implementar `addUser`/`updateUser`/`deleteUser` en `authStore.ts` (hoy no existen, bug
-  preexistente — son 3 de los 4 errores de `tsc -p tsconfig.app.json`), y (b) reescribir
-  `createUser`/`updateUserProfile`/`deleteUserProfile` de `authService.ts` contra `usuarios_roles`
-  (hoy escriben en `profiles`/`user_roles`, ver punto 29). **Ya no hace falta migrar el enum
-  `user_roles.role`**: ese camino quedó muerto, los roles nuevos viven en `usuarios_roles.rol` como
-  texto con check constraint.
+- [x] ~~Implementar `addUser`/`updateUser`/`deleteUser` en `authStore.ts`~~ — hecho en el punto 30;
+  editar y eliminar funcionan, y crear agrega al directorio (sin cuenta de acceso, ver pendiente de
+  la edge function). Sigue pendiente: **`createUser`/`updateUserProfile`/`deleteUserProfile` de
+  `authService.ts` quedaron marcadas OBSOLETAS** — escriben en `profiles`/`user_roles` (vacías, enum
+  viejo) y nadie las llama. Si se conectan, reescribirlas primero contra `usuarios_roles`.
+  **Ya no hace falta migrar el enum `user_roles.role`**: ese camino quedó muerto, los roles nuevos
+  viven en `usuarios_roles.rol` como texto con check constraint.
 - [ ] Confirmar con el usuario en producción: historial de aprobación con fecha/hora, activación
   automática de la siguiente tarea al aprobar, y el selector de roles fijos en Equipo — no se
   tocaron en esta sesión y siguen sin verificación visual.
