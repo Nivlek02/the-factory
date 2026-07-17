@@ -30,6 +30,10 @@ export interface CanalRow {
   /** Etapa del ciclo (ver EtapaCiclo) a la que pertenece este toque. Opcional para no romper
    *  proyectos creados antes de la unificación Plan de canales + Loops. */
   etapaId?: string;
+  /** Interacción esperada tras este toque (Abre / No abre / Clic / No clic / Visita landing, o
+   *  texto libre). Se asigna en la etapa de Interacción sobre cada acción sembrada en Atracción;
+   *  el dato vive en el toque de origen. Opcional. */
+  interaccion?: string;
 }
 
 /** Categorías de canales del Plan de canales. Agrupan los canales sueltos para mostrarlos

@@ -776,6 +776,11 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
             const categorias = etapa.tipo === 'atraccion'
               ? categoriasDeCanales(toquesRows.map((c) => c.canal))
               : [];
+            // La etapa de Interacción muestra la interacción esperada de cada acción de Atracción.
+            const atrEtapa = etapas.find((e) => e.tipo === 'atraccion');
+            const interacciones = etapa.tipo === 'interaccion' && atrEtapa
+              ? (project.canales ?? []).filter((c) => c.etapaId === atrEtapa.id && (c.interaccion ?? '').trim())
+              : [];
             return (
               <div
                 key={etapa.id}
@@ -804,6 +809,23 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
                     </div>
                   ) : (
                     <p className="text-[9px] text-muted-foreground mt-1">Sin canales</p>
+                  )
+                ) : etapa.tipo === 'interaccion' ? (
+                  interacciones.length > 0 ? (
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      {interacciones.map((c) => (
+                        <span
+                          key={c.id}
+                          className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
+                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                          title={`${c.canal}: ${c.interaccion}`}
+                        >
+                          {c.canal}: {c.interaccion}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[9px] text-muted-foreground mt-1">Sin interacciones</p>
                   )
                 ) : (
                   <p className="text-[9px] text-muted-foreground mt-1">{toquesRows.length} toques · {loopsCount} loops</p>

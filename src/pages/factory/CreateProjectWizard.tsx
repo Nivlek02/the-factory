@@ -135,7 +135,7 @@ const ETAPA_TIPO_META: Record<EtapaTipo, { icon: LucideIcon; color: string }> = 
   reactivacion: { icon: RefreshCw, color: 'hsl(var(--team-design))' },
 };
 
-type WizardCanalRow = { id: string; canal: string; dia: string; hora: string; copy: string; segmento: string; etapaId?: string };
+type WizardCanalRow = { id: string; canal: string; dia: string; hora: string; copy: string; segmento: string; etapaId?: string; interaccion?: string };
 type WizardLoopRow = { id: string; disparador: string; reaccion: string; responsable: string; etapaId?: string; siguienteEtapaId?: string };
 
 /** Una fila del Plan de canales — reutilizada dentro de cada etapa y en "Sin etapa asignada"
@@ -156,12 +156,12 @@ const ToqueRow = ({
       // Ángulo del toque es texto libre sin truncado (a diferencia de Segmento/Etapa, que ya
       // truncan con "…" + tooltip) — se le da el piso más generoso de todos los campos.
       gridTemplateColumns: showEtapaPicker
-        ? '95px 75px 58px minmax(150px, 1fr) minmax(60px, 90px) minmax(60px, 90px) 20px'
-        : '95px 75px 58px minmax(150px, 1fr) minmax(60px, 90px) 20px',
+        ? 'minmax(104px, 128px) 75px 58px minmax(140px, 1fr) minmax(60px, 90px) minmax(60px, 90px) 20px'
+        : 'minmax(104px, 128px) 75px 58px minmax(140px, 1fr) minmax(60px, 90px) 20px',
     }}
   >
     <Select value={row.canal} onValueChange={(v) => onUpdate('canal', v)}>
-      <SelectTrigger className="h-8 w-full gap-1.5 border-none bg-transparent px-1 text-xs font-medium shadow-none focus:ring-0 focus:ring-offset-0 md:h-auto">
+      <SelectTrigger className="h-8 w-full min-w-0 gap-1.5 border-none bg-transparent px-1 text-xs font-medium shadow-none focus:ring-0 focus:ring-offset-0 md:h-auto">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -219,7 +219,7 @@ const ToqueRow = ({
       placeholder="Ángulo del toque…"
       value={row.copy}
       onChange={(e) => onUpdate('copy', e.target.value)}
-      className="text-xs bg-transparent border-none outline-none w-full"
+      className="text-xs bg-transparent border-none outline-none w-full min-w-0"
     />
     <div className="min-w-0 overflow-hidden" title={SEGMENTOS_LABEL[row.segmento] ?? 'Segmento General'}>
       <select
@@ -258,6 +258,75 @@ const ToqueRow = ({
     </button>
   </div>
 );
+
+/** Opciones de interacción esperada tras un toque, en la etapa de Interacción. "__custom__" abre
+ *  un campo de texto libre para una interacción personalizada. */
+const INTERACCION_OPCIONES = ['Abre', 'No abre', 'Clic', 'No clic', 'Visita landing'] as const;
+
+/** Una fila de la etapa de Interacción: muestra una acción sembrada en Atracción (canal, solo
+ *  lectura) y un selector para elegir la interacción esperada. El valor se guarda en el propio
+ *  toque de Atracción (`CanalRow.interaccion`), no en un registro aparte. */
+const InteraccionRow = ({
+  row, onUpdate,
+}: {
+  row: WizardCanalRow;
+  onUpdate: (value: string) => void;
+}) => {
+  const Icon = CHANNELS.find((c) => c.id === row.canal)?.icon ?? Mail;
+  const value = row.interaccion ?? '';
+  const valueIsCustom = value !== '' && !INTERACCION_OPCIONES.includes(value as (typeof INTERACCION_OPCIONES)[number]);
+  const [customMode, setCustomMode] = useState(valueIsCustom);
+  const showCustom = customMode || valueIsCustom;
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-card p-2">
+      <span className="flex items-center gap-1.5 min-w-0 shrink-0 w-[130px] text-xs font-medium">
+        <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className="truncate">{row.canal}</span>
+      </span>
+      {row.copy.trim() && (
+        <span className="text-[11px] text-muted-foreground truncate min-w-0 hidden sm:inline" title={row.copy}>
+          {row.copy}
+        </span>
+      )}
+      <div className="ml-auto flex items-center gap-2 shrink-0">
+        {showCustom ? (
+          <input
+            autoFocus
+            placeholder="Interacción personalizada…"
+            value={value}
+            onChange={(e) => onUpdate(e.target.value)}
+            className="h-8 w-44 rounded-md border border-input bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+          />
+        ) : (
+          <select
+            value={value}
+            onChange={(e) => {
+              if (e.target.value === '__custom__') { setCustomMode(true); onUpdate(''); }
+              else onUpdate(e.target.value);
+            }}
+            className="h-8 w-44 rounded-md border border-input bg-background px-2 text-xs cursor-pointer outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">Interacción esperada…</option>
+            {INTERACCION_OPCIONES.map((op) => (
+              <option key={op} value={op}>{op}</option>
+            ))}
+            <option value="__custom__">✏️ Personalizado…</option>
+          </select>
+        )}
+        {(value !== '' || showCustom) && (
+          <button
+            type="button"
+            onClick={() => { setCustomMode(false); onUpdate(''); }}
+            className="text-muted-foreground hover:text-destructive transition-colors"
+            title="Quitar interacción"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 /** Una fila de Loops de comportamiento — reutilizada dentro de cada etapa y en "Sin etapa
  *  asignada". `onUpdate('siguienteEtapaId', etapaId)` es el selector "Lleva a →" que cierra o
@@ -887,7 +956,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
 
   return (
     <Dialog open={open} onOpenChange={(v) => v ? onOpenChange(v) : close()}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar campaña' : 'Nueva campaña'}</DialogTitle>
         </DialogHeader>
@@ -1342,10 +1411,19 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                       const Icon = meta.icon;
                       const toques = canalesRows.filter((r) => r.etapaId === etapa.id);
                       const etapaLoops = loopsRows.filter((r) => r.etapaId === etapa.id);
+                      // La etapa de Interacción no tiene su propio Plan de canales ni Loops: opera
+                      // sobre las acciones sembradas en Atracción, asignándole a cada una la
+                      // interacción esperada (abre/clic/visita landing/…).
+                      const isInteraccion = etapa.tipo === 'interaccion';
+                      const atraccionEtapa = sorted.find((e) => e.tipo === 'atraccion');
+                      const atraccionToques = atraccionEtapa
+                        ? canalesRows.filter((r) => r.etapaId === atraccionEtapa.id)
+                        : [];
+                      const interaccionesSet = atraccionToques.filter((t) => (t.interaccion ?? '').trim());
                       // La etapa de Atracción no lleva loops: la audiencia recién entra al
-                      // ecosistema, todavía no hay comportamiento que disparar. Los loops
-                      // aparecen a partir de Interacción.
-                      const showLoops = etapa.tipo !== 'atraccion';
+                      // ecosistema, todavía no hay comportamiento que disparar. Interacción tampoco
+                      // (usa el selector de interacción). Los loops aparecen desde Captura.
+                      const showLoops = etapa.tipo !== 'atraccion' && !isInteraccion;
                       return (
                         <AccordionItem key={etapa.id} value={etapa.id} className="rounded-lg border border-border/60 bg-card px-3 last:border-b-0">
                           <div className="flex items-center gap-1">
@@ -1378,8 +1456,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                 <div className="min-w-0 text-left">
                                   <p className="text-sm font-semibold truncate">{idx + 1}. {etapa.nombre}</p>
                                   <p className="text-[10px] text-muted-foreground">
-                                    {toques.length} {toques.length === 1 ? 'toque' : 'toques'}
-                                    {showLoops && ` · ${etapaLoops.length} ${etapaLoops.length === 1 ? 'loop' : 'loops'}`}
+                                    {isInteraccion ? (
+                                      `${interaccionesSet.length}/${atraccionToques.length} ${atraccionToques.length === 1 ? 'interacción' : 'interacciones'}`
+                                    ) : (
+                                      <>
+                                        {toques.length} {toques.length === 1 ? 'toque' : 'toques'}
+                                        {showLoops && ` · ${etapaLoops.length} ${etapaLoops.length === 1 ? 'loop' : 'loops'}`}
+                                      </>
+                                    )}
                                   </p>
                                 </div>
                               </div>
@@ -1397,6 +1481,29 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                               </div>
                             </div>
 
+                            {/* Interacción: opera sobre las acciones de Atracción, una interacción
+                                esperada por cada una — sin Plan de canales ni Loops propios. */}
+                            {isInteraccion ? (
+                              <div className="space-y-2 border-t border-border/40 pt-3">
+                                <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Interacción esperada por acción</Label>
+                                {atraccionToques.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground italic">
+                                    Primero agrega acciones en el Plan de canales de <span className="font-medium">Atracción multicanal</span>.
+                                  </p>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {atraccionToques.map((row) => (
+                                      <InteraccionRow
+                                        key={row.id}
+                                        row={row}
+                                        onUpdate={(value) => updateCanalRow(row.id, 'interaccion', value)}
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                            <>
                             {/* Toques de esta etapa (Plan de canales) */}
                             <div className="space-y-2 border-t border-border/40 pt-3">
                               <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Plan de canales</Label>
@@ -1458,6 +1565,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                 <Plus className="h-3.5 w-3.5" /> Agregar disparador
                               </button>
                             </div>
+                            )}
+                            </>
                             )}
                           </AccordionContent>
                         </AccordionItem>
