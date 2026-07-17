@@ -14,6 +14,15 @@ import {
 export type { AppUser, AppRole };
 export { ROLE_LABELS };
 
+type Result = { success: boolean; error?: string };
+
+export interface UserEdit {
+  username: string;
+  fullName: string;
+  email?: string;
+  role: AppRole;
+}
+
 interface AuthStore {
   users: AppUser[];
   currentUser: AppUser | null;
@@ -22,9 +31,12 @@ interface AuthStore {
 
   // Actions
   initialize: () => Promise<void>;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<Result>;
   logout: () => Promise<void>;
   loadUsers: () => Promise<void>;
+  addUser: (username: string, fullName: string, email: string, role: AppRole) => Promise<Result>;
+  updateUser: (rowId: string, edit: UserEdit) => Promise<Result>;
+  deleteUser: (rowId: string) => Promise<Result>;
   canAccessBoard: (boardId: string) => boolean;
 }
 
@@ -80,10 +92,91 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     set({ users });
   },
 
+  // Agrega la persona al directorio. NO crea cuenta de acceso: eso exige el Admin API
+  // (service_role), que no puede vivir en el navegador. Queda con user_id nulo hasta que
+  // alguien le cree la cuenta; hasta entonces es asignable pero no puede iniciar sesión.
+  addUser: async (username, fullName, email, role) => {
+    const { error } = await supabase.from('usuarios_roles').insert({
+      usuario: username.trim(),
+      nombre_completo: fullName.trim(),
+      email: email.trim(),
+      rol: ROLE_LABELS[role],
+    });
+
+    if (error) {
+      return { success: false, error: describeError(error.message) };
+    }
+
+    await get().loadUsers();
+    return { success: true };
+  },
+
+  updateUser: async (rowId, edit) => {
+    const target = get().users.find((u) => u.id === rowId);
+    const nuevoEmail = edit.email?.trim();
+
+    // El correo de acceso vive en auth.users y solo el Admin API puede cambiarlo. Si lo
+    // cambiáramos solo acá, la persona seguiría entrando con el correo viejo y la app le
+    // mostraría el nuevo. Mejor bloquearlo que dejar los dos datos peleados.
+    if (target?.userId !== target?.id && nuevoEmail && nuevoEmail !== target?.email) {
+      return {
+        success: false,
+        error:
+          'No se puede cambiar el correo de un usuario que ya tiene cuenta de acceso: seguiría iniciando sesión con el correo anterior. Debe hacerse desde el panel de Supabase.',
+      };
+    }
+
+    const { error } = await supabase
+      .from('usuarios_roles')
+      .update({
+        usuario: edit.username.trim(),
+        nombre_completo: edit.fullName.trim(),
+        rol: ROLE_LABELS[edit.role],
+        ...(nuevoEmail ? { email: nuevoEmail } : {}),
+      })
+      .eq('id', rowId);
+
+    if (error) {
+      return { success: false, error: describeError(error.message) };
+    }
+
+    await get().loadUsers();
+
+    // Si me edité a mí mismo, refresca la sesión visible (nombre/rol del sidebar).
+    const actual = get().currentUser;
+    if (actual && actual.id === rowId) {
+      const refrescado = get().users.find((u) => u.id === rowId);
+      if (refrescado) set({ currentUser: refrescado });
+    }
+
+    return { success: true };
+  },
+
+  // Quita a la persona del directorio. La cuenta de auth (si tenía) sobrevive, pero
+  // loginUser la rechaza al no encontrar su fila: en la práctica pierde el acceso.
+  deleteUser: async (rowId) => {
+    const { error } = await supabase.from('usuarios_roles').delete().eq('id', rowId);
+
+    if (error) {
+      return { success: false, error: describeError(error.message) };
+    }
+
+    await get().loadUsers();
+    return { success: true };
+  },
+
   canAccessBoard: (_boardId) => {
     return true;
   },
 }));
+
+/** Traduce los errores crudos de Postgres a algo que le sirva a quien está en la UI. */
+function describeError(message: string): string {
+  if (message.includes('usuarios_roles_usuario_key')) return 'Ese nombre de usuario ya existe.';
+  if (message.includes('usuarios_roles_email_key')) return 'Ese correo ya está registrado.';
+  if (message.includes('usuarios_roles_rol_check')) return 'Ese rol no es válido.';
+  return message;
+}
 
 // Legacy export for notification service
 export const USERS: AppUser[] = [];

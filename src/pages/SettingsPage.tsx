@@ -36,6 +36,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -85,7 +86,7 @@ const SettingsPage = () => {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!newEmail.trim() || !newPassword.trim() || !newName.trim() || !newUsername.trim()) {
+    if (!newEmail.trim() || !newName.trim() || !newUsername.trim()) {
       toast({
         title: 'Error',
         description: 'Por favor complete todos los campos obligatorios',
@@ -94,26 +95,16 @@ const SettingsPage = () => {
       return;
     }
 
-    if (newPassword.length < 6) {
-      toast({
-        title: 'Error',
-        description: 'La contraseña debe tener al menos 6 caracteres',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setIsCreating(true);
-    const result = await addUser(newEmail, newPassword, newUsername, newName, newRole);
+    const result = await addUser(newUsername, newName, newEmail, newRole);
     setIsCreating(false);
 
     if (result.success) {
       toast({
-        title: 'Usuario creado',
-        description: `El usuario ${newUsername} ha sido creado correctamente`,
+        title: 'Usuario agregado',
+        description: `${newName} ya aparece en el equipo. Todavía no puede iniciar sesión: un administrador debe crearle la cuenta de acceso.`,
       });
       setNewUsername('');
-      setNewPassword('');
       setNewName('');
       setNewEmail('');
       setNewRole('copy');
@@ -150,7 +141,7 @@ const SettingsPage = () => {
     }
 
     setIsSaving(true);
-    const result = await updateUser(editingUser.userId, {
+    const result = await updateUser(editingUser.id, {
       username: editUsername,
       fullName: editName,
       email: editEmail.trim() || undefined,
@@ -173,8 +164,8 @@ const SettingsPage = () => {
     }
   };
 
-  const handleDeleteUser = async (userId: string, username: string) => {
-    if (userId === currentUser?.userId) {
+  const handleDeleteUser = async (rowId: string, username: string) => {
+    if (rowId === currentUser?.id) {
       toast({
         title: 'Error',
         description: 'No puedes eliminar tu propio usuario',
@@ -183,11 +174,20 @@ const SettingsPage = () => {
       return;
     }
 
-    await deleteUser(userId);
-    toast({
-      title: 'Usuario eliminado',
-      description: `El usuario ${username} ha sido eliminado`,
-    });
+    const result = await deleteUser(rowId);
+
+    if (result.success) {
+      toast({
+        title: 'Usuario eliminado',
+        description: `El usuario ${username} ha sido eliminado`,
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: result.error,
+        variant: 'destructive',
+      });
+    }
   };
 
   const getRoleBadgeColor = (_role: AppRole) => 'bg-muted text-muted-foreground';
@@ -232,6 +232,10 @@ const SettingsPage = () => {
                       <UserPlus className="h-5 w-5" />
                       Nuevo Usuario
                     </DialogTitle>
+                    <DialogDescription>
+                      Lo agrega al equipo para poder asignarle tareas. La cuenta de acceso se crea
+                      aparte: hasta entonces no podrá iniciar sesión.
+                    </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={(e) => { handleAddUser(e); }} className="space-y-4 py-4">
                     <div className="space-y-2">
@@ -249,15 +253,6 @@ const SettingsPage = () => {
                     <div className="space-y-2">
                       <Label htmlFor="newUsername">Nombre de usuario *</Label>
                       <Input id="newUsername" placeholder="Ej: jperez" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="newPassword">Contraseña *</Label>
-                      <div className="relative">
-                        <Input id="newPassword" type={showPassword ? 'text' : 'password'} placeholder="Mínimo 6 caracteres" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="pr-10" />
-                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="newRole">Rol *</Label>
@@ -342,7 +337,7 @@ const SettingsPage = () => {
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
                                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                          <AlertDialogAction onClick={() => handleDeleteUser(user.userId, user.username)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                          <AlertDialogAction onClick={() => handleDeleteUser(user.id, user.username)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                                             Eliminar
                                           </AlertDialogAction>
                                         </AlertDialogFooter>
