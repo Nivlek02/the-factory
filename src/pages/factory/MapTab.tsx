@@ -19,6 +19,7 @@ import {
   TrendingUp, Users, RefreshCw, CalendarClock,
   Briefcase, Store, Handshake, PhoneCall, Mail, MailOpen,
   MousePointerClick, Link2, ShieldCheck, Flag,
+  Heart, Brain, Gift,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -599,6 +600,16 @@ const CATEGORY_META: Record<string, { icon: typeof FileText; color: string }> = 
  *  primera — esa es la reactivación "de fábrica"), y flechas punteadas adicionales por cada
  *  loop cuyo `siguienteEtapaId` salta a una etapa distinta de la siguiente natural (ramas reales
  *  capturadas en los datos, ej. una reactivación que salta directo a Atracción). */
+/** Base del mensaje (ELMR): los 4 pilares del mensaje de la campaña, con ícono y color propios
+ *  (estilo del banner de referencia). Se pintan arriba del esquema cíclico leyendo
+ *  project.mensajeBase. Colores locales al banner (no tokens globales). */
+const ELMR_FIELDS = [
+  { key: 'emocion', label: 'Emoción', Icon: Heart, color: '#E5484D', bg: '#FCECEC' },
+  { key: 'logica', label: 'Lógica', Icon: Brain, color: '#2E6BE6', bg: '#EAF1FE' },
+  { key: 'motivacion', label: 'Motivación', Icon: Rocket, color: '#F0682B', bg: '#FDEEE5' },
+  { key: 'recompensa', label: 'Recompensa', Icon: Gift, color: '#2FA36B', bg: '#E9F7EF' },
+] as const;
+
 const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
   const cycleRef = useRef<HTMLDivElement>(null);
   const [isExportingCycle, setIsExportingCycle] = useState(false);
@@ -731,6 +742,31 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
           {isExportingCycle ? 'Exportando…' : 'Exportar PNG'}
         </Button>
       </div>
+
+      {/* ─── Base del mensaje (ELMR): 4 recuadros arriba del esquema cíclico ─── */}
+      {ELMR_FIELDS.some((f) => (project.mensajeBase?.[f.key] ?? '').trim()) && (
+        <div className="relative mb-5 rounded-xl border border-border/60 bg-card px-4 pb-4 pt-6">
+          <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#0B2A6B] px-4 py-1 text-[11px] font-semibold text-white shadow-sm">
+            Base del mensaje (ELMR)
+          </span>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 auto-rows-fr">
+            {ELMR_FIELDS.map(({ key, label, Icon, color, bg }) => (
+              <div key={key} className="flex h-full items-start gap-2.5 rounded-xl p-3" style={{ backgroundColor: bg }}>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm" style={{ color }}>
+                  <Icon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold" style={{ color }}>{label}:</p>
+                  <p className="text-[11px] leading-snug text-foreground/80 break-words">
+                    {(project.mensajeBase?.[key] ?? '').trim() || <span className="italic text-muted-foreground">—</span>}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         {/* Envoltura capturada por el export: título centrado + diagrama, ancho fijo = size. */}
         <div ref={cycleRef} className="mx-auto" style={{ width: size }}>
