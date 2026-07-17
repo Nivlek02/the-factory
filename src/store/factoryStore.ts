@@ -114,6 +114,10 @@ export interface MotorProceso {
    *  (ej. "Renovado" → "Confirmación + agradecimiento"). Se llena en la etapa de Desenlace a
    *  partir de los `validacionSegmentos` y se refleja en el nodo de Desenlace del ciclo. */
   desenlaces?: Record<string, string>;
+  /** Negativos de la interacción para la etapa de Reactivación y remarketing: las audiencias por
+   *  comportamiento que NO reaccionaron (No abre / No hace clic / No visita, o personalizados).
+   *  Se refleja en el nodo de Reactivación del ciclo. */
+  reactivacionNegativos?: string[];
 }
 
 export interface TaskComment {

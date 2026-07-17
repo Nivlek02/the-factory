@@ -344,6 +344,9 @@ const InteraccionRow = ({
 /** Segmentos de validación contra CRM en la etapa de Validación. Multi-selección + personalizado. */
 const VALIDACION_SEGMENTOS = ['Renovado', 'No renovado', 'No inscrito en cámara'] as const;
 
+/** Negativos de la interacción en la etapa de Reactivación. Multi-selección + personalizado. */
+const REACTIVACION_NEGATIVOS = ['No abre', 'No hace clic', 'No visita'] as const;
+
 /** Una fila de Loops de comportamiento — reutilizada dentro de cada etapa y en "Sin etapa
  *  asignada". `onUpdate('siguienteEtapaId', etapaId)` es el selector "Lleva a →" que cierra o
  *  ramifica el ciclo (ej. una reactivación que reinicia en Atracción). */
@@ -553,8 +556,10 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     fuenteValidacion: editProject?.motor?.fuenteValidacion ?? '',
     validacionSegmentos: editProject?.motor?.validacionSegmentos ?? [] as string[],
     desenlaces: editProject?.motor?.desenlaces ?? {} as Record<string, string>,
+    reactivacionNegativos: editProject?.motor?.reactivacionNegativos ?? [] as string[],
   });
   const [validacionCustom, setValidacionCustom] = useState('');
+  const [reactivacionCustom, setReactivacionCustom] = useState('');
   const [requerimientos, setRequerimientos] = useState<string[]>(
     editProject?.requerimientos ?? []
   );
@@ -587,7 +592,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           if (parsed.loopsRows) setLoopsRows(parsed.loopsRows);
           if (parsed.etapas) setEtapas(parsed.etapas);
           if (parsed.mensajeBase) setMensajeBase(parsed.mensajeBase);
-          if (parsed.motor) setMotor({ validacionSegmentos: [], desenlaces: {}, ...parsed.motor });
+          if (parsed.motor) setMotor({ validacionSegmentos: [], desenlaces: {}, reactivacionNegativos: [], ...parsed.motor });
           if (parsed.requerimientos) setRequerimientos(parsed.requerimientos);
           if (parsed.formularioConfig) setFormularioConfig(parsed.formularioConfig);
           if (parsed.attachments) setAttachments(parsed.attachments);
@@ -633,7 +638,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     setLoopsRows([]);
     setEtapas([]);
     setMensajeBase({ emocion: '', logica: '', motivacion: '', recompensa: '' });
-    setMotor({ fuenteValidacion: '', validacionSegmentos: [], desenlaces: {} });
+    setMotor({ fuenteValidacion: '', validacionSegmentos: [], desenlaces: {}, reactivacionNegativos: [] });
     setRequerimientos([]);
     setFormularioConfig({ basico: null, camposAdicionales: '', cuadroTexto: '' });
     setAttachments([]);
@@ -698,6 +703,22 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   // Desenlace: texto corto de la rama de cada segmento de validación.
   const setDesenlaceTexto = (seg: string, texto: string) =>
     setMotor((m) => ({ ...m, desenlaces: { ...(m.desenlaces ?? {}), [seg]: texto } }));
+  // Reactivación: negativos de la interacción (No abre / No hace clic / No visita / …).
+  const toggleReactivacionNegativo = (v: string) =>
+    setMotor((m) => {
+      const cur = m.reactivacionNegativos ?? [];
+      return { ...m, reactivacionNegativos: cur.includes(v) ? cur.filter((s) => s !== v) : [...cur, v] };
+    });
+  const addReactivacionCustom = () => {
+    const raw = reactivacionCustom.trim();
+    setReactivacionCustom('');
+    if (!raw) return;
+    const v = raw.charAt(0).toUpperCase() + raw.slice(1);
+    setMotor((m) => {
+      const cur = m.reactivacionNegativos ?? [];
+      return cur.includes(v) ? m : { ...m, reactivacionNegativos: [...cur, v] };
+    });
+  };
   const addLoopRow = (etapaId?: string) => {
     setLoopsRows((prev) => [...prev, { id: uid(), disparador: '', reaccion: '', responsable: '', etapaId }]);
   };
@@ -1670,6 +1691,55 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                               </div>
                             ) : (
                             <>
+                            {/* Reactivación: negativos de la interacción (audiencias que NO
+                                reaccionaron). Se agrega arriba del Plan de canales/Loops. */}
+                            {etapa.tipo === 'reactivacion' && (
+                              <div className="space-y-2 border-t border-border/40 pt-3">
+                                <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Negativo de la interacción</Label>
+                                <p className="text-[11px] text-muted-foreground italic">
+                                  Audiencias por comportamiento que no reaccionaron — a reactivar (puedes elegir varias o agregar una personalizada).
+                                </p>
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                  {REACTIVACION_NEGATIVOS.map((neg) => {
+                                    const active = (motor.reactivacionNegativos ?? []).includes(neg);
+                                    return (
+                                      <button
+                                        key={neg}
+                                        type="button"
+                                        onClick={() => toggleReactivacionNegativo(neg)}
+                                        className={`px-2.5 py-1.5 rounded-md text-[11px] font-medium border transition-all ${
+                                          active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                                        }`}
+                                      >
+                                        {neg}
+                                      </button>
+                                    );
+                                  })}
+                                  {(motor.reactivacionNegativos ?? [])
+                                    .filter((v) => !REACTIVACION_NEGATIVOS.includes(v as (typeof REACTIVACION_NEGATIVOS)[number]))
+                                    .map((v) => (
+                                      <button
+                                        key={v}
+                                        type="button"
+                                        onClick={() => toggleReactivacionNegativo(v)}
+                                        className="px-2.5 py-1.5 rounded-md text-[11px] font-medium border border-blue-500 bg-blue-50 text-blue-700 inline-flex items-center gap-1"
+                                        title="Quitar negativo personalizado"
+                                      >
+                                        {v}
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    ))}
+                                  <input
+                                    placeholder="+ Personalizado…"
+                                    value={reactivacionCustom}
+                                    onChange={(e) => setReactivacionCustom(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addReactivacionCustom(); } }}
+                                    onBlur={addReactivacionCustom}
+                                    className="h-8 w-36 rounded-md border border-dashed border-input bg-background px-2 text-[11px] outline-none focus:ring-1 focus:ring-ring"
+                                  />
+                                </div>
+                              </div>
+                            )}
                             {/* Toques de esta etapa (Plan de canales) */}
                             <div className="space-y-2 border-t border-border/40 pt-3">
                               <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Plan de canales</Label>

@@ -797,6 +797,10 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
             const desenlaces = etapa.tipo === 'desenlace'
               ? (project.motor?.validacionSegmentos ?? []).map((seg) => ({ seg, texto: project.motor?.desenlaces?.[seg] ?? '' }))
               : [];
+            // Reactivación: negativos de la interacción (audiencias que no reaccionaron).
+            const reactivacionNegativos = etapa.tipo === 'reactivacion'
+              ? (project.motor?.reactivacionNegativos ?? [])
+              : [];
             return (
               <div
                 key={etapa.id}
@@ -878,21 +882,43 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
                   )
                 ) : etapa.tipo === 'desenlace' ? (
                   desenlaces.length > 0 ? (
-                    <div className="mt-1.5 flex flex-col gap-1">
-                      {desenlaces.map((d) => (
-                        <span
-                          key={d.seg}
-                          className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
-                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
-                          title={d.texto ? `${d.seg}: ${d.texto}` : d.seg}
-                        >
-                          {d.seg}{d.texto ? `: ${d.texto}` : ''}
-                        </span>
-                      ))}
-                    </div>
+                    <table className="mt-1.5 w-full border-collapse text-left">
+                      <thead>
+                        <tr>
+                          <th className="text-[6.5px] font-semibold uppercase tracking-wide text-muted-foreground pb-0.5 pr-1">Segmento</th>
+                          <th className="text-[6.5px] font-semibold uppercase tracking-wide text-muted-foreground pb-0.5">Desenlace</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {desenlaces.map((d) => (
+                          <tr key={d.seg} className="border-t border-border/40 align-top">
+                            <td className="text-[7px] font-semibold leading-tight py-0.5 pr-1" style={{ color: meta.color }}>{d.seg}</td>
+                            <td className="text-[7px] leading-tight py-0.5 text-muted-foreground">{d.texto || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   ) : (
                     <p className="text-[9px] text-muted-foreground mt-1">Sin desenlace</p>
                   )
+                ) : etapa.tipo === 'reactivacion' ? (
+                  <>
+                    {reactivacionNegativos.length > 0 && (
+                      <div className="mt-1.5 flex flex-col gap-1">
+                        {reactivacionNegativos.map((n) => (
+                          <span
+                            key={n}
+                            className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
+                            style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                            title={n}
+                          >
+                            {n}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[9px] text-muted-foreground mt-1">{toquesRows.length} toques · {loopsCount} loops</p>
+                  </>
                 ) : (
                   <p className="text-[9px] text-muted-foreground mt-1">{toquesRows.length} toques · {loopsCount} loops</p>
                 )}
