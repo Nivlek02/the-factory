@@ -985,6 +985,36 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       quien puede entrar de quien solo figura en el directorio. Se deriva de `userId === id` (ver
       `rowToUser`). Poner una contraseña a alguien "Sin acceso" **le crea la cuenta** (`create-access`).
 
+32. **Estratega ligada al rol + export de campaña a Markdown + filtro por estratega** (commit
+    `e3ef45d`)
+    - **`strategistName` pasó de texto libre a selector** (`CreateProjectWizard`), poblado con los
+      usuarios de rol Estratega de `usuarios_roles`. **Sigue guardando el nombre, no el id** — a
+      propósito: cambiar a id rompería las campañas existentes y obligaría a migrar el JSONB, y el
+      nombre ya venía siendo la fuente de verdad. Si la campaña trae una estratega que no está en
+      la lista (texto viejo, o alguien que cambió de rol) **se ofrece igual, marcada "fuera del
+      equipo"**: si no, el `Select` saldría vacío y al guardar borraría el dato en silencio.
+      `SIN_ESTRATEGA` es un centinela porque Radix Select no admite `value=""`.
+    - La estratega ahora se ve en la **tarjeta del sidebar** y en la **cabecera** de la campaña,
+      con avatar de iniciales (`iniciales()`, exportado desde `CreateProjectWizard`).
+    - **`src/lib/campaignMarkdown.ts`** — "Descargar Markdown" en el menú de 3 puntos de la
+      campaña. Vuelca todo: ficha, audiencia/narrativa, ELMR, motor, formulario, las 6 etapas,
+      plan de canales, loops, equipo, nodos del flujo, y **cada acción con estado, fecha +
+      urgencia, entregable, adjuntos, métricas e historial de aprobación con fechas**. Detalles
+      que costaron un bug o son fáciles de romper: la **descripción del proyecto y el contenido de
+      los entregables son HTML del editor** — se aplanan con `htmlAText` (se me pasó la descripción
+      en el primer intento y salía `<p>…</p>` crudo en el .md); los pipes se escapan o rompen las
+      tablas; lo vacío no se imprime. Se genera con un Blob en el navegador, sin servidor.
+    - **Filtro por estratega** en el sidebar, mismo estilo que "Todos los estados". Solo lista
+      estrategas **que tienen campañas** (sale de `projects`, no del equipo) — filtrar por alguien
+      sin campañas vaciaría la lista para nada. Si la estratega filtrada se queda sin campañas el
+      filtro **se resetea solo**, o la lista quedaría vacía sin explicación. La búsqueda por texto
+      también encuentra por estratega ahora.
+    - Verificado con Playwright: el selector del wizard ofrece **solo** Estrategas (no Diseñadores
+      ni Copywriters) con avatar y trae la actual precargada; el filtro lista solo a quienes tienen
+      campañas y filtra bien; el .md descargado se inspeccionó a mano contra la campaña real y
+      contiene el flujo completo (incluido el historial "enviado a revisión / aprobado" con
+      fecha). Los datos de prueba (campaña + usuarios `zzz*`) se crearon y borraron en cada corrida.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
