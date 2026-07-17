@@ -135,7 +135,7 @@ const ETAPA_TIPO_META: Record<EtapaTipo, { icon: LucideIcon; color: string }> = 
   reactivacion: { icon: RefreshCw, color: 'hsl(var(--team-design))' },
 };
 
-type WizardCanalRow = { id: string; canal: string; dia: string; hora: string; copy: string; segmento: string; etapaId?: string; interaccion?: string };
+type WizardCanalRow = { id: string; canal: string; dia: string; hora: string; copy: string; segmento: string; etapaId?: string; interaccion?: string; interacciones?: string[] };
 type WizardLoopRow = { id: string; disparador: string; reaccion: string; responsable: string; etapaId?: string; siguienteEtapaId?: string };
 
 /** Una fila del Plan de canales — reutilizada dentro de cada etapa y en "Sin etapa asignada"
@@ -259,74 +259,90 @@ const ToqueRow = ({
   </div>
 );
 
-/** Opciones de interacción esperada tras un toque, en la etapa de Interacción. "__custom__" abre
- *  un campo de texto libre para una interacción personalizada. */
+/** Opciones de interacción esperada tras un toque, en la etapa de Interacción. Se pueden elegir
+ *  varias por acción; "Personalizado" agrega un valor de texto libre. */
 const INTERACCION_OPCIONES = ['Abre', 'No abre', 'Clic', 'No clic', 'Visita landing'] as const;
 
+/** Lista de interacciones de un toque, tolerando el formato legacy de una sola (`interaccion`). */
+const interaccionesDe = (row: { interaccion?: string; interacciones?: string[] }): string[] =>
+  row.interacciones ?? (row.interaccion ? [row.interaccion] : []);
+
 /** Una fila de la etapa de Interacción: muestra una acción sembrada en Atracción (canal, solo
- *  lectura) y un selector para elegir la interacción esperada. El valor se guarda en el propio
- *  toque de Atracción (`CanalRow.interaccion`), no en un registro aparte. */
+ *  lectura) y permite elegir VARIAS interacciones esperadas (chips toggleables + personalizadas).
+ *  El valor se guarda en el propio toque de Atracción (`CanalRow.interacciones`). */
 const InteraccionRow = ({
   row, onUpdate,
 }: {
   row: WizardCanalRow;
-  onUpdate: (value: string) => void;
+  onUpdate: (values: string[]) => void;
 }) => {
   const Icon = CHANNELS.find((c) => c.id === row.canal)?.icon ?? Mail;
-  const value = row.interaccion ?? '';
-  const valueIsCustom = value !== '' && !INTERACCION_OPCIONES.includes(value as (typeof INTERACCION_OPCIONES)[number]);
-  const [customMode, setCustomMode] = useState(valueIsCustom);
-  const showCustom = customMode || valueIsCustom;
+  const selected = interaccionesDe(row);
+  const [customInput, setCustomInput] = useState('');
+  const customChips = selected.filter((v) => !INTERACCION_OPCIONES.includes(v as (typeof INTERACCION_OPCIONES)[number]));
+
+  const toggle = (value: string) =>
+    onUpdate(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
+  const addCustom = () => {
+    const v = customInput.trim();
+    if (v && !selected.includes(v)) onUpdate([...selected, v]);
+    setCustomInput('');
+  };
+
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-card p-2">
-      <span className="flex items-center gap-1.5 min-w-0 shrink-0 w-[130px] text-xs font-medium">
+    <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-2 sm:flex-row sm:items-center">
+      <span className="flex items-center gap-1.5 min-w-0 shrink-0 sm:w-[150px] text-xs font-medium">
         <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="truncate">{row.canal}</span>
+        {row.copy.trim() && (
+          <span className="text-[10px] text-muted-foreground truncate font-normal hidden sm:inline" title={row.copy}>
+            · {row.copy}
+          </span>
+        )}
       </span>
-      {row.copy.trim() && (
-        <span className="text-[11px] text-muted-foreground truncate min-w-0 hidden sm:inline" title={row.copy}>
-          {row.copy}
-        </span>
-      )}
-      <div className="ml-auto flex items-center gap-2 shrink-0">
-        {showCustom ? (
-          <input
-            autoFocus
-            placeholder="Interacción personalizada…"
-            value={value}
-            onChange={(e) => onUpdate(e.target.value)}
-            className="h-8 w-44 rounded-md border border-input bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
-          />
-        ) : (
-          <select
-            value={value}
-            onChange={(e) => {
-              if (e.target.value === '__custom__') { setCustomMode(true); onUpdate(''); }
-              else onUpdate(e.target.value);
-            }}
-            className="h-8 w-44 rounded-md border border-input bg-background px-2 text-xs cursor-pointer outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="">Interacción esperada…</option>
-            {INTERACCION_OPCIONES.map((op) => (
-              <option key={op} value={op}>{op}</option>
-            ))}
-            <option value="__custom__">✏️ Personalizado…</option>
-          </select>
-        )}
-        {(value !== '' || showCustom) && (
+      <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+        {INTERACCION_OPCIONES.map((op) => {
+          const active = selected.includes(op);
+          return (
+            <button
+              key={op}
+              type="button"
+              onClick={() => toggle(op)}
+              className={`px-2 py-1 rounded-md text-[11px] font-medium border transition-all ${
+                active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+              }`}
+            >
+              {op}
+            </button>
+          );
+        })}
+        {customChips.map((v) => (
           <button
+            key={v}
             type="button"
-            onClick={() => { setCustomMode(false); onUpdate(''); }}
-            className="text-muted-foreground hover:text-destructive transition-colors"
-            title="Quitar interacción"
+            onClick={() => toggle(v)}
+            className="px-2 py-1 rounded-md text-[11px] font-medium border border-blue-500 bg-blue-50 text-blue-700 inline-flex items-center gap-1"
+            title="Quitar interacción personalizada"
           >
-            <X className="h-3.5 w-3.5" />
+            {v}
+            <X className="h-3 w-3" />
           </button>
-        )}
+        ))}
+        <input
+          placeholder="+ Personalizado…"
+          value={customInput}
+          onChange={(e) => setCustomInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
+          onBlur={addCustom}
+          className="h-7 w-32 rounded-md border border-dashed border-input bg-background px-2 text-[11px] outline-none focus:ring-1 focus:ring-ring"
+        />
       </div>
     </div>
   );
 };
+
+/** Segmentos de validación contra CRM en la etapa de Validación. Multi-selección + personalizado. */
+const VALIDACION_SEGMENTOS = ['Renovado', 'No renovado', 'No inscrito en cámara'] as const;
 
 /** Una fila de Loops de comportamiento — reutilizada dentro de cada etapa y en "Sin etapa
  *  asignada". `onUpdate('siguienteEtapaId', etapaId)` es el selector "Lleva a →" que cierra o
@@ -535,7 +551,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   });
   const [motor, setMotor] = useState({
     fuenteValidacion: editProject?.motor?.fuenteValidacion ?? '',
+    validacionSegmentos: editProject?.motor?.validacionSegmentos ?? [] as string[],
   });
+  const [validacionCustom, setValidacionCustom] = useState('');
   const [requerimientos, setRequerimientos] = useState<string[]>(
     editProject?.requerimientos ?? []
   );
@@ -568,7 +586,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           if (parsed.loopsRows) setLoopsRows(parsed.loopsRows);
           if (parsed.etapas) setEtapas(parsed.etapas);
           if (parsed.mensajeBase) setMensajeBase(parsed.mensajeBase);
-          if (parsed.motor) setMotor(parsed.motor);
+          if (parsed.motor) setMotor({ validacionSegmentos: [], ...parsed.motor });
           if (parsed.requerimientos) setRequerimientos(parsed.requerimientos);
           if (parsed.formularioConfig) setFormularioConfig(parsed.formularioConfig);
           if (parsed.attachments) setAttachments(parsed.attachments);
@@ -614,7 +632,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     setLoopsRows([]);
     setEtapas([]);
     setMensajeBase({ emocion: '', logica: '', motivacion: '', recompensa: '' });
-    setMotor({ fuenteValidacion: '' });
+    setMotor({ fuenteValidacion: '', validacionSegmentos: [] });
     setRequerimientos([]);
     setFormularioConfig({ basico: null, camposAdicionales: '', cuadroTexto: '' });
     setAttachments([]);
@@ -649,6 +667,33 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   const removeCanalRow = (id: string) => setCanalesRows((prev) => prev.filter((r) => r.id !== id));
   const updateCanalRow = (id: string, field: string, value: string) =>
     setCanalesRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+  // Interacciones (múltiples) de una acción de Atracción, editadas desde la etapa de Interacción.
+  const updateCanalRowInteracciones = (id: string, values: string[]) =>
+    setCanalesRows((prev) => prev.map((r) => (r.id === id ? { ...r, interacciones: values } : r)));
+  // Captura: alterna landing/formulario compartiendo el estado de `requerimientos` (una sola
+  // fuente de verdad con Requerimiento — Motor del proceso). No toca "ninguno" ni la exclusividad.
+  const toggleCapturaReq = (reqId: 'landing' | 'formulario') =>
+    setRequerimientos((prev) =>
+      prev.includes(reqId)
+        ? prev.filter((r) => r !== reqId)
+        : [...prev.filter((r) => r !== 'ninguno'), reqId]
+    );
+  // Validación: segmentos a cruzar contra CRM (Renovado / No renovado / …), guardados en el motor.
+  const toggleValidacionSegmento = (seg: string) =>
+    setMotor((m) => {
+      const cur = m.validacionSegmentos ?? [];
+      return { ...m, validacionSegmentos: cur.includes(seg) ? cur.filter((s) => s !== seg) : [...cur, seg] };
+    });
+  const addValidacionCustom = () => {
+    const raw = validacionCustom.trim();
+    setValidacionCustom('');
+    if (!raw) return;
+    const v = raw.charAt(0).toUpperCase() + raw.slice(1);
+    setMotor((m) => {
+      const cur = m.validacionSegmentos ?? [];
+      return cur.includes(v) ? m : { ...m, validacionSegmentos: [...cur, v] };
+    });
+  };
   const addLoopRow = (etapaId?: string) => {
     setLoopsRows((prev) => [...prev, { id: uid(), disparador: '', reaccion: '', responsable: '', etapaId }]);
   };
@@ -1411,19 +1456,23 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                       const Icon = meta.icon;
                       const toques = canalesRows.filter((r) => r.etapaId === etapa.id);
                       const etapaLoops = loopsRows.filter((r) => r.etapaId === etapa.id);
-                      // La etapa de Interacción no tiene su propio Plan de canales ni Loops: opera
-                      // sobre las acciones sembradas en Atracción, asignándole a cada una la
-                      // interacción esperada (abre/clic/visita landing/…).
+                      // Etapas con UI propia (sin Plan de canales ni Loops genéricos):
+                      //  · Interacción → interacción esperada por cada acción de Atracción.
+                      //  · Captura → mapea si la campaña usa Landing y/o Formulario.
+                      //  · Validación → segmentos de validación contra CRM.
                       const isInteraccion = etapa.tipo === 'interaccion';
+                      const isCaptura = etapa.tipo === 'captura';
+                      const isValidacion = etapa.tipo === 'validacion';
+                      const isSpecial = isInteraccion || isCaptura || isValidacion;
                       const atraccionEtapa = sorted.find((e) => e.tipo === 'atraccion');
                       const atraccionToques = atraccionEtapa
                         ? canalesRows.filter((r) => r.etapaId === atraccionEtapa.id)
                         : [];
-                      const interaccionesSet = atraccionToques.filter((t) => (t.interaccion ?? '').trim());
-                      // La etapa de Atracción no lleva loops: la audiencia recién entra al
-                      // ecosistema, todavía no hay comportamiento que disparar. Interacción tampoco
-                      // (usa el selector de interacción). Los loops aparecen desde Captura.
-                      const showLoops = etapa.tipo !== 'atraccion' && !isInteraccion;
+                      const interaccionesSet = atraccionToques.filter((t) => interaccionesDe(t).length > 0);
+                      const capturaReqs = requerimientos.filter((r) => r === 'landing' || r === 'formulario');
+                      // La etapa de Atracción no lleva loops (la audiencia recién entra). Las etapas
+                      // especiales tampoco. Los loops quedan para Desenlace/Reactivación.
+                      const showLoops = etapa.tipo !== 'atraccion' && !isSpecial;
                       return (
                         <AccordionItem key={etapa.id} value={etapa.id} className="rounded-lg border border-border/60 bg-card px-3 last:border-b-0">
                           <div className="flex items-center gap-1">
@@ -1457,7 +1506,13 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                   <p className="text-sm font-semibold truncate">{idx + 1}. {etapa.nombre}</p>
                                   <p className="text-[10px] text-muted-foreground">
                                     {isInteraccion ? (
-                                      `${interaccionesSet.length}/${atraccionToques.length} ${atraccionToques.length === 1 ? 'interacción' : 'interacciones'}`
+                                      `${interaccionesSet.length}/${atraccionToques.length} ${atraccionToques.length === 1 ? 'acción con interacción' : 'acciones con interacción'}`
+                                    ) : isCaptura ? (
+                                      capturaReqs.length > 0
+                                        ? capturaReqs.map((r) => (r === 'landing' ? 'Landing' : 'Formulario')).join(' · ')
+                                        : 'Sin mapear'
+                                    ) : isValidacion ? (
+                                      `${(motor.validacionSegmentos ?? []).length} ${(motor.validacionSegmentos ?? []).length === 1 ? 'segmento' : 'segmentos'}`
                                     ) : (
                                       <>
                                         {toques.length} {toques.length === 1 ? 'toque' : 'toques'}
@@ -1481,8 +1536,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                               </div>
                             </div>
 
-                            {/* Interacción: opera sobre las acciones de Atracción, una interacción
-                                esperada por cada una — sin Plan de canales ni Loops propios. */}
+                            {/* Interacción: opera sobre las acciones de Atracción, una o varias
+                                interacciones esperadas por cada una — sin Plan de canales ni Loops. */}
                             {isInteraccion ? (
                               <div className="space-y-2 border-t border-border/40 pt-3">
                                 <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Interacción esperada por acción</Label>
@@ -1496,11 +1551,87 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                       <InteraccionRow
                                         key={row.id}
                                         row={row}
-                                        onUpdate={(value) => updateCanalRow(row.id, 'interaccion', value)}
+                                        onUpdate={(values) => updateCanalRowInteracciones(row.id, values)}
                                       />
                                     ))}
                                   </div>
                                 )}
+                              </div>
+                            ) : isCaptura ? (
+                              /* Captura: mapea si la campaña usa Landing y/o Formulario (misma
+                                 fuente de verdad que Requerimiento — Motor del proceso). */
+                              <div className="space-y-2 border-t border-border/40 pt-3">
+                                <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">¿Cómo se captura el interés?</Label>
+                                <p className="text-[11px] text-muted-foreground italic">
+                                  Marca si esta campaña usa Landing y/o Formulario de inscripción. Se sincroniza con Requerimiento (Motor del proceso).
+                                </p>
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                  {(['landing', 'formulario'] as const).map((reqId) => {
+                                    const active = requerimientos.includes(reqId);
+                                    return (
+                                      <button
+                                        key={reqId}
+                                        type="button"
+                                        onClick={() => toggleCapturaReq(reqId)}
+                                        className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                                          active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                                        }`}
+                                      >
+                                        {reqId === 'landing' ? 'Landing' : 'Formulario de inscripción'}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                {capturaReqs.length === 0 && (
+                                  <p className="text-[11px] text-muted-foreground italic pt-1">Sin captura por landing ni formulario en esta campaña.</p>
+                                )}
+                              </div>
+                            ) : isValidacion ? (
+                              /* Validación: segmentos que se cruzan contra CRM/fuente externa. */
+                              <div className="space-y-2 border-t border-border/40 pt-3">
+                                <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Validación de segmento</Label>
+                                <p className="text-[11px] text-muted-foreground italic">
+                                  Selecciona los segmentos a validar contra el CRM/fuente externa (puedes elegir varios o agregar uno personalizado).
+                                </p>
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                  {VALIDACION_SEGMENTOS.map((seg) => {
+                                    const active = (motor.validacionSegmentos ?? []).includes(seg);
+                                    return (
+                                      <button
+                                        key={seg}
+                                        type="button"
+                                        onClick={() => toggleValidacionSegmento(seg)}
+                                        className={`px-2.5 py-1.5 rounded-md text-[11px] font-medium border transition-all ${
+                                          active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                                        }`}
+                                      >
+                                        {seg}
+                                      </button>
+                                    );
+                                  })}
+                                  {(motor.validacionSegmentos ?? [])
+                                    .filter((v) => !VALIDACION_SEGMENTOS.includes(v as (typeof VALIDACION_SEGMENTOS)[number]))
+                                    .map((v) => (
+                                      <button
+                                        key={v}
+                                        type="button"
+                                        onClick={() => toggleValidacionSegmento(v)}
+                                        className="px-2.5 py-1.5 rounded-md text-[11px] font-medium border border-blue-500 bg-blue-50 text-blue-700 inline-flex items-center gap-1"
+                                        title="Quitar segmento personalizado"
+                                      >
+                                        {v}
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    ))}
+                                  <input
+                                    placeholder="+ Personalizado…"
+                                    value={validacionCustom}
+                                    onChange={(e) => setValidacionCustom(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addValidacionCustom(); } }}
+                                    onBlur={addValidacionCustom}
+                                    className="h-8 w-36 rounded-md border border-dashed border-input bg-background px-2 text-[11px] outline-none focus:ring-1 focus:ring-ring"
+                                  />
+                                </div>
                               </div>
                             ) : (
                             <>

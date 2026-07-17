@@ -32,8 +32,11 @@ export interface CanalRow {
   etapaId?: string;
   /** Interacción esperada tras este toque (Abre / No abre / Clic / No clic / Visita landing, o
    *  texto libre). Se asigna en la etapa de Interacción sobre cada acción sembrada en Atracción;
-   *  el dato vive en el toque de origen. Opcional. */
+   *  el dato vive en el toque de origen. Opcional.
+   *  `interaccion` (singular) es el formato legacy de una sola interacción; `interacciones`
+   *  (plural) permite varias. Al leer, usar `interaccion` como fallback si `interacciones` falta. */
   interaccion?: string;
+  interacciones?: string[];
 }
 
 /** Categorías de canales del Plan de canales. Agrupan los canales sueltos para mostrarlos
@@ -102,6 +105,11 @@ export interface MensajeBaseELMR {
  *  `requerimientos` para no tener dos fuentes de verdad. */
 export interface MotorProceso {
   fuenteValidacion: string;
+  /** Segmentos de validación contra CRM/fuente externa que se cruzan en la etapa de Validación
+   *  (ej. Renovado / No renovado / No inscrito en cámara, o valores personalizados). Se elige en
+   *  el paso "Canales y comportamiento" y se refleja en el nodo de Validación del ciclo. Opcional
+   *  para no romper campañas creadas antes de esta funcionalidad. */
+  validacionSegmentos?: string[];
 }
 
 export interface TaskComment {

@@ -776,10 +776,22 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
             const categorias = etapa.tipo === 'atraccion'
               ? categoriasDeCanales(toquesRows.map((c) => c.canal))
               : [];
-            // La etapa de Interacción muestra la interacción esperada de cada acción de Atracción.
+            // La etapa de Interacción muestra las interacciones esperadas de cada acción de
+            // Atracción (una acción puede tener varias).
             const atrEtapa = etapas.find((e) => e.tipo === 'atraccion');
             const interacciones = etapa.tipo === 'interaccion' && atrEtapa
-              ? (project.canales ?? []).filter((c) => c.etapaId === atrEtapa.id && (c.interaccion ?? '').trim())
+              ? (project.canales ?? [])
+                  .filter((c) => c.etapaId === atrEtapa.id)
+                  .map((c) => ({ canal: c.canal, list: c.interacciones ?? (c.interaccion ? [c.interaccion] : []) }))
+                  .filter((c) => c.list.length > 0)
+              : [];
+            // Captura: Landing y/o Formulario (de los requerimientos de la campaña).
+            const capturaReqs = etapa.tipo === 'captura'
+              ? (project.requerimientos ?? []).filter((r) => r === 'landing' || r === 'formulario')
+              : [];
+            // Validación: segmentos que se cruzan contra el CRM.
+            const validacionSegs = etapa.tipo === 'validacion'
+              ? (project.motor?.validacionSegmentos ?? [])
               : [];
             return (
               <div
@@ -813,19 +825,52 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
                 ) : etapa.tipo === 'interaccion' ? (
                   interacciones.length > 0 ? (
                     <div className="mt-1.5 flex flex-col gap-1">
-                      {interacciones.map((c) => (
+                      {interacciones.map((c, ci) => (
                         <span
-                          key={c.id}
+                          key={`${c.canal}-${ci}`}
                           className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
                           style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
-                          title={`${c.canal}: ${c.interaccion}`}
+                          title={`${c.canal}: ${c.list.join(', ')}`}
                         >
-                          {c.canal}: {c.interaccion}
+                          {c.canal}: {c.list.join(', ')}
                         </span>
                       ))}
                     </div>
                   ) : (
                     <p className="text-[9px] text-muted-foreground mt-1">Sin interacciones</p>
+                  )
+                ) : etapa.tipo === 'captura' ? (
+                  capturaReqs.length > 0 ? (
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      {capturaReqs.map((r) => (
+                        <span
+                          key={r}
+                          className="text-[8px] font-medium leading-tight rounded px-1 py-0.5"
+                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                        >
+                          {r === 'landing' ? 'Landing' : 'Formulario'}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[9px] text-muted-foreground mt-1">Sin captura</p>
+                  )
+                ) : etapa.tipo === 'validacion' ? (
+                  validacionSegs.length > 0 ? (
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      {validacionSegs.map((s) => (
+                        <span
+                          key={s}
+                          className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
+                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                          title={s}
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[9px] text-muted-foreground mt-1">Sin validación</p>
                   )
                 ) : (
                   <p className="text-[9px] text-muted-foreground mt-1">{toquesRows.length} toques · {loopsCount} loops</p>
