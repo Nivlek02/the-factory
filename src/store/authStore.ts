@@ -44,9 +44,48 @@ interface AuthStore {
   addUser: (username: string, fullName: string, email: string, role: AppRole) => Promise<Result>;
   updateUser: (rowId: string, edit: UserEdit) => Promise<Result>;
   deleteUser: (rowId: string) => Promise<Result>;
+  /** Fija la contraseña de acceso de alguien. Pasa por la edge function (exige service_role). */
+  setUserPassword: (rowId: string, password: string) => Promise<Result>;
+  /** Crea la cuenta de acceso de alguien que ya está en el directorio y la enlaza. */
+  createUserAccess: (rowId: string, password: string) => Promise<Result>;
   /** Si el usuario en sesión puede gestionar el equipo (Estratega o Soporte). */
   canManageUsers: () => boolean;
   canAccessBoard: (boardId: string) => boolean;
+}
+
+/**
+ * Llama a la edge function admin-usuarios con el token de la sesión actual. Es el único
+ * camino a auth.users desde el navegador: el service_role no puede vivir en el bundle, así
+ * que la función valida allá quién llama y si tiene rol de gestor.
+ */
+async function callAdminUsuarios(
+  action: 'set-email' | 'set-password' | 'create-access',
+  payload: { rowId: string; email?: string; password?: string }
+): Promise<Result> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { success: false, error: 'Tu sesión expiró. Vuelve a iniciar sesión.' };
+
+  try {
+    const { data, error } = await supabase.functions.invoke('admin-usuarios', {
+      body: { action, ...payload },
+    });
+
+    // invoke() marca error para cualquier no-2xx, pero el motivo real (403, 400…) viene en
+    // el cuerpo de la respuesta; sin leerlo mostraríamos un "Edge Function returned a
+    // non-2xx status code" que no le dice nada a nadie.
+    if (error) {
+      const detalle = await (error as { context?: Response }).context
+        ?.json()
+        .then((b: { error?: string }) => b?.error)
+        .catch(() => null);
+      return { success: false, error: detalle ?? error.message };
+    }
+
+    if (data?.error) return { success: false, error: data.error };
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Error inesperado' };
+  }
 }
 
 export const useAuthStore = create<AuthStore>()((set, get) => ({
@@ -123,17 +162,19 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   updateUser: async (rowId, edit) => {
     const target = get().users.find((u) => u.id === rowId);
     const nuevoEmail = edit.email?.trim();
+    const tieneCuenta = !!target && target.userId !== target.id;
+    const emailCambia = !!nuevoEmail && nuevoEmail !== target?.email;
 
-    // El correo de acceso vive en auth.users y solo el Admin API puede cambiarlo. Si lo
-    // cambiáramos solo acá, la persona seguiría entrando con el correo viejo y la app le
-    // mostraría el nuevo. Mejor bloquearlo que dejar los dos datos peleados.
-    if (target?.userId !== target?.id && nuevoEmail && nuevoEmail !== target?.email) {
-      return {
-        success: false,
-        error:
-          'No se puede cambiar el correo de un usuario que ya tiene cuenta de acceso: seguiría iniciando sesión con el correo anterior. Debe hacerse desde el panel de Supabase.',
-      };
+    // Si ya tiene cuenta, el correo de acceso vive en auth.users: cambiarlo solo en la tabla
+    // lo dejaría entrando con el viejo mientras la app muestra el nuevo. La edge function
+    // cambia los dos; acá ya no tocamos el email para no pisarlo.
+    if (emailCambia && tieneCuenta) {
+      const r = await callAdminUsuarios('set-email', { rowId, email: nuevoEmail });
+      if (!r.success) return r;
     }
+
+    // Sin cuenta de acceso el email es solo dato del directorio y va directo.
+    const emailDirecto = emailCambia && !tieneCuenta ? { email: nuevoEmail } : {};
 
     const { data, error } = await supabase
       .from('usuarios_roles')
@@ -141,7 +182,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         usuario: edit.username.trim(),
         nombre_completo: edit.fullName.trim(),
         rol: ROLE_LABELS[edit.role],
-        ...(nuevoEmail ? { email: nuevoEmail } : {}),
+        ...emailDirecto,
       })
       .eq('id', rowId)
       .select();
@@ -184,6 +225,18 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
 
     await get().loadUsers();
     return { success: true };
+  },
+
+  setUserPassword: async (rowId, password) => {
+    const r = await callAdminUsuarios('set-password', { rowId, password });
+    if (r.success) await get().loadUsers();
+    return r;
+  },
+
+  createUserAccess: async (rowId, password) => {
+    const r = await callAdminUsuarios('create-access', { rowId, password });
+    if (r.success) await get().loadUsers();
+    return r;
   },
 
   canManageUsers: () => {

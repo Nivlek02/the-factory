@@ -45,8 +45,14 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAppVersion } from '@/hooks/useAppVersion';
 
+/** Mismo mínimo que valida la edge function admin-usuarios; si cambia, cambiar en ambos. */
+const MIN_PASSWORD = 8;
+
 const SettingsPage = () => {
-  const { users, currentUser, addUser, updateUser, deleteUser, loadUsers, canManageUsers } = useAuthStore();
+  const {
+    users, currentUser, addUser, updateUser, deleteUser, loadUsers,
+    canManageUsers, setUserPassword, createUserAccess,
+  } = useAuthStore();
   const puedeGestionar = canManageUsers();
   const { toast } = useToast();
 
@@ -268,7 +274,7 @@ const SettingsPage = () => {
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        Solo informativo — todos los usuarios tienen los mismos permisos de acceso.
+                        Los roles Estratega y Soporte pueden gestionar usuarios; el resto solo consulta.
                       </p>
                     </div>
                     <DialogFooter>
@@ -329,9 +335,22 @@ const SettingsPage = () => {
                                 <span className="text-sm text-muted-foreground">{user.email}</span>
                               </TableCell>
                               <TableCell>
-                                <Badge className={getRoleBadgeColor(user.role)}>
-                                  {getRoleLabel(user.role)}
-                                </Badge>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Badge className={getRoleBadgeColor(user.role)}>
+                                    {getRoleLabel(user.role)}
+                                  </Badge>
+                                  {/* userId cae al id de la fila cuando no hay cuenta en auth.users
+                                      (ver rowToUser en authService): esa igualdad = no puede entrar. */}
+                                  {user.userId === user.id && (
+                                    <Badge
+                                      variant="outline"
+                                      className="border-state-review/40 bg-state-review-bg text-state-review text-[10px] px-1.5"
+                                      title="Está en el equipo y se le pueden asignar tareas, pero aún no puede iniciar sesión."
+                                    >
+                                      Sin acceso
+                                    </Badge>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell className="text-right">
                                 <div className="flex items-center justify-end gap-1">
@@ -517,17 +536,27 @@ const SettingsPage = () => {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Solo informativo — todos los usuarios tienen los mismos permisos de acceso.
+                Los roles Estratega y Soporte pueden gestionar usuarios; el resto solo consulta.
               </p>
             </div>
 
             <div className="space-y-2 border-t pt-4">
-              <Label htmlFor="editPassword">Nueva contraseña (opcional)</Label>
+              <Label htmlFor="editPassword">
+                {editingUser && editingUser.userId !== editingUser.id
+                  ? 'Nueva contraseña (opcional)'
+                  : 'Contraseña de acceso'}
+              </Label>
+              {editingUser && editingUser.userId === editingUser.id && (
+                <p className="text-xs text-muted-foreground">
+                  {editingUser.fullName} todavía no puede iniciar sesión. Ponle una contraseña para
+                  crearle la cuenta de acceso.
+                </p>
+              )}
               <div className="relative">
                 <Input
                   id="editPassword"
                   type={showEditPassword ? 'text' : 'password'}
-                  placeholder="Dejar vacío para no cambiar"
+                  placeholder={`Mínimo ${MIN_PASSWORD} caracteres`}
                   value={editPassword}
                   onChange={(e) => setEditPassword(e.target.value)}
                   className="pr-10"
@@ -540,30 +569,37 @@ const SettingsPage = () => {
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={isChangingPassword || editPassword.length < 6}
+                  disabled={isChangingPassword || editPassword.length < MIN_PASSWORD}
                   onClick={async () => {
                     if (!editingUser) return;
                     setIsChangingPassword(true);
-                    try {
-                      const { data: { session } } = await supabase.auth.getSession();
-                      const res = await supabase.functions.invoke('update-user-password', {
-                        body: { userId: editingUser.userId, newPassword: editPassword },
-                      });
-                      if (res.error || res.data?.error) {
-                        toast({ title: 'Error', description: res.data?.error || 'No se pudo cambiar la contraseña', variant: 'destructive' });
-                      } else {
-                        toast({ title: 'Contraseña actualizada', description: 'La contraseña ha sido cambiada correctamente' });
-                        setEditPassword('');
-                      }
-                    } catch {
-                      toast({ title: 'Error', description: 'Error al cambiar la contraseña', variant: 'destructive' });
-                    }
+                    const tieneCuenta = editingUser.userId !== editingUser.id;
+                    // Sin cuenta de acceso hay que crearla; con cuenta, solo se le fija la nueva.
+                    const result = tieneCuenta
+                      ? await setUserPassword(editingUser.id, editPassword)
+                      : await createUserAccess(editingUser.id, editPassword);
                     setIsChangingPassword(false);
+
+                    if (result.success) {
+                      toast({
+                        title: tieneCuenta ? 'Contraseña actualizada' : 'Cuenta de acceso creada',
+                        description: tieneCuenta
+                          ? `${editingUser.fullName} ya puede entrar con la contraseña nueva.`
+                          : `${editingUser.fullName} ya puede iniciar sesión con ${editingUser.email}.`,
+                      });
+                      setEditPassword('');
+                    } else {
+                      toast({ title: 'Error', description: result.error, variant: 'destructive' });
+                    }
                   }}
                   className="w-full"
                 >
                   {isChangingPassword ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  {editPassword.length < 6 ? 'Mínimo 6 caracteres' : 'Cambiar contraseña'}
+                  {editPassword.length < MIN_PASSWORD
+                    ? `Mínimo ${MIN_PASSWORD} caracteres`
+                    : editingUser && editingUser.userId !== editingUser.id
+                      ? 'Cambiar contraseña'
+                      : 'Crear cuenta de acceso'}
                 </Button>
               )}
             </div>
