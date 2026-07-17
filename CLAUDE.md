@@ -954,6 +954,37 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       4 iconos de métricas, y el nodo inicial con nombre largo. Los 3 colores del semáforo probados
       en la UI. Las fechas de prueba que quedaron escritas en el proyecto real se limpiaron.
 
+31. **Edge function `admin-usuarios`: cambiar correo, contraseña y crear accesos** (commit
+    `da510ae`) — el usuario reportó que no podía cambiar el correo (chocaba con el guard del punto
+    30) ni la contraseña.
+    - **Por qué la contraseña no funcionaba:** el campo del diálogo de edición *sí* estaba
+      conectado, pero a `update-user-password`, que valida el rol contra **`user_roles`** — vacía
+      desde la migración. Daba 403 siempre.
+    - **`admin-usuarios` (desplegada, `verify_jwt: true`)** — único camino a `auth.users` desde el
+      navegador. **La autorización se hace a mano dentro de la función porque el service_role
+      bypassea toda RLS**: (1) exige JWT válido, (2) verifica contra `usuarios_roles` que quien
+      llama sea Estratega/Soporte, (3) relee la fila objetivo de la base por `id` — nunca confía en
+      el email del body. Acciones: `set-email` (cambia auth.users **y** el directorio, o quedarían
+      peleados), `set-password`, `create-access`.
+    - **⚠️ Se BORRÓ `supabase/functions/admin-set-password`**: no validaba **nada** — recibía
+      `{email, password}` y cambiaba la contraseña de cualquier usuario sin comprobar quién
+      llamaba. Nunca estuvo desplegada, pero era una puerta abierta esperando a que alguien la
+      desplegara. **Si aparece de nuevo en el repo, no desplegarla.** `update-user-password` y
+      `create-initial-user` siguen en el repo sin desplegar y con el chequeo viejo contra
+      `user_roles`: **están muertas, no conectarlas sin reescribirlas.**
+    - **Verificado contra la función desplegada** (no solo local): sin token → 401, token basura →
+      401, **usuario válido sin rol gestor → 403** (el ataque que importa), Soporte → 200 y la
+      contraseña nueva **realmente sirve para entrar**; tras cambiar el correo se entra con el
+      nuevo y **el viejo deja de funcionar**; validaciones de largo mínimo y de usuario sin cuenta.
+      Flujo completo probado también desde la UI.
+    - **Dos textos que quedaron mintiendo tras el punto 30 y se corrigieron:** *"Solo informativo —
+      todos los usuarios tienen los mismos permisos de acceso"* bajo el selector de Rol (en los dos
+      diálogos) — ya no es cierto; y el campo de contraseña del diálogo de edición, que no hacía
+      nada. Mínimo de contraseña unificado en **8** (la UI decía 6, la función exige 8).
+    - **Badge "Sin acceso"** en la lista de Ajustes: hasta ahora no había forma de distinguir a
+      quien puede entrar de quien solo figura en el directorio. Se deriva de `userId === id` (ver
+      `rowToUser`). Poner una contraseña a alguien "Sin acceso" **le crea la cuenta** (`create-access`).
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
@@ -968,20 +999,22 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
   proyecto" y confirmar que todo (etapas, toques/loops con `etapaId`/`siguienteEtapaId`,
   mensajeBase, motor) se recarga igual. No se ejercitó ese paso específico con Playwright, solo
   crear + ver el resultado en la misma sesión.
-- [ ] **Dar acceso a los otros 21 usuarios** — hoy solo `ktrujillo` tiene cuenta en `auth.users`.
-  Para cada uno: crear la cuenta (Admin API o el frontend) y **enlazar `usuarios_roles.user_id`**
-  con el id de `auth.users`; sin ese enlace `loginUser` los rechaza con "Tu cuenta ha sido
-  desactivada". El usuario dijo que asigna él las contraseñas desde el frontend.
+- [ ] **Dar acceso a los otros 21 usuarios** — hoy solo `ktrujillo` tiene cuenta en `auth.users`;
+  el resto sale con el badge "Sin acceso". **Ya se puede hacer desde la app**: Ajustes → editar →
+  poner contraseña → "Crear cuenta de acceso" (punto 31). Falta hacerlo uno por uno.
 - [ ] **`debe_cambiar_password` no lo hace cumplir nadie** — es solo una columna (default `true`
   en los 22). Falta el gate en el login que fuerce el cambio en el primer ingreso.
-- [ ] **Desplegar una edge function con service_role para crear cuentas de acceso** — es la pieza
-  que falta para que "Nuevo Usuario" cree logins de verdad y para resetear contraseñas desde la
-  app. Hay 4 en el repo (`create-initial-user`, `admin-set-password`, `update-user-password`,
-  `send-notification`) y **ninguna está desplegada** (`supabase functions list` → vacío). Sin eso,
-  el frontend solo puede escribir en `usuarios_roles`, nunca en `auth.users`. Ver punto 30.
+- [x] ~~Desplegar una edge function con service_role para crear cuentas de acceso~~ — hecho:
+  `admin-usuarios` (punto 31). **Es la única desplegada.** `create-initial-user`,
+  `update-user-password` y `send-notification` siguen en el repo, sin desplegar y con el chequeo de
+  rol contra `user_roles` (vacía): están muertas, no conectarlas sin reescribirlas.
+- [ ] **"Nuevo Usuario" podría crear la cuenta de acceso de una** — hoy agrega al directorio y hay
+  que editar al usuario después para ponerle contraseña. `create-access` ya existe; solo falta
+  ofrecer el campo en el diálogo de creación.
 - [ ] **Considerar SMTP propio en Supabase Auth** — hoy `mailer_autoconfirm: false` (exige
   confirmar el correo) y no hay SMTP configurado, así que el mailer por defecto está muy limitado.
-  Eso bloquea cualquier flujo de alta/recuperación por correo.
+  Eso bloquea cualquier flujo de alta/recuperación por correo. `admin-usuarios` esquiva el problema
+  con `email_confirm: true`, pero no habrá "olvidé mi contraseña" hasta resolver esto.
 - [ ] **Cambiar la contraseña inicial de `ktrujillo`** — se fijó `Colombia2026*` a pedido del
   usuario, en texto plano en un chat, como acceso temporal.
 - [ ] **Revocar el access token de Supabase (`sbp_...`)** usado el 2026-07-16 para aplicar la
