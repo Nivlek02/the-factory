@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { calcularUrgencia, formatFechaCorta } from '@/lib/urgencia';
+import { calcularUrgencia, formatFechaCorta, formatFechaLarga } from '@/lib/urgencia';
 import {
   MoreVertical, Trash2, Workflow, Rocket, Download,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
@@ -619,7 +619,19 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
     setIsExportingCycle(true);
     try {
       const bg = getComputedStyle(document.body).backgroundColor || '#ffffff';
-      const dataUrl = await toPng(cycleRef.current, { backgroundColor: bg, pixelRatio: 2, cacheBust: true });
+      // Medir el contenido completo para que el PNG no salga cortado arriba ni desplazado
+      // (el nodo vive dentro de un contenedor con scroll horizontal).
+      const node = cycleRef.current;
+      const w = Math.ceil(node.scrollWidth);
+      const h = Math.ceil(node.scrollHeight);
+      const dataUrl = await toPng(node, {
+        backgroundColor: bg,
+        pixelRatio: 2,
+        cacheBust: true,
+        width: w,
+        height: h,
+        style: { margin: '0' },
+      });
       const link = document.createElement('a');
       const safeName = project.name.trim().replace(/[^\w\-]+/g, '_') || 'campana';
       link.download = `ecosistema-ciclico-${safeName}.png`;
@@ -746,9 +758,27 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
       <div className="overflow-x-auto">
         {/* Envoltura capturada por el export: ELMR + título + diagrama + leyenda, ancho fijo = size. */}
         <div ref={cycleRef} className="mx-auto" style={{ width: size }}>
-          {/* ─── Base del mensaje (ELMR): 4 recuadros arriba del esquema cíclico ─── */}
+          {/* ─── Título + subtítulo ─── */}
+          <div className="pt-2 pb-1 text-center">
+            <h3 className="font-display text-lg font-bold leading-tight tracking-tight text-[#0B2A6B] flex items-center justify-center gap-2 px-4">
+              <RefreshCw className="h-5 w-5 shrink-0 text-factory" />
+              Ecosistema cíclico de convocatoria, conversión y reactivación
+            </h3>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">{project.name}</span>
+              {(project.startDate || project.dueDate) && (
+                <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[11px] font-medium text-accent-foreground align-middle">
+                  <CalendarClock className="h-3 w-3" />
+                  {formatFechaLarga(project.startDate) || 'sin inicio'}
+                  {project.dueDate ? ` — ${formatFechaLarga(project.dueDate)}` : ''}
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* ─── Base del mensaje (ELMR): 4 recuadros ─── */}
           {ELMR_FIELDS.some((f) => (project.mensajeBase?.[f.key] ?? '').trim()) && (
-            <div className="relative mb-5 rounded-xl border border-border/60 bg-card px-4 pb-4 pt-6">
+            <div className="relative mt-5 mb-5 rounded-xl border border-border/60 bg-card px-4 pb-4 pt-6">
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#0B2A6B] px-4 py-1 text-[11px] font-semibold text-white shadow-sm">
                 Base del mensaje (ELMR)
               </span>
@@ -769,10 +799,8 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
               </div>
             </div>
           )}
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5 mb-4">
-            <RefreshCw className="h-3 w-3" />
-            Ecosistema cíclico de la {project.name}
-          </h3>
+
+          {/* ─── Flujo 1 → 6 (esquema cíclico) ─── */}
           <div className="relative mx-auto" style={{ width: size, height: size }}>
           <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0 w-full h-full pointer-events-none">
             <defs>

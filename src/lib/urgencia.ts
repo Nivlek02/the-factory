@@ -85,3 +85,12 @@ export const formatFechaCorta = (iso: string | null | undefined): string => {
   if (!fecha) return iso;
   return fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
 };
+
+/** Fecha con día, mes y año (ej. "5 jul 2026"). Usa el mismo parseo local que evita el
+ *  corrimiento de día por UTC en Colombia. */
+export const formatFechaLarga = (iso: string | null | undefined): string => {
+  if (!iso) return '';
+  const fecha = parseISOLocal(iso);
+  if (!fecha) return iso;
+  return fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+};
