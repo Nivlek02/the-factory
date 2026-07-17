@@ -743,33 +743,32 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
         </Button>
       </div>
 
-      {/* ─── Base del mensaje (ELMR): 4 recuadros arriba del esquema cíclico ─── */}
-      {ELMR_FIELDS.some((f) => (project.mensajeBase?.[f.key] ?? '').trim()) && (
-        <div className="relative mb-5 rounded-xl border border-border/60 bg-card px-4 pb-4 pt-6">
-          <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#0B2A6B] px-4 py-1 text-[11px] font-semibold text-white shadow-sm">
-            Base del mensaje (ELMR)
-          </span>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 auto-rows-fr">
-            {ELMR_FIELDS.map(({ key, label, Icon, color, bg }) => (
-              <div key={key} className="flex h-full items-start gap-2.5 rounded-xl p-3" style={{ backgroundColor: bg }}>
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm" style={{ color }}>
-                  <Icon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold" style={{ color }}>{label}:</p>
-                  <p className="text-[11px] leading-snug text-foreground/80 break-words">
-                    {(project.mensajeBase?.[key] ?? '').trim() || <span className="italic text-muted-foreground">—</span>}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="overflow-x-auto">
-        {/* Envoltura capturada por el export: título centrado + diagrama, ancho fijo = size. */}
+        {/* Envoltura capturada por el export: ELMR + título + diagrama + leyenda, ancho fijo = size. */}
         <div ref={cycleRef} className="mx-auto" style={{ width: size }}>
+          {/* ─── Base del mensaje (ELMR): 4 recuadros arriba del esquema cíclico ─── */}
+          {ELMR_FIELDS.some((f) => (project.mensajeBase?.[f.key] ?? '').trim()) && (
+            <div className="relative mb-5 rounded-xl border border-border/60 bg-card px-4 pb-4 pt-6">
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#0B2A6B] px-4 py-1 text-[11px] font-semibold text-white shadow-sm">
+                Base del mensaje (ELMR)
+              </span>
+              <div className="grid grid-cols-4 gap-3 auto-rows-fr">
+                {ELMR_FIELDS.map(({ key, label, Icon, color, bg }) => (
+                  <div key={key} className="flex h-full items-start gap-2.5 rounded-xl p-3" style={{ backgroundColor: bg }}>
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm" style={{ color }}>
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold" style={{ color }}>{label}:</p>
+                      <p className="text-[11px] leading-snug text-foreground/80 break-words">
+                        {(project.mensajeBase?.[key] ?? '').trim() || <span className="italic text-muted-foreground">—</span>}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1.5 mb-4">
             <RefreshCw className="h-3 w-3" />
             Ecosistema cíclico de la {project.name}
@@ -983,18 +982,18 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
             );
           })}
           </div>
+          {branchPaths.length > 0 && (
+            <div className="mt-4 space-y-1 max-w-md mx-auto">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center mb-1">Ramas y reactivación</p>
+              {branchPaths.map((p) => (
+                <p key={p.key} className="text-[11px] text-muted-foreground text-center">
+                  {etapas[p.fromIdx]?.nombre} → {etapas[p.toIdx]?.nombre}: <span className="text-foreground/80">{p.label}</span>
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-      {branchPaths.length > 0 && (
-        <div className="mt-4 space-y-1 max-w-md mx-auto">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center mb-1">Ramas y reactivación</p>
-          {branchPaths.map((p) => (
-            <p key={p.key} className="text-[11px] text-muted-foreground text-center">
-              {etapas[p.fromIdx]?.nombre} → {etapas[p.toIdx]?.nombre}: <span className="text-foreground/80">{p.label}</span>
-            </p>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
