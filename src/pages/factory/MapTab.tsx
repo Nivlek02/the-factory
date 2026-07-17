@@ -902,23 +902,22 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
                     <p className="text-[9px] text-muted-foreground mt-1">Sin desenlace</p>
                   )
                 ) : etapa.tipo === 'reactivacion' ? (
-                  <>
-                    {reactivacionNegativos.length > 0 && (
-                      <div className="mt-1.5 flex flex-col gap-1">
-                        {reactivacionNegativos.map((n) => (
-                          <span
-                            key={n}
-                            className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
-                            style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
-                            title={n}
-                          >
-                            {n}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-[9px] text-muted-foreground mt-1">{toquesRows.length} toques · {loopsCount} loops</p>
-                  </>
+                  reactivacionNegativos.length > 0 ? (
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      {reactivacionNegativos.map((n) => (
+                        <span
+                          key={n}
+                          className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
+                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                          title={n}
+                        >
+                          {n}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[9px] text-muted-foreground mt-1">Sin reactivación</p>
+                  )
                 ) : (
                   <p className="text-[9px] text-muted-foreground mt-1">{toquesRows.length} toques · {loopsCount} loops</p>
                 )}

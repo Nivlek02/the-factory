@@ -1489,7 +1489,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                       const isCaptura = etapa.tipo === 'captura';
                       const isValidacion = etapa.tipo === 'validacion';
                       const isDesenlace = etapa.tipo === 'desenlace';
-                      const isSpecial = isInteraccion || isCaptura || isValidacion || isDesenlace;
+                      const isReactivacion = etapa.tipo === 'reactivacion';
+                      const isSpecial = isInteraccion || isCaptura || isValidacion || isDesenlace || isReactivacion;
                       const validacionSegs = motor.validacionSegmentos ?? [];
                       const atraccionEtapa = sorted.find((e) => e.tipo === 'atraccion');
                       const atraccionToques = atraccionEtapa
@@ -1497,8 +1498,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                         : [];
                       const interaccionesSet = atraccionToques.filter((t) => interaccionesDe(t).length > 0);
                       const capturaReqs = requerimientos.filter((r) => r === 'landing' || r === 'formulario');
-                      // La etapa de Atracción no lleva loops (la audiencia recién entra). Las etapas
-                      // especiales tampoco. Los loops quedan para Desenlace/Reactivación.
+                      // Atracción solo lleva Plan de canales (sin loops). Las etapas especiales
+                      // tienen su propia UI. Loops quedó fuera de todas las etapas.
                       const showLoops = etapa.tipo !== 'atraccion' && !isSpecial;
                       return (
                         <AccordionItem key={etapa.id} value={etapa.id} className="rounded-lg border border-border/60 bg-card px-3 last:border-b-0">
@@ -1542,6 +1543,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                       `${validacionSegs.length} ${validacionSegs.length === 1 ? 'segmento' : 'segmentos'}`
                                     ) : isDesenlace ? (
                                       `${validacionSegs.filter((s) => (motor.desenlaces?.[s] ?? '').trim()).length}/${validacionSegs.length} ${validacionSegs.length === 1 ? 'rama' : 'ramas'}`
+                                    ) : isReactivacion ? (
+                                      `${(motor.reactivacionNegativos ?? []).length} ${(motor.reactivacionNegativos ?? []).length === 1 ? 'negativo' : 'negativos'}`
                                     ) : (
                                       <>
                                         {toques.length} {toques.length === 1 ? 'toque' : 'toques'}
@@ -1689,11 +1692,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                   </div>
                                 )}
                               </div>
-                            ) : (
-                            <>
-                            {/* Reactivación: negativos de la interacción (audiencias que NO
-                                reaccionaron). Se agrega arriba del Plan de canales/Loops. */}
-                            {etapa.tipo === 'reactivacion' && (
+                            ) : isReactivacion ? (
+                              /* Reactivación: negativos de la interacción (audiencias que NO
+                                 reaccionaron) — sin Plan de canales ni Loops. */
                               <div className="space-y-2 border-t border-border/40 pt-3">
                                 <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Negativo de la interacción</Label>
                                 <p className="text-[11px] text-muted-foreground italic">
@@ -1739,7 +1740,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                   />
                                 </div>
                               </div>
-                            )}
+                            ) : (
+                            <>
                             {/* Toques de esta etapa (Plan de canales) */}
                             <div className="space-y-2 border-t border-border/40 pt-3">
                               <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Plan de canales</Label>
