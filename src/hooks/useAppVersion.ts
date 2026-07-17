@@ -1,56 +1,73 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect, useCallback } from 'react';
 
-const STORAGE_KEY = 'tremu_acked_version';
+/**
+ * Detecta que el servidor ya tiene un build distinto al que corre en esta pestaña.
+ *
+ * Antes esto leía la tabla `app_version` de Supabase, pero nadie actualizaba esa fila nunca
+ * (seguía en 1.0.0 desde su creación), así que el banner no se mostró jamás. Ahora compara el
+ * BUILD_ID horneado en el bundle contra /version.json, que Vite regenera en cada build — así
+ * funciona solo en cada deploy, sin depender de que alguien se acuerde de tocar la base.
+ */
+
+declare const __BUILD_ID__: string;
+
+const DISMISS_KEY = 'tremu_dismissed_build';
+const POLL_MS = 5 * 60 * 1000;
 
 export const useAppVersion = () => {
-  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
-  const [hasNewVersion, setHasNewVersion] = useState(false);
-
-  const check = (dbVersion: string) => {
-    setCurrentVersion(dbVersion);
-    const acked = localStorage.getItem(STORAGE_KEY);
-    if (!acked) {
-      // First ever visit: store version, no banner needed
-      localStorage.setItem(STORAGE_KEY, dbVersion);
-    } else if (acked !== dbVersion) {
-      setHasNewVersion(true);
+  const [serverBuild, setServerBuild] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(DISMISS_KEY);
+    } catch {
+      return null;
     }
-  };
+  });
 
-  useEffect(() => {
-    const fetchVersion = async () => {
-      const { data } = await supabase
-        .from('app_version')
-        .select('version')
-        .limit(1)
-        .single();
-      if (data) check(data.version);
-    };
-
-    fetchVersion();
-
-    const channel = supabase
-      .channel('app-version-changes')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'app_version' },
-        (payload) => check((payload.new as any).version)
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+  const check = useCallback(async () => {
+    try {
+      // cache: 'no-store' es el punto: sin eso el navegador nos devolvería el version.json
+      // viejo desde su caché y nunca veríamos el build nuevo.
+      const res = await fetch('/version.json', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as { buildId?: string };
+      if (data?.buildId) setServerBuild(data.buildId);
+    } catch {
+      // Sin red o detrás de un proxy raro: no es motivo para romper nada.
+    }
   }, []);
 
+  useEffect(() => {
+    check();
+
+    const id = window.setInterval(check, POLL_MS);
+    // Al volver a la pestaña, revisa de una: es cuando más probable es haberse quedado atrás.
+    const onVisible = () => document.visibilityState === 'visible' && check();
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [check]);
+
+  const hasNewVersion = !!serverBuild && serverBuild !== __BUILD_ID__ && serverBuild !== dismissed;
+
   const acknowledgeAndReload = () => {
-    if (currentVersion) localStorage.setItem(STORAGE_KEY, currentVersion);
+    // Recargar trae el bundle nuevo, con lo cual __BUILD_ID__ pasa a coincidir solo.
     window.location.reload();
   };
 
   const dismissUpdate = () => {
-    if (currentVersion) localStorage.setItem(STORAGE_KEY, currentVersion);
-    setHasNewVersion(false);
+    if (serverBuild) {
+      try {
+        localStorage.setItem(DISMISS_KEY, serverBuild);
+      } catch {
+        /* modo incógnito con storage bloqueado: se ignora */
+      }
+      setDismissed(serverBuild);
+    }
   };
 
-  return { currentVersion, hasNewVersion, acknowledgeAndReload, dismissUpdate };
+  return { currentVersion: serverBuild, hasNewVersion, acknowledgeAndReload, dismissUpdate };
 };

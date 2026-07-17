@@ -16,6 +16,13 @@ export { ROLE_LABELS };
 
 type Result = { success: boolean; error?: string };
 
+/** Roles que pueden gestionar el equipo. Espejo del frontend de la policy RLS de
+ *  usuarios_roles (ver puede_gestionar_usuarios en 20260717010000): esto solo decide qué
+ *  se muestra — quien mande el request igual rebota contra la base. */
+export const ROLES_GESTORES: AppRole[] = ['estratega', 'soporte'];
+
+const SIN_PERMISO = 'Solo los roles Estratega y Soporte pueden gestionar usuarios.';
+
 export interface UserEdit {
   username: string;
   fullName: string;
@@ -37,6 +44,8 @@ interface AuthStore {
   addUser: (username: string, fullName: string, email: string, role: AppRole) => Promise<Result>;
   updateUser: (rowId: string, edit: UserEdit) => Promise<Result>;
   deleteUser: (rowId: string) => Promise<Result>;
+  /** Si el usuario en sesión puede gestionar el equipo (Estratega o Soporte). */
+  canManageUsers: () => boolean;
   canAccessBoard: (boardId: string) => boolean;
 }
 
@@ -126,7 +135,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       };
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('usuarios_roles')
       .update({
         usuario: edit.username.trim(),
@@ -134,10 +143,17 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         rol: ROLE_LABELS[edit.role],
         ...(nuevoEmail ? { email: nuevoEmail } : {}),
       })
-      .eq('id', rowId);
+      .eq('id', rowId)
+      .select();
 
     if (error) {
       return { success: false, error: describeError(error.message) };
+    }
+
+    // RLS no rechaza un UPDATE: filtra las filas. Sin permiso esto vuelve sin error y con
+    // 0 filas, así que hay que mirar el conteo o cantaríamos un éxito que no ocurrió.
+    if (!data || data.length === 0) {
+      return { success: false, error: SIN_PERMISO };
     }
 
     await get().loadUsers();
@@ -155,14 +171,24 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   // Quita a la persona del directorio. La cuenta de auth (si tenía) sobrevive, pero
   // loginUser la rechaza al no encontrar su fila: en la práctica pierde el acceso.
   deleteUser: async (rowId) => {
-    const { error } = await supabase.from('usuarios_roles').delete().eq('id', rowId);
+    const { data, error } = await supabase.from('usuarios_roles').delete().eq('id', rowId).select();
 
     if (error) {
       return { success: false, error: describeError(error.message) };
     }
 
+    // Mismo caso que updateUser: sin permiso, RLS devuelve 0 filas y ningún error.
+    if (!data || data.length === 0) {
+      return { success: false, error: SIN_PERMISO };
+    }
+
     await get().loadUsers();
     return { success: true };
+  },
+
+  canManageUsers: () => {
+    const rol = get().currentUser?.role;
+    return !!rol && ROLES_GESTORES.includes(rol);
   },
 
   canAccessBoard: (_boardId) => {

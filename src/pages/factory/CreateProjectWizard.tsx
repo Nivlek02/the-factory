@@ -592,8 +592,22 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   // ─── Auto-populate Fábrica briefs from canales + loops ───
   const buildFabricaBriefs = (canales: typeof canalesRows, loops: typeof loopsRows, reqs: string[], fConfig: typeof formularioConfig): FabricaBriefItem[] => {
     const items: FabricaBriefItem[] = [];
+
+    // Fecha del toque que se está procesando. Toda tarea creada dentro del bucle de canales
+    // la hereda (también las que nacen vía addRoleTareasFiltered), para no repetirla en los
+    // ~10 addItem del switch. Fuera del bucle vale null y no se estampa nada.
+    let fechaCanalActual: string | null = null;
+
     const addItem = (roleId: string, roleLabel: string, tarea: string, extra?: Partial<FabricaBriefItem>) => {
-      items.push({ id: uid(), roleId, roleLabel, tarea, checked: false, ...extra });
+      items.push({
+        id: uid(),
+        roleId,
+        roleLabel,
+        tarea,
+        checked: false,
+        ...(fechaCanalActual ? { fechaAccion: fechaCanalActual } : {}),
+        ...extra,
+      });
     };
     const addRoleTareasFiltered = (roleId: string, roleLabel: string, roleTareas: string[]) => {
       const filtered = filterTareasByRequerimientos(roleId, roleTareas, reqs);
@@ -611,6 +625,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
 
     // ─── Responsabilidad por canal ───
     for (const row of canales) {
+      fechaCanalActual = row.dia || null;
       const fecha = row.dia ? formatFecha(row.dia) : '';
       const segmento = row.segmento ? SEGMENTOS_LABEL[row.segmento] ?? row.segmento : '';
       const ref = [fecha, segmento].filter(Boolean).join(' — ');
@@ -675,6 +690,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         }
       }
     }
+    // A partir de acá las tareas ya no salen de un toque: no deben heredar su fecha.
+    fechaCanalActual = null;
 
     // ─── Loops → tareas por responsable ───
     for (const row of loops) {

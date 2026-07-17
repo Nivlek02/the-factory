@@ -40,13 +40,14 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, RefreshCw, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAppVersion } from '@/hooks/useAppVersion';
 
 const SettingsPage = () => {
-  const { users, currentUser, addUser, updateUser, deleteUser, loadUsers } = useAuthStore();
+  const { users, currentUser, addUser, updateUser, deleteUser, loadUsers, canManageUsers } = useAuthStore();
+  const puedeGestionar = canManageUsers();
   const { toast } = useToast();
 
   const [newUsername, setNewUsername] = useState('');
@@ -222,10 +223,12 @@ const SettingsPage = () => {
                 <CardDescription>Lista de todos los usuarios del sistema</CardDescription>
               </div>
               <Dialog open={showNewUserDialog} onOpenChange={setShowNewUserDialog}>
-                <Button onClick={() => setShowNewUserDialog(true)}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Nuevo Usuario
-                </Button>
+                {puedeGestionar && (
+                  <Button onClick={() => setShowNewUserDialog(true)}>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Nuevo Usuario
+                  </Button>
+                )}
                 <DialogContent className="sm:max-w-sm max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
@@ -279,6 +282,22 @@ const SettingsPage = () => {
               </Dialog>
             </CardHeader>
             <CardContent>
+              {!puedeGestionar && (
+                <div
+                  role="status"
+                  className="mb-4 flex items-start gap-2.5 rounded-md border border-state-review/30 bg-state-review-bg px-3 py-2.5"
+                >
+                  <ShieldAlert className="h-4 w-4 shrink-0 text-state-review mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-foreground">Solo lectura</p>
+                    <p className="text-muted-foreground">
+                      Solo los roles <strong>Estratega</strong> y <strong>Soporte</strong> pueden crear,
+                      editar o eliminar usuarios. Tu rol es {currentUser ? ROLE_LABELS[currentUser.role] : '—'}.
+                      Si necesitas un cambio, contacta a un administrador.
+                    </p>
+                  </div>
+                </div>
+              )}
               {(() => {
                 const totalUserPages = Math.ceil(users.length / USERS_PER_PAGE);
                 const paginatedUsers = users.slice((userPage - 1) * USERS_PER_PAGE, userPage * USERS_PER_PAGE);
@@ -316,6 +335,10 @@ const SettingsPage = () => {
                               </TableCell>
                               <TableCell className="text-right">
                                 <div className="flex items-center justify-end gap-1">
+                                  {!puedeGestionar ? (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  ) : (
+                                  <>
                                   <Button variant="ghost" size="sm" onClick={() => handleEditUser(user)} className="text-muted-foreground hover:text-foreground">
                                     <Pencil className="h-4 w-4" />
                                   </Button>
@@ -343,6 +366,8 @@ const SettingsPage = () => {
                                         </AlertDialogFooter>
                                       </AlertDialogContent>
                                     </AlertDialog>
+                                  )}
+                                  </>
                                   )}
                                 </div>
                               </TableCell>

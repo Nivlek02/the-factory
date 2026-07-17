@@ -143,6 +143,11 @@ export interface FabricaBriefItem {
   /** Entregable de Pauta en redes sociales (Trafficker): publicada sí/no, dispara la
    *  recolección de métricas de la campaña. Contenido/adjuntos usan los campos de arriba. */
   deliverablePublicada?: boolean | null;
+  /** Fecha en que debe ocurrir la acción (ISO YYYY-MM-DD). Se siembra desde el Plan de canales
+   *  (`CanalRow.dia`) cuando la tarea nace de un canal, y es editable desde la propia tarea.
+   *  Alimenta el semáforo de urgencia en Flujo de trabajo. Opcional: las tareas creadas antes
+   *  de esto, y las que nadie fechó, simplemente no muestran semáforo. */
+  fechaAccion?: string | null;
   /** Nodo de "Construir estrategia" donde vive hoy este entregable (gestión de flujo por-nodo) */
   currentNodeId?: string | null;
   /** Estado de flujo dentro de Construir estrategia, independiente de `checked`/`deliverableSubmittedAt` */

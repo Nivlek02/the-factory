@@ -20,7 +20,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, MessageSquare, FileText, Image as ImageIcon, History, Calendar } from 'lucide-react';
+import { Plus, MessageSquare, FileText, Image as ImageIcon, History, Calendar, CalendarClock } from 'lucide-react';
+import { calcularUrgencia, formatFechaCorta } from '@/lib/urgencia';
 import { cn } from '@/lib/utils';
 import RichTextEditor from '@/components/ui/rich-text-editor';
 import FileUpload, { Attachment } from '@/components/ui/file-upload';
@@ -125,6 +126,94 @@ const hasUnresolvedCorrection = (brief: FabricaBriefItem) =>
 // Shared list row/group
 // ───────────────────────────────────────────────────────────────────────────
 
+/** Chip de fecha + urgencia. Una tarea ya completada no urge, así que se muestra en gris:
+ *  pintarla de rojo por "vencida" cuando ya se entregó sería ruido. */
+export const FechaAccionChip = ({
+  fecha, completada, className = '',
+}: {
+  fecha?: string | null;
+  completada?: boolean;
+  className?: string;
+}) => {
+  const urgencia = calcularUrgencia(fecha);
+  if (!urgencia) return null;
+
+  const cls = completada ? 'bg-muted text-muted-foreground' : urgencia.className;
+  return (
+    <span
+      className={`shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${cls} ${className}`}
+      title={completada ? `Fecha de la acción: ${urgencia.etiqueta}` : urgencia.etiqueta}
+    >
+      <CalendarClock className="h-3 w-3" />
+      {formatFechaCorta(fecha)}
+    </span>
+  );
+};
+
+/** Fecha de la acción, editable. Mismo patrón de picker que el Plan de canales:
+ *  input[type=date] oculto + showPicker() al hacer clic en el texto. */
+const FechaAccionEditor = ({
+  fecha, readOnly, onChange,
+}: {
+  fecha?: string | null;
+  readOnly?: boolean;
+  onChange: (v: string | null) => void;
+}) => {
+  const urgencia = calcularUrgencia(fecha);
+
+  if (readOnly) {
+    return fecha ? (
+      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        <CalendarClock className="h-3.5 w-3.5" />
+        {formatFechaCorta(fecha)}
+        {urgencia && (
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${urgencia.className}`}>
+            {urgencia.etiqueta}
+          </span>
+        )}
+      </span>
+    ) : (
+      <span className="text-xs text-muted-foreground/60">Sin fecha</span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className="relative inline-flex items-center gap-1.5 cursor-pointer group"
+        onClick={(e) => {
+          const input = e.currentTarget.querySelector('input[type="date"]') as HTMLInputElement;
+          input?.showPicker();
+        }}
+      >
+        <CalendarClock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className="text-xs group-hover:underline">
+          {fecha ? formatFechaCorta(fecha) : <span className="text-muted-foreground/60">Poner fecha</span>}
+        </span>
+        <input
+          type="date"
+          value={fecha ?? ''}
+          onChange={(e) => onChange(e.target.value || null)}
+          className="w-0 h-0 opacity-0 absolute -z-10"
+        />
+      </span>
+      {urgencia && (
+        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${urgencia.className}`}>
+          {urgencia.etiqueta}
+        </span>
+      )}
+      {fecha && (
+        <button
+          onClick={() => onChange(null)}
+          className="text-[10px] text-muted-foreground hover:text-foreground underline"
+        >
+          quitar
+        </button>
+      )}
+    </span>
+  );
+};
+
 const BriefRow = ({
   brief, onClick, badge,
 }: {
@@ -137,6 +226,7 @@ const BriefRow = ({
     className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md border border-border/60 bg-card/60 hover:bg-muted/40 text-left transition-colors"
   >
     <span className="text-sm flex-1 truncate">{brief.tarea}</span>
+    <FechaAccionChip fecha={brief.fechaAccion} completada={getBriefStatus(brief) === 'completed'} />
     {hasUnresolvedCorrection(brief) && (
       <MessageSquare className="h-3.5 w-3.5 text-state-blocked shrink-0" aria-label="Con corrección pendiente" />
     )}
@@ -281,7 +371,15 @@ const BriefDialog = ({
             <span>{brief.tarea}</span>
             <BriefStatusBadge brief={brief} />
           </DialogTitle>
-          <p className="text-xs text-muted-foreground">Rol: {brief.roleLabel}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-xs text-muted-foreground">Rol: {brief.roleLabel}</p>
+            <span className="text-xs text-muted-foreground">·</span>
+            <FechaAccionEditor
+              fecha={brief.fechaAccion}
+              readOnly={!isEditable}
+              onChange={(v) => updateFabricaBrief(project.id, brief.id, { fechaAccion: v })}
+            />
+          </div>
         </DialogHeader>
 
         {isEditable ? (

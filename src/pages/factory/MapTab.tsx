@@ -12,11 +12,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { calcularUrgencia, formatFechaCorta } from '@/lib/urgencia';
 import {
   MoreVertical, Trash2, Workflow, Rocket, Download,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
-  Target, TrendingUp, Users, DollarSign, RefreshCw,
-  Briefcase, Store, Handshake, PhoneCall, Mail,
+  TrendingUp, Users, RefreshCw, CalendarClock,
+  Briefcase, Store, Handshake, PhoneCall, Mail, MailOpen,
   MousePointerClick, Link2, ShieldCheck, Flag,
 } from 'lucide-react';
 import {
@@ -248,13 +249,17 @@ export const WorkflowTab = ({ project }: Props) => {
   };
 
   const tasksByNodeId = useMemo(() => {
-    const map = new Map<string, { total: number; pending: number }>();
+    const map = new Map<string, { total: number; pending: number; proxima?: string | null }>();
     nodes.forEach((n) => {
       const matches = briefsForNode(project, n);
-      map.set(n.id, {
-        total: matches.length,
-        pending: matches.filter((b) => getBriefStatus(b) !== 'completed').length,
-      });
+      const pendientes = matches.filter((b) => getBriefStatus(b) !== 'completed');
+      // La más urgente de las pendientes manda el semáforo del nodo: es la que decide si
+      // ese rol va tarde. Las completadas ya no urgen y las sin fecha no compiten.
+      const proxima = pendientes
+        .map((b) => b.fechaAccion)
+        .filter((f): f is string => !!f)
+        .sort()[0];
+      map.set(n.id, { total: matches.length, pending: pendientes.length, proxima });
     });
     return map;
   }, [nodes, project]);
@@ -391,10 +396,18 @@ export const WorkflowTab = ({ project }: Props) => {
           <div ref={diagramRef} className="flex items-stretch gap-0 w-full p-2" style={{ minHeight: gridHeight }}>
             {/* Nodo de inicio — única entrada, centrado verticalmente frente a todas las ramas */}
             <div className="shrink-0 flex items-center pr-1">
-              <div className="w-24 sm:w-28 rounded-lg shadow-glow text-primary-foreground bg-primary flex flex-col items-center justify-center text-center px-2 py-2.5">
+              <div className="w-28 sm:w-32 rounded-lg shadow-glow text-primary-foreground bg-primary flex flex-col items-center justify-center text-center px-2 py-2.5">
                 <Rocket className="h-4 w-4 mb-1" />
                 <p className="text-[11px] font-semibold leading-tight">Inicia la campaña</p>
-                <p className="text-[9px] opacity-80 truncate max-w-full">{project.name}</p>
+                {/* El nombre es libre y puede ser larguísimo o una sola palabra sin espacios:
+                    envuelve hasta 2 líneas, parte palabras que no quepan y recorta con "…".
+                    La tarjeta crece en alto (el contenedor la centra), nunca a lo ancho. */}
+                <p
+                  className="text-[9px] opacity-80 leading-tight line-clamp-2 break-words max-w-full mt-0.5"
+                  title={project.name}
+                >
+                  {project.name}
+                </p>
               </div>
             </div>
 
@@ -549,9 +562,9 @@ export const MetricsDashboardTab = ({ project }: Props) => {
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <LoopMetric label="Base total" value={loopMetrics.base.value} delta={loopMetrics.base.delta} icon={<Users className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Enviados" value={loopMetrics.enviados.value} delta={loopMetrics.enviados.delta} icon={<TrendingUp className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Apertura" value={loopMetrics.apertura.value} delta={loopMetrics.apertura.delta} icon={<Target className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Clics" value={loopMetrics.clics.value} delta={loopMetrics.clics.delta} icon={<DollarSign className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Enviados" value={loopMetrics.enviados.value} delta={loopMetrics.enviados.delta} icon={<Send className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Apertura" value={loopMetrics.apertura.value} delta={loopMetrics.apertura.delta} icon={<MailOpen className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Clics" value={loopMetrics.clics.value} delta={loopMetrics.clics.delta} icon={<MousePointerClick className="h-3.5 w-3.5" />} />
         </div>
       </div>
     </div>
@@ -857,11 +870,12 @@ const NodeCard = ({
   onStatus: (s: StrategyNode['status']) => void;
   onDelete: () => void;
   onOpenTasks: () => void;
-  taskCounts?: { total: number; pending: number };
+  taskCounts?: { total: number; pending: number; proxima?: string | null };
 }) => {
   const stage = STAGE_BY_TYPE[node.stageType];
   const Icon = stage?.icon ?? FileText;
   const statusMeta = STATUS_META[node.status];
+  const urgencia = calcularUrgencia(taskCounts?.proxima);
 
   return (
     <div
@@ -917,12 +931,24 @@ const NodeCard = ({
         </DropdownMenu>
       </div>
 
-      <div className="flex items-center justify-between mt-1.5 gap-2">
+      {/* flex-wrap, no justify-between: con el chip de urgencia en juego, repartir el espacio
+          aplastaba el rol hasta desaparecerlo. Ahora el chip baja de línea si no cabe. */}
+      <div className="flex items-center flex-wrap mt-1.5 gap-x-2 gap-y-1">
         <Badge variant="outline" className={`text-xs px-2 h-5 shrink-0 ${statusMeta.cls} border-0`}>
           {statusMeta.label}
         </Badge>
         {node.roleLabel && (
-          <span className="text-xs text-muted-foreground truncate">{node.roleLabel}</span>
+          <span className="text-xs text-muted-foreground truncate min-w-0">{node.roleLabel}</span>
+        )}
+        {/* Semáforo del nodo: la acción pendiente más próxima de este rol. */}
+        {urgencia && (
+          <span
+            className={`shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${urgencia.className}`}
+            title={`Acción más próxima: ${formatFechaCorta(taskCounts?.proxima)} — ${urgencia.etiqueta}`}
+          >
+            <CalendarClock className="h-3 w-3" />
+            {urgencia.etiqueta}
+          </span>
         )}
       </div>
 
