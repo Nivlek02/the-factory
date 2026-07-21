@@ -38,7 +38,6 @@ import {
   MoreVertical,
   Trash2,
   UserPlus,
-  ChevronRight,
   X,
   Workflow,
   BarChart3,
@@ -142,20 +141,6 @@ const EmptyFactory = ({ onNew }: { onNew: () => void }) => (
       Organiza equipos, asigna roles, define requerimientos y gestiona tareas en un solo espacio colaborativo.
     </p>
     <Button onClick={onNew} className="bg-primary text-primary-foreground shadow-glow">
-      <Plus className="h-4 w-4" />
-      Nueva campaña
-    </Button>
-  </div>
-);
-
-const NoSelection = ({ onNew }: { onNew: () => void }) => (
-  <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
-    <div className="w-12 h-12 rounded-xl bg-factory-soft flex items-center justify-center mb-4">
-      <ChevronRight className="h-6 w-6 text-factory" />
-    </div>
-    <h3 className="font-semibold mb-1">Selecciona una campaña</h3>
-    <p className="text-sm text-muted-foreground mb-4">O crea uno nuevo para empezar.</p>
-    <Button variant="outline" size="sm" onClick={onNew}>
       <Plus className="h-4 w-4" />
       Nueva campaña
     </Button>
@@ -356,6 +341,26 @@ const MyTasksModule = () => {
   );
 };
 
+/** Vista de bienvenida cuando no hay campaña seleccionada: muestra las tareas del usuario
+ *  (cruzando todas las campañas) de una, sin obligar a abrir un proyecto primero. */
+const MyTasksLanding = ({ onNew }: { onNew: () => void }) => (
+  <div className="flex-1 overflow-y-auto p-6 min-w-0">
+    <div className="max-w-4xl mx-auto space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="font-display text-xl font-semibold">Mis tareas</h2>
+          <p className="text-sm text-muted-foreground">Selecciona una campaña a la izquierda para trabajar en ella.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onNew}>
+          <Plus className="h-4 w-4" />
+          Nueva campaña
+        </Button>
+      </div>
+      <MyTasksModule />
+    </div>
+  </div>
+);
+
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 const OverviewTab = ({ project }: { project: FactoryProject }) => {
@@ -367,8 +372,6 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
 
   return (
     <div className="space-y-4">
-      <MyTasksModule />
-
       <div className="grid grid-cols-3 gap-3">
         <Card className="shadow-sm">
           <CardContent className="p-4">
@@ -814,6 +817,7 @@ const TeamTasksTab = ({
 // ─── Project Workspace ────────────────────────────────────────────────────────
 
 const TABS = [
+  { key: 'mistareas', label: 'Mis tareas',             icon: <ClipboardList className="h-3.5 w-3.5" /> },
   { key: 'flujo',    label: 'Flujo de trabajo',      icon: <Workflow className="h-3.5 w-3.5" /> },
   { key: 'metrics',  label: 'Dashboard de métricas',  icon: <BarChart3 className="h-3.5 w-3.5" /> },
   { key: 'loop',     label: 'Loop',                   icon: <RefreshCw className="h-3.5 w-3.5" /> },
@@ -822,7 +826,7 @@ const TABS = [
 ] as const;
 
 const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
-  const [activeTab, setActiveTab] = useState<'flujo' | 'metrics' | 'loop' | 'overview' | 'equipo'>('flujo');
+  const [activeTab, setActiveTab] = useState<'mistareas' | 'flujo' | 'metrics' | 'loop' | 'overview' | 'equipo'>('flujo');
   const { addTask, updateTask, deleteTask, deleteProject, setActiveProject } = useFactoryStore();
 
   const [editWizardOpen, setEditWizardOpen] = useState(false);
@@ -929,6 +933,7 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-6">
+        {activeTab === 'mistareas' && <MyTasksModule />}
         {activeTab === 'flujo' && <WorkflowTab project={project} />}
         {activeTab === 'metrics' && <MetricsDashboardTab project={project} />}
         {activeTab === 'loop' && <LoopTab project={project} />}
@@ -1189,7 +1194,7 @@ const FactoryPage = () => {
           ) : activeProject ? (
             <ProjectWorkspace key={activeProject.id} project={activeProject} />
           ) : (
-            <NoSelection onNew={() => setCreateOpen(true)} />
+            <MyTasksLanding onNew={() => setCreateOpen(true)} />
           )}
         </div>
       </div>
