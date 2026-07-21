@@ -220,8 +220,8 @@ export const MyTasks = ({ onOpenProject }: { onOpenProject: (projectId: string) 
                           {t.tarea}
                         </span>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground max-w-[160px] truncate" title={t.projectName}>
-                        {t.projectName}
+                      <TableCell className="text-sm text-muted-foreground max-w-[160px] break-words whitespace-normal" title={t.projectName}>
+                        <span className="line-clamp-2">{t.projectName}</span>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{t.roleLabel}</TableCell>
                       <TableCell>
