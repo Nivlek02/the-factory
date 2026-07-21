@@ -8,6 +8,7 @@ import {
   Factory,
   LayoutGrid,
   LogOut,
+  ClipboardList,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuthStore, ROLE_LABELS } from '@/store/authStore';
@@ -124,6 +125,7 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
         <div className="px-2 mb-5">
           <SectionLabel>General</SectionLabel>
           <div className="space-y-0.5">
+            <NavItem to="/mis-tareas" icon={<ClipboardList />} label="Mis tareas" />
             <NavItem to="/reports" icon={<BarChart3 />} label="Reportes" />
             <NavItem to="/webinars" icon={<Video />} label="Seguimiento de eventos" />
             <NavItem to="/herramientas" icon={<Wrench />} label="Herramientas" />

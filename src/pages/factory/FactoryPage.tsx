@@ -38,6 +38,7 @@ import {
   MoreVertical,
   Trash2,
   UserPlus,
+  ChevronRight,
   X,
   Workflow,
   BarChart3,
@@ -46,27 +47,14 @@ import {
   FileDown,
   PanelLeftClose,
   PanelLeftOpen,
-  ClipboardList,
-  ArrowUpRight,
 } from 'lucide-react';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup, CanalRow, FabricaBriefItem } from '@/store/factoryStore';
-import { useAuthStore } from '@/store/authStore';
 import { campaignToMarkdown, markdownFileName } from '@/lib/campaignMarkdown';
-import { flattenCampaignTasks, isTaskOwnedBy, compareByUrgencia } from '@/lib/campaignTasks';
-import { calcularUrgencia, formatFechaCorta } from '@/lib/urgencia';
 import { iniciales } from './CreateProjectWizard';
 import { useRolesStore, ASSIGNABLE_ROLE_IDS } from '@/store/rolesStore';
 import CreateProjectWizard from './CreateProjectWizard';
 import { WorkflowTab, MetricsDashboardTab, LoopTab } from './MapTab';
-import { DeliverableSummary, BriefStatusBadge, BRIEF_STATUS_META, isMetricsBrief, isUrlBrief } from '@/components/factory/DeliverableSummary';
+import { DeliverableSummary, BriefStatusBadge, isMetricsBrief, isUrlBrief } from '@/components/factory/DeliverableSummary';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -147,6 +135,20 @@ const EmptyFactory = ({ onNew }: { onNew: () => void }) => (
   </div>
 );
 
+const NoSelection = ({ onNew }: { onNew: () => void }) => (
+  <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
+    <div className="w-12 h-12 rounded-xl bg-factory-soft flex items-center justify-center mb-4">
+      <ChevronRight className="h-6 w-6 text-factory" />
+    </div>
+    <h3 className="font-semibold mb-1">Selecciona una campaña</h3>
+    <p className="text-sm text-muted-foreground mb-4">O crea uno nuevo para empezar.</p>
+    <Button variant="outline" size="sm" onClick={onNew}>
+      <Plus className="h-4 w-4" />
+      Nueva campaña
+    </Button>
+  </div>
+);
+
 // ─── Task Card ────────────────────────────────────────────────────────────────
 
 const TaskCard = ({
@@ -214,152 +216,6 @@ const TaskCard = ({
     </div>
   );
 };
-
-// ─── Mis tareas (cross-project personal inbox) ─────────────────────────────────
-
-/** Módulo personal: conteos + tabla de las tareas del usuario en sesión, cruzando todas las
- *  campañas, ordenadas por urgencia y fecha de entrega, con acceso directo a cada proyecto. */
-const MyTasksModule = () => {
-  const { projects, setActiveProject } = useFactoryStore();
-  const currentUser = useAuthStore((s) => s.currentUser);
-
-  const misTareas = useMemo(() => {
-    const user = currentUser
-      ? { role: currentUser.role as string, fullName: currentUser.fullName }
-      : null;
-    return flattenCampaignTasks(projects)
-      .filter((t) => isTaskOwnedBy(t, user))
-      .sort(compareByUrgencia);
-  }, [projects, currentUser]);
-
-  const counts = useMemo(() => {
-    return {
-      pending: misTareas.filter((t) => t.status === 'pending').length,
-      in_review: misTareas.filter((t) => t.status === 'in_review').length,
-      completed: misTareas.filter((t) => t.status === 'completed').length,
-    };
-  }, [misTareas]);
-
-  const CountCard = ({ label, value, cls }: { label: string; value: number; cls: string }) => (
-    <Card className="shadow-sm">
-      <CardContent className="p-4">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
-        <p className={`font-display text-2xl font-semibold mt-1 ${cls}`}>{value}</p>
-      </CardContent>
-    </Card>
-  );
-
-  return (
-    <Card className="shadow-sm">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <ClipboardList className="h-4 w-4 text-factory" />
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Mis tareas</p>
-          <span className="text-[10px] text-muted-foreground">— todas mis campañas</span>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <CountCard label="Pendientes" value={counts.pending} cls="text-state-progress" />
-          <CountCard label="En revisión" value={counts.in_review} cls="text-state-review" />
-          <CountCard label="Completadas" value={counts.completed} cls="text-state-done" />
-        </div>
-
-        {misTareas.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border/60 p-6 flex flex-col items-center text-center">
-            <ClipboardList className="h-6 w-6 text-muted-foreground/40 mb-2" />
-            <p className="text-sm font-medium text-muted-foreground">Sin tareas asignadas</p>
-            <p className="text-xs text-muted-foreground/60 max-w-xs mt-1">
-              Cuando se te asignen tareas en cualquier campaña (según tu rol), aparecerán aquí.
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-lg border border-border/60 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tarea</TableHead>
-                  <TableHead>Campaña</TableHead>
-                  <TableHead className="hidden md:table-cell">Rol</TableHead>
-                  <TableHead>Entrega</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="w-10 text-right">Ir</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {misTareas.map((t) => {
-                  const urg = calcularUrgencia(t.fechaAccion);
-                  const statusMeta = BRIEF_STATUS_META[t.status];
-                  return (
-                    <TableRow
-                      key={`${t.projectId}-${t.id}`}
-                      className="cursor-pointer"
-                      onClick={() => setActiveProject(t.projectId)}
-                    >
-                      <TableCell className="font-medium max-w-[240px]">
-                        <span className={t.status === 'completed' ? 'text-muted-foreground line-through' : ''}>
-                          {t.tarea}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground max-w-[160px] truncate" title={t.projectName}>
-                        {t.projectName}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{t.roleLabel}</TableCell>
-                      <TableCell>
-                        {urg ? (
-                          <Badge variant="outline" className={`border-0 text-[10px] px-1.5 h-4 ${urg.className}`}>
-                            {formatFechaCorta(t.fechaAccion)} · {urg.etiqueta}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground/60">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={`border-0 text-[10px] px-1.5 h-4 ${statusMeta.cls}`}>
-                          {statusMeta.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:text-factory"
-                          onClick={(e) => { e.stopPropagation(); setActiveProject(t.projectId); }}
-                          title="Abrir campaña"
-                        >
-                          <ArrowUpRight className="h-3.5 w-3.5" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-};
-
-/** Vista de bienvenida cuando no hay campaña seleccionada: muestra las tareas del usuario
- *  (cruzando todas las campañas) de una, sin obligar a abrir un proyecto primero. */
-const MyTasksLanding = ({ onNew }: { onNew: () => void }) => (
-  <div className="flex-1 overflow-y-auto p-6 min-w-0">
-    <div className="max-w-4xl mx-auto space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="font-display text-xl font-semibold">Mis tareas</h2>
-          <p className="text-sm text-muted-foreground">Selecciona una campaña a la izquierda para trabajar en ella.</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={onNew}>
-          <Plus className="h-4 w-4" />
-          Nueva campaña
-        </Button>
-      </div>
-      <MyTasksModule />
-    </div>
-  </div>
-);
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
@@ -817,7 +673,6 @@ const TeamTasksTab = ({
 // ─── Project Workspace ────────────────────────────────────────────────────────
 
 const TABS = [
-  { key: 'mistareas', label: 'Mis tareas',             icon: <ClipboardList className="h-3.5 w-3.5" /> },
   { key: 'flujo',    label: 'Flujo de trabajo',      icon: <Workflow className="h-3.5 w-3.5" /> },
   { key: 'metrics',  label: 'Dashboard de métricas',  icon: <BarChart3 className="h-3.5 w-3.5" /> },
   { key: 'loop',     label: 'Loop',                   icon: <RefreshCw className="h-3.5 w-3.5" /> },
@@ -826,7 +681,7 @@ const TABS = [
 ] as const;
 
 const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
-  const [activeTab, setActiveTab] = useState<'mistareas' | 'flujo' | 'metrics' | 'loop' | 'overview' | 'equipo'>('flujo');
+  const [activeTab, setActiveTab] = useState<'flujo' | 'metrics' | 'loop' | 'overview' | 'equipo'>('flujo');
   const { addTask, updateTask, deleteTask, deleteProject, setActiveProject } = useFactoryStore();
 
   const [editWizardOpen, setEditWizardOpen] = useState(false);
@@ -933,7 +788,6 @@ const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {activeTab === 'mistareas' && <MyTasksModule />}
         {activeTab === 'flujo' && <WorkflowTab project={project} />}
         {activeTab === 'metrics' && <MetricsDashboardTab project={project} />}
         {activeTab === 'loop' && <LoopTab project={project} />}
@@ -1194,7 +1048,7 @@ const FactoryPage = () => {
           ) : activeProject ? (
             <ProjectWorkspace key={activeProject.id} project={activeProject} />
           ) : (
-            <MyTasksLanding onNew={() => setCreateOpen(true)} />
+            <NoSelection onNew={() => setCreateOpen(true)} />
           )}
         </div>
       </div>

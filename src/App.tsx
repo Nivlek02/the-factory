@@ -14,6 +14,7 @@ import HerramientasPage from "./pages/HerramientasPage";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import FactoryPage from "./pages/factory/FactoryPage";
+import MisTareasPage from "./pages/MisTareasPage";
 import VersionUpdateBanner from "./components/VersionUpdateBanner";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,7 @@ const AppRoutes = () => {
       <Route path="/" element={<FactoryPage />} />
       <Route path="/factory" element={<Navigate to="/" replace />} />
       <Route path="/inicio" element={<Index />} />
+      <Route path="/mis-tareas" element={<MisTareasPage />} />
       <Route path="/board/:boardId" element={<BoardPage />} />
       <Route path="/reports" element={<ReportsPage />} />
       <Route path="/webinars" element={<WebinarsPage />} />
