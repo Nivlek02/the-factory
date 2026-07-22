@@ -116,10 +116,10 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
         <div className="px-2 mb-5">
           <SectionLabel accent>
             <LayoutGrid className="h-3 w-3" />
-            Principal
+            Mercadeo
           </SectionLabel>
           <div className="space-y-0.5">
-            <NavItem to="/" end icon={<Factory />} label="La Fabrica" />
+            <NavItem to="/" end icon={<Factory />} label="Campañas" />
           </div>
         </div>
 
