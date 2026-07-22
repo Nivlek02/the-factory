@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import Layout from '@/components/layout/Layout';
 import { useAuthStore, AppRole, ROLE_LABELS, AppUser } from '@/store/authStore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -201,6 +202,10 @@ const SettingsPage = () => {
 
   const getRoleLabel = (role: AppRole) => ROLE_LABELS[role] ?? role;
 
+  // Ajustes es solo para quienes pueden gestionar usuarios (Estratega/Soporte). El item del
+  // sidebar ya se oculta; esto bloquea también la navegación directa por URL a /settings.
+  if (!puedeGestionar) return <Navigate to="/" replace />;
+
   return (
     <Layout>
       <div className="p-6 lg:p-8 animate-fade-in">
@@ -336,8 +341,8 @@ const SettingsPage = () => {
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <Badge className={getRoleBadgeColor(user.role)}>
-                                    {getRoleLabel(user.role)}
+                                  <Badge className={getRoleBadgeColor(user.role)} title={`Rol: ${getRoleLabel(user.role)}`}>
+                                    {user.displayRole ?? getRoleLabel(user.role)}
                                   </Badge>
                                   {/* userId cae al id de la fila cuando no hay cuenta en auth.users
                                       (ver rowToUser en authService): esa igualdad = no puede entrar. */}

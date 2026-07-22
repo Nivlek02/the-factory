@@ -10,6 +10,9 @@ export interface AppUser {
   email: string;
   fullName: string;
   role: AppRole;
+  /** Etiqueta que se MUESTRA en la UI. Normalmente es ROLE_LABELS[role], pero puede ser un
+   *  título de cargo por persona (ver CARGO_POR_USUARIO) sin cambiar el rol real. */
+  displayRole?: string;
   createdAt: string;
 }
 
@@ -27,6 +30,16 @@ const ROLE_IDS: Record<string, AppRole> = Object.fromEntries(
   Object.entries(ROLE_LABELS).map(([id, label]) => [label, id as AppRole])
 );
 
+/**
+ * Título de cargo que se MUESTRA en la UI en lugar de la etiqueta del rol, POR PERSONA.
+ * NO cambia el rol real (que decide permisos): solo lo que se ve. Clave = usuarios_roles.usuario.
+ * Ej.: Erik Sojo (`sojo`) se muestra como "Jefe de mercadeo" pero por debajo sigue siendo
+ * Estratega — así conserva la gestión de usuarios y aparece como estratega en las campañas.
+ */
+export const CARGO_POR_USUARIO: Record<string, string> = {
+  sojo: 'Jefe de mercadeo',
+};
+
 /** Fila de usuarios_roles → AppUser. */
 type UsuarioRolRow = {
   id: string;
@@ -38,17 +51,21 @@ type UsuarioRolRow = {
   created_at: string;
 };
 
-const rowToUser = (row: UsuarioRolRow): AppUser => ({
-  id: row.id,
-  // Los usuarios sin cuenta de auth todavía caen a su id de tabla: siguen siendo
-  // asignables en tareas, pero no pueden iniciar sesión hasta que tengan user_id.
-  userId: row.user_id ?? row.id,
-  username: row.usuario,
-  email: row.email,
-  fullName: row.nombre_completo,
-  role: ROLE_IDS[row.rol] ?? 'soporte',
-  createdAt: row.created_at,
-});
+const rowToUser = (row: UsuarioRolRow): AppUser => {
+  const role = ROLE_IDS[row.rol] ?? 'soporte';
+  return {
+    id: row.id,
+    // Los usuarios sin cuenta de auth todavía caen a su id de tabla: siguen siendo
+    // asignables en tareas, pero no pueden iniciar sesión hasta que tengan user_id.
+    userId: row.user_id ?? row.id,
+    username: row.usuario,
+    email: row.email,
+    fullName: row.nombre_completo,
+    role,
+    displayRole: CARGO_POR_USUARIO[row.usuario] ?? ROLE_LABELS[role],
+    createdAt: row.created_at,
+  };
+};
 
 // Fetch user profile with role
 export const fetchUserProfile = async (userId: string): Promise<AppUser | null> => {

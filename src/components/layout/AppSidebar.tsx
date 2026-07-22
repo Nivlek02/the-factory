@@ -11,7 +11,7 @@ import {
   ClipboardList,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
-import { useAuthStore, ROLE_LABELS } from '@/store/authStore';
+import { useAuthStore, ROLE_LABELS, ROLES_GESTORES } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -22,6 +22,8 @@ interface AppSidebarProps {
 
 const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
   const { currentUser, logout } = useAuthStore();
+  // Solo Estratega y Soporte ven Ajustes (espejo de la RLS de usuarios_roles).
+  const canManage = !!currentUser && ROLES_GESTORES.includes(currentUser.role);
 
   const NavItem = ({
     to,
@@ -129,7 +131,7 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
             <NavItem to="/reports" icon={<BarChart3 />} label="Reportes" />
             <NavItem to="/webinars" icon={<Video />} label="Seguimiento de eventos" />
             <NavItem to="/herramientas" icon={<Wrench />} label="Herramientas" />
-            <NavItem to="/settings" icon={<Settings />} label="Ajustes" />
+            {canManage && <NavItem to="/settings" icon={<Settings />} label="Ajustes" />}
           </div>
         </div>
       </nav>
@@ -145,7 +147,7 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
               {currentUser?.fullName || 'Usuario'}
             </p>
             <p className="text-[11px] text-sidebar-foreground/55 truncate">
-              {currentUser ? ROLE_LABELS[currentUser.role] : ''}
+              {currentUser ? (currentUser.displayRole ?? ROLE_LABELS[currentUser.role]) : ''}
             </p>
           </div>
           {!collapsed && (
