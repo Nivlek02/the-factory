@@ -5,7 +5,7 @@
   "installCommand": "npm install",
   "rewrites": [
     {
-      "source": "/((?!assets/|version\\.json).*)",
+      "source": "/((?!assets/|version\\.json|favicon\\.ico\\.png|fabrica-logo\\.svg|robots\\.txt).*)",
       "destination": "/index.html"
     }
   ],
