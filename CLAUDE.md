@@ -1015,6 +1015,92 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       contiene el flujo completo (incluido el historial "enviado a revisión / aprobado" con
       fecha). Los datos de prueba (campaña + usuarios `zzz*`) se crearon y borraron en cada corrida.
 
+### 2026-07-27
+
+33. **Se quita "Control de Versiones" de Ajustes + sistema de notificaciones por correo (Resend)**
+    - **Quitada la tarjeta "Control de Versiones"** de `SettingsPage.tsx` (input de versión +
+      "Publicar versión"). Escribía en la tabla `app_version`, que **quedó sin uso desde el punto
+      30**: el banner dejó de leerla y hoy compara `__BUILD_ID__` contra `/version.json`, que Vite
+      regenera en cada build. O sea, el botón no hacía absolutamente nada desde entonces — publicar
+      una "versión" ahí no mostraba banner a nadie. El control de versiones queda **solo en el
+      backend**: se actualiza solo en cada deploy.
+    - **El `VersionUpdateBanner` SE MANTIENE** — no es una "opción" que alguien opere, es el aviso
+      automático que dispara el deploy. Sacarlo dejaría a la gente con el bundle viejo en la pestaña
+      sin enterarse. Si se quiere quitar también, es borrar `VersionUpdateBanner.tsx`,
+      `useAppVersion.ts` y su render en `App.tsx`.
+    - `supabase` dejó de importarse en `SettingsPage` (era solo para `app_version`), igual que el
+      ícono `RefreshCw`. **La tabla `app_version` no se borró** — quedó huérfana, sin lectores ni
+      escritores.
+
+    - **Notificaciones por correo — nueva edge function `notificar-correo`** (`supabase/functions/`)
+      + `src/services/emailNotifications.ts`. Cuatro eventos: `tarea.asignada`,
+      `tarea.en_revision`, `tarea.aprobada`, `tarea.correccion`.
+    - **Decisión de seguridad, la que importa: el navegador NUNCA manda direcciones de correo.**
+      Solo dice qué pasó, en qué campaña, sobre qué tareas y qué **rol** es responsable; la función
+      resuelve los correos contra `usuarios_roles` con el service_role. Si el cliente mandara el
+      `to`, esto sería un **relay abierto**: cualquiera con sesión podría mandar correo a cualquier
+      dirección desde el remitente de la Cámara. Mismo patrón de autorización que `admin-usuarios`
+      (JWT válido + existir en `usuarios_roles`), pero **sin exigir rol de gestor**: cualquiera del
+      equipo dispara notificaciones al trabajar normal.
+    - **Destinatarios (decisión confirmada con el usuario):** miembros del grupo de rol en **esa**
+      campaña (pestaña Equipo) y, si ese grupo está vacío, todos los del directorio con ese rol.
+      Es la misma regla de `isTaskOwnedBy` (`campaignTasks.ts`), así que **el correo coincide con lo
+      que la persona ve en "Mis tareas"**. Excepción: `tarea.en_revision` va a la **estratega de la
+      campaña** por `strategistName` (nombre, no id — ver punto 32), con fallback a todas las
+      Estrategas si el nombre no resuelve. **Nadie se notifica a sí mismo** por lo que acaba de hacer.
+    - **Dónde se engancha, y por qué ahí:** `tarea.asignada` sale del **store**
+      (`addFabricaBriefs` + `addProject`), no de los paneles. `addFabricaBriefs` es el único camino
+      por el que entra una tarea a una campaña ya creada, así que cubre de una el quick-add de los
+      ~6 paneles de nodo **y** las tareas que siembra `activateNextStage` al aprobar. `addProject`
+      hace falta aparte porque el lote inicial del wizard se escribe directo en el objeto, sin pasar
+      por `addFabricaBriefs`. **`updateProject` NO notifica a propósito**: reconstruye
+      `fabricaBriefs` completo en cada guardado del wizard (ver el riesgo del punto 14) y mandaría
+      una avalancha de correos cada vez que alguien edita una campaña. Los otros 3 eventos salen de
+      `BriefDialog` (`handleSubmit`/`handleApprove`/`handleReject`).
+    - **Un correo por rol, no uno por tarea** — crear una campaña siembra ~10 entregables de golpe;
+      `notificarTareasAsignadas` los agrupa por rol y manda un solo correo con la lista. La fecha
+      solo se imprime si todas las tareas del correo comparten la misma.
+    - **Notificar nunca puede romper ni frenar la acción del usuario**: todo es fire-and-forget
+      (`void`), los errores solo van a `console.warn`. Y **sin `RESEND_API_KEY` la función responde
+      200 sin enviar** en vez de fallar, para que la app funcione mientras se termina de configurar.
+    - **Cartero elegido: Resend, explícitamente SIN verificar dominio** (decisión del usuario).
+      Consecuencia que hay que tener presente: sin dominio verificado Resend solo deja enviar
+      **desde `onboarding@resend.dev` y SOLO a la dirección dueña de la cuenta** — cualquier
+      notificación a un compañero rebota con **403**. O sea, así **el equipo no recibe nada**.
+    - **Por eso existe `RESEND_MODO_PRUEBA`**: si ese secret trae una dirección, *todo* se redirige
+      ahí, el asunto se prefija `[PRUEBA]` y el correo lleva un banner amarillo diciendo a quién le
+      habría llegado en producción. Permite ejercitar el sistema completo hoy sin tocar DNS. **Para
+      salir a producción: verificar el dominio, apuntar `RESEND_FROM` a él y BORRAR ese secret** —
+      no hay que tocar código. Sin el secret y sin dominio, el log del 403 lleva la pista escrita.
+    - Lo que se descartó y por qué (sondeado en esta sesión): el **n8n viejo sigue vivo** — un GET a
+      `webhook/notifiacionemail` responde *"not registered for GET… Did you mean POST?"*, así que
+      ese flujo existe y ya tiene SMTP resuelto; era el camino sin DNS. El dominio está en
+      **Microsoft 365** (MX → `mail.protection.outlook.com`), así que Graph API era la otra opción
+      "sin terceros". Nota para el pendiente de SMTP: **Resend también da credenciales SMTP**, así
+      que verificar el dominio destraparía de paso el "olvidé mi contraseña" de Supabase Auth;
+      Microsoft ya no sirve para eso porque retiró la autenticación SMTP básica.
+    - **FALTA CONFIGURAR (nada de esto se hizo — no tengo acceso a su cuenta):** desplegar la
+      función (`supabase functions deploy notificar-correo`) y crear los secrets `RESEND_API_KEY`,
+      `RESEND_FROM`, `APP_URL` y —mientras no haya dominio— `RESEND_MODO_PRUEBA`. Free tier: 100
+      correos/día. Para probar sin mover una tarea real hay un botón **"Enviar correo de prueba"**
+      en Ajustes → "Notificaciones por correo".
+    - **El sistema viejo sigue ahí, muerto y aparte:** `src/services/notificationService.ts` +
+      `supabase/functions/send-notification` (postea a `n8n.../webhook/notifiacionemail`) son del
+      **kanban viejo** (`Task`/`board` = Diseño/Copys, roles `copy`/`diseño`), no de las campañas.
+      No se tocó (fuera de alcance) y `send-notification` **nunca se desplegó**. Si se conecta algo
+      de correo, es a `notificar-correo`, no a esa.
+    - **Verificado:** `tsc -p tsconfig.app.json` sigue con **1 solo error preexistente**
+      (`CreateProjectWizard.tsx:482`, el `as const`) — cero errores nuevos; `npm run build` limpio.
+      La lógica de payload se ejercitó bundleando `emailNotifications.ts` con un stub del cliente de
+      Supabase: confirmado que 2 copys + 1 diseño salen como **2 correos** (uno por rol), que la
+      tarea vacía se descarta, que `miembros: []` (rol sin grupo) llega vacío para que el servidor
+      caiga al fallback, que fechas distintas **no** imprimen fecha, y que `en_revision` va con
+      `estratega` y sin `rolLabel`.
+    - **NO verificado:** nada contra la función real ni contra Resend (no está desplegada ni
+      configurada), y **no se pudo probar en la UI** — el login de producción rechazó las
+      credenciales documentadas (`ktrujillo` / `Colombia2026*` con el correo de la cuenta), así que
+      no se ejercitó ni la pantalla de Ajustes ni un flujo de aprobación real en el navegador.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
@@ -1024,6 +1110,25 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
 
 ## Pendientes / próximos pasos
 
+- [ ] **Terminar de configurar las notificaciones por correo (punto 33)** — sin esto no sale ni un
+  correo (la función responde 200 sin enviar, a propósito):
+  1. `supabase functions deploy notificar-correo`
+  2. Crear cuenta en Resend y sacar la API key.
+  3. Secrets: `supabase secrets set RESEND_API_KEY=... APP_URL=https://tremubaq.vercel.app RESEND_MODO_PRUEBA=<el correo dueño de la cuenta de Resend>`
+  4. Probar con "Enviar correo de prueba" en Ajustes, y después mover una tarea real.
+- [ ] **Verificar el dominio en Resend para que el equipo reciba de verdad** — hoy se eligió
+  arrancar SIN dominio, así que todo va redirigido a una sola dirección (`RESEND_MODO_PRUEBA`) y
+  **nadie del equipo recibe sus notificaciones**. Al verificar `camarabaq.org.co` por DNS: apuntar
+  `RESEND_FROM` al dominio y **borrar `RESEND_MODO_PRUEBA`**. Sin cambios de código.
+  Bonus: Resend también da credenciales SMTP → destraba el "olvidé mi contraseña" de más abajo.
+- [ ] **Recordatorios por fecha (semáforo) por correo** — quedó FUERA del punto 33. No puede salir
+  del navegador: necesita un cron en el servidor (pg_cron o Vercel Cron llamando a una edge
+  function) que recorra `factory_projects` y junte las tareas rojas (≤2 días o vencidas) por
+  persona. La regla de urgencia ya existe en `src/lib/urgencia.ts`.
+- [ ] **Decidir qué hacer con el sistema de correo viejo** — `src/services/notificationService.ts`
+  + `supabase/functions/send-notification` (webhook n8n `notifiacionemail`) son del kanban viejo y
+  nunca se desplegó la función. Convive muerto al lado de `notificar-correo`. O se borra, o se
+  reescribe contra la función nueva.
 - [ ] **Confirmar a mano el round-trip de "Editar proyecto"** para el punto 27 (ecosistema
   cíclico) — crear un proyecto con etapas/ELMR/motor, cerrar el wizard, reabrir "Editar
   proyecto" y confirmar que todo (etapas, toques/loops con `etapaId`/`siguienteEtapaId`,

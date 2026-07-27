@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import type { Attachment } from '@/components/ui/file-upload';
+import { notificarTareasAsignadas } from '@/services/emailNotifications';
 
 export type ProjectState = 'planning' | 'in_progress' | 'cancelled' | 'done';
 
@@ -674,6 +675,9 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
     };
     set((s) => ({ projects: [project, ...s.projects], activeProjectId: id }));
     syncProject(project);
+    // La campaña nace con su lote de entregables ya sembrado por el wizard: avisarle a cada rol
+    // acá es el único punto donde se enteran (esas tareas no pasan por addFabricaBriefs).
+    notificarTareasAsignadas(project, project.fabricaBriefs ?? []);
     return id;
   },
 
@@ -823,7 +827,7 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       })),
     })),
 
-  addFabricaBriefs: (projectId, briefs) =>
+  addFabricaBriefs: (projectId, briefs) => {
     persistAfter(set, get, projectId, (s) => ({
       projects: patchProject(s.projects, projectId, (p) => ({
         ...p,
@@ -832,7 +836,14 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
           ...briefs.map((b) => ({ ...b, id: uid(), checked: false })),
         ],
       })),
-    })),
+    }));
+    // Único punto por el que entra una tarea nueva a una campaña ya creada: el quick-add de los
+    // nodos y las que activa una aprobación (activateNextStage). Notificar acá cubre las dos
+    // sin repetir la llamada en cada panel. El proyecto se relee del store para que el correo
+    // salga con los roleGroups y el nombre actuales.
+    const project = get().projects.find((p) => p.id === projectId);
+    if (project) notificarTareasAsignadas(project, briefs);
+  },
 
   updateFabricaBrief: (projectId, briefId, updates) =>
     persistAfter(set, get, projectId, (s) => ({

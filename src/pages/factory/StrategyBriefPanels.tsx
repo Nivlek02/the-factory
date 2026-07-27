@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, MessageSquare, FileText, Image as ImageIcon, History, Calendar, CalendarClock } from 'lucide-react';
 import { calcularUrgencia, formatFechaCorta } from '@/lib/urgencia';
+import { notificarEnRevision, notificarAprobada, notificarCorreccion } from '@/services/emailNotifications';
 import { cn } from '@/lib/utils';
 import RichTextEditor from '@/components/ui/rich-text-editor';
 import FileUpload, { Attachment } from '@/components/ui/file-upload';
@@ -331,6 +332,9 @@ const BriefDialog = ({
         isAdjustmentRequest: false, isSystemEvent: true, createdAt: now,
       }],
     });
+    // Solo avisa cuando de verdad hay alguien esperando revisar: sin etapa de aprobación el
+    // entregable queda completado y no hay a quién notificar.
+    if (hasApprovalStage) notificarEnRevision(project, brief);
     onClose();
   };
 
@@ -344,6 +348,8 @@ const BriefDialog = ({
         isAdjustmentRequest: false, isSystemEvent: true, createdAt: now,
       }],
     });
+    notificarAprobada(project, brief);
+    // Las tareas que esto siembre en el siguiente nodo notifican solas desde addFabricaBriefs.
     activateNextStage(project, nodeId, brief);
     advanceOrClose();
   };
@@ -360,6 +366,7 @@ const BriefDialog = ({
       deliverableSubmittedAt: null,
       currentNodeId: nodeId,
     });
+    notificarCorreccion(project, brief, text);
     advanceOrClose();
   };
 

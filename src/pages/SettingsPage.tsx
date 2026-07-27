@@ -41,10 +41,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, RefreshCw, ShieldAlert } from 'lucide-react';
+import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, Send, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { useAppVersion } from '@/hooks/useAppVersion';
+import { enviarCorreoDePrueba } from '@/services/emailNotifications';
 
 /** Mismo mínimo que valida la edge function admin-usuarios; si cambia, cambiar en ambos. */
 const MIN_PASSWORD = 8;
@@ -70,11 +69,6 @@ const SettingsPage = () => {
   const [userPage, setUserPage] = useState(1);
   const USERS_PER_PAGE = 5;
 
-  // Version control
-  const { currentVersion } = useAppVersion();
-  const [newVersion, setNewVersion] = useState('');
-  const [isPublishing, setIsPublishing] = useState(false);
-
   // Edit user state
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [editUsername, setEditUsername] = useState('');
@@ -85,6 +79,8 @@ const SettingsPage = () => {
   const [editPassword, setEditPassword] = useState('');
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const [isSendingTest, setIsSendingTest] = useState(false);
 
   // Load users on mount
   useEffect(() => {
@@ -421,68 +417,48 @@ const SettingsPage = () => {
             </CardContent>
           </Card>
 
-          {/* Version Control */}
+          {/* Notificaciones por correo */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <RefreshCw className="h-5 w-5" />
-                Control de Versiones
+                <Send className="h-5 w-5" />
+                Notificaciones por correo
               </CardTitle>
               <CardDescription>
-                Publica una nueva versión para notificar a todos los usuarios que actualicen la página
+                El equipo recibe un correo cuando se le asigna una tarea, cuando un entregable pasa
+                a revisión y cuando la Estratega lo aprueba o pide correcciones.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Versión actual:</span>
-                  <Badge variant="outline" className="text-base font-mono">{currentVersion || '...'}</Badge>
-                </div>
-                <div className="flex items-center gap-2 flex-1 max-w-sm">
-                  <Input
-                    placeholder="Ej: 1.1.0"
-                    value={newVersion}
-                    onChange={(e) => setNewVersion(e.target.value)}
-                  />
-                  <Button
-                    disabled={!newVersion.trim() || isPublishing}
-                    onClick={async () => {
-                      setIsPublishing(true);
-                      try {
-                        // Fetch the existing row's ID
-                        const { data: existing } = await supabase
-                          .from('app_version')
-                          .select('id')
-                          .limit(1)
-                          .single();
-
-                        let error;
-                        if (existing?.id) {
-                          ({ error } = await supabase
-                            .from('app_version')
-                            .update({ version: newVersion.trim(), updated_by: currentUser?.fullName || 'admin' })
-                            .eq('id', existing.id));
-                        } else {
-                          ({ error } = await supabase
-                            .from('app_version')
-                            .insert({ version: newVersion.trim(), updated_by: currentUser?.fullName || 'admin' }));
-                        }
-
-                        if (!error) {
-                          toast({ title: 'Versión publicada', description: `Todos los usuarios verán la notificación para actualizar a la versión ${newVersion.trim()}` });
-                          setNewVersion('');
-                        } else {
-                          toast({ title: 'Error', description: 'No se pudo actualizar la versión', variant: 'destructive' });
-                        }
-                      } catch {
-                        toast({ title: 'Error', description: 'No se pudo actualizar la versión', variant: 'destructive' });
-                      }
-                      setIsPublishing(false);
-                    }}
-                  >
-                    {isPublishing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Publicar versión'}
-                  </Button>
-                </div>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Los correos salen de la función <code className="text-xs">notificar-correo</code>.
+                Si algo no llega, esta prueba lo confirma sin tener que mover una tarea real: se
+                envía a tu propio correo ({currentUser?.email}), o a la dirección de pruebas si el
+                envío todavía está en ese modo.
+              </p>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  disabled={isSendingTest}
+                  onClick={async () => {
+                    setIsSendingTest(true);
+                    const r = await enviarCorreoDePrueba();
+                    setIsSendingTest(false);
+                    // En modo de prueba el correo NO llega a quien lo pidió: mandarlo a revisar
+                    // su bandeja sería mandarlo a buscar algo que nunca va a estar ahí.
+                    const destino = r.enviadoA?.[0] ?? currentUser?.email;
+                    toast(
+                      r.success
+                        ? {
+                            title: r.modoPrueba ? 'Enviado (modo de prueba)' : 'Correo de prueba enviado',
+                            description: `Revisa la bandeja de ${destino}. Si no llega en un par de minutos, mira la carpeta de spam.`,
+                          }
+                        : { title: 'No se pudo enviar', description: r.error, variant: 'destructive' }
+                    );
+                  }}
+                >
+                  {isSendingTest ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enviar correo de prueba'}
+                </Button>
               </div>
             </CardContent>
           </Card>
