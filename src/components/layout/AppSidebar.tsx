@@ -14,6 +14,7 @@ import { NavLink } from '@/components/NavLink';
 import { useAuthStore, ROLE_LABELS, ROLES_GESTORES } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { formatVersion } from '@/lib/version';
 
 interface AppSidebarProps {
   collapsed?: boolean;
@@ -201,6 +202,13 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
             </TooltipTrigger>
             <TooltipContent side="right">Cerrar sesión</TooltipContent>
           </Tooltip>
+        )}
+        {/* Versión que corre en esta pestaña. Sale de package.json vía el bundle (src/lib/version.ts),
+            así que sirve para saber si alguien está viendo un build viejo. Colapsado no cabe. */}
+        {!collapsed && (
+          <p className="mt-2 px-1 text-[10px] text-sidebar-foreground/40 tabular-nums">
+            {formatVersion()}
+          </p>
         )}
       </div>
     </aside>

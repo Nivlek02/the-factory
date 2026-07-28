@@ -1173,6 +1173,49 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       link). El diagrama muestra a Copys bifurcando en las dos ramas. Typecheck con el único error
       preexistente; `npm run build` limpio.
 
+### 2026-07-28
+
+36. **Versión SemVer legible (`v1.0.0`) en vez del SHA del build + CHANGELOG**
+    - El sistema de aviso de actualización ya existía (punto 30) pero se identificaba con el SHA
+      del commit (`1ed3c5d`), que no le dice nada a nadie. **Ahora `package.json` es la única
+      fuente de verdad de la versión**: `vite.config.ts` la lee con `readFileSync` y la inyecta
+      como `__APP_VERSION__` (+ `__BUILD_TIME__`, junto al `__BUILD_ID__` que ya existía), y
+      `version.json` pasó a publicar `{ version, buildTime, buildId }`. `package.json` subió de
+      `0.0.0` a `1.0.0`. **No hay ningún número de versión escrito a mano en el código.**
+    - **`src/lib/version.ts` (nuevo)** concentra todo: `APP_VERSION`/`BUILD_TIME`/`BUILD_ID` con
+      fallback (las constantes se leen con `typeof __X__ !== 'undefined'` para que el módulo no
+      explote fuera de un bundle de Vite), `fetchRemoteVersion()` (devuelve `null` ante cualquier
+      problema — sin red, 404, HTML del rewrite de SPA, JSON inválido), `isNewerVersion()`,
+      `formatVersion()` → `v1.2.0`, `versionKey()` y `applyUpdate()`.
+    - **`applyUpdate()` limpia `caches` y actualiza los service workers antes de recargar.** Antes
+      era un `location.reload()` pelado: si el bundle viejo seguía en caché, el usuario recargaba,
+      volvía a ver lo mismo y el aviso reaparecía en loop.
+    - **`version.json` sigue llevando `builtAt` duplicado** (mismo valor que `buildTime`) solo por
+      las pestañas que quedaron abiertas con el bundle anterior, que leen ese nombre. Se puede
+      quitar en unos deploys.
+    - El aviso **sigue saltando también cuando cambia solo el build con el mismo número** (que es
+      el caso normal acá: se despliega sin subir versión). Cuando el número no cambió, el banner
+      **no lo imprime** — diría el mismo `v1.0.0` que ya se ve en el sidebar y confundiría.
+    - Otros ajustes del hook (`useAppVersion`): poll de 5 → **15 min**, chequeo también en `focus`
+      además de `visibilitychange`, `AbortController` para el fetch en vuelo, y **no hace nada en
+      dev** (`import.meta.env.DEV`) porque `/version.json` no existe hasta el build. El `dismiss`
+      ahora guarda `version@build` en vez del build suelto.
+    - **La versión se ve en el pie del sidebar** (`formatVersion()`, solo cuando no está colapsado
+      — a 64px no cabe). `vercel.json`: el `Cache-Control` de `version.json` pasó de `public` a
+      `no-cache` (ya tenía `must-revalidate`, pero si el CDN lo cachea el aviso **no aparece nunca
+      y no da ninguna señal de error**).
+    - **`CHANGELOG.md` (nuevo)**, formato Keep a Changelog, con el procedimiento de publicación
+      arriba: `npm version patch|minor|major --no-git-tag-version` → entrada en el changelog →
+      push a `master`.
+    - **NO se agregaron tests** — el proyecto no tiene runner (ni vitest ni jest) y montar uno
+      quedaba fuera del pedido. La lógica de `isNewerVersion` se ejercitó con un script suelto
+      (esbuild + import dinámico, borrado después): version mayor, downgrade, misma versión con
+      otro build, misma versión mismo build, solo `buildTime` distinto, versión vacía, `null`,
+      `undefined` y sin build alguno — los 9 casos dan lo esperado. Typecheck con el único error
+      preexistente (`CreateProjectWizard.tsx:482`); `npm run build` limpio y `dist/version.json`
+      inspeccionado a mano. **Sin verificación visual con Playwright** (el cambio de UI es una
+      línea de texto de 10px en el sidebar y el texto del banner).
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,

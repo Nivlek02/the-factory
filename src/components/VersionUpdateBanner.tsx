@@ -3,15 +3,20 @@ import { RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const VersionUpdateBanner = () => {
-  const { hasNewVersion, currentVersion, acknowledgeAndReload, dismissUpdate } = useAppVersion();
+  const { hasNewVersion, newVersion, isSameVersionNumber, acknowledgeAndReload, dismissUpdate } =
+    useAppVersion();
 
   if (!hasNewVersion) return null;
+
+  // Si el número no cambió (redeploy de la misma versión) mostrarlo sería confuso: diría el
+  // mismo v1.2.0 que ya se ve en el sidebar.
+  const etiqueta = isSameVersionNumber || !newVersion ? '' : ` (${newVersion})`;
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[100] bg-primary text-primary-foreground py-2 px-4 flex items-center justify-center gap-3 shadow-lg animate-in slide-in-from-top">
       <RefreshCw className="h-4 w-4 animate-spin" />
       <span className="text-sm font-medium">
-        Nueva versión disponible ({currentVersion}). Actualiza para ver los últimos cambios.
+        Nueva versión disponible{etiqueta}. Actualiza para ver los últimos cambios.
       </span>
       <Button
         size="sm"
