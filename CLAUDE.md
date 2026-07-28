@@ -1319,6 +1319,37 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
     - De paso se corrigió ahí el `/…de (\w+)/` documentado arriba (cortaba "Call Center" en
       "Call" y mostraba los campos equivocados); ahora corta por prefijo igual que el dashboard.
 
+39. **Captura de interés como única fuente del requerimiento + interacciones por canal + pulido
+    del dashboard** (versión `1.4.0`)
+    - **Se eliminó el bloque "Requerimiento (Motor del proceso)"** del final del paso "Canales y
+      Comportamiento": preguntaba exactamente lo mismo que la etapa "Captura de interés" de más
+      arriba (ambos escribían en `requerimientos`). Ahora la elección vive **solo** en Captura,
+      que suma la opción `ninguno` ("No requiere formulario/landing"). La pregunta
+      **"¿Formulario básico?" se movió tal cual** (mismo texto, mismos botones, misma textarea de
+      campos adicionales) para quedar junto a la opción que la dispara; el gate `canNext` que
+      exige `basico !== null` no se tocó.
+    - **La selección pasó a ser excluyente** (`seleccionarCaptura`: `[reqId]`, y volver a tocar
+      desmarca). Antes Landing y Formulario podían convivir y generaban **dos** formularios — el
+      paso "Formulario de la landing" de la cadena del punto 35 y el nodo suelto del requerimiento
+      —, que es la duplicidad que se pidió evitar. **Ojo: esto cambia lo decidido en el punto 35**,
+      donde tener los dos a la vez era intencional.
+    - **Interacciones por canal** (`INTERACCIONES_POR_CANAL`): Correo mantiene los 5 chips;
+      WhatsApp y SMS pierden Abre/No abre (no tienen apertura); **el resto — Call Center, BTL,
+      KAM, Relacionamiento y los de pauta — se queda solo con el campo de texto libre**, que
+      además se ensancha y cambia de placeholder cuando es lo único que hay. `customChips` sigue
+      comparándose contra `INTERACCION_OPCIONES` **completa**, no contra las opciones del canal:
+      si no, lo ya guardado (ej. un "Abre" viejo en un SMS) reaparecería como chip personalizado.
+    - Dashboard: cada porcentaje es **columna propia** en la tabla y **ítem propio** en las
+      tarjetas (antes colgaba del número y no se podían comparar cifras entre columnas); Enviados
+      ocupa la fila completa para que cada métrica quede al lado de su `%`. Color por canal
+      (Correo `#2563EB`, WhatsApp `#16A34A`, SMS `#38BDF8`) **en el ícono y la franja izquierda,
+      no en el texto**: a 11-12px esos tonos no dan contraste suficiente.
+    - Verificado con Playwright sobre el wizard real: el bloque duplicado ya no existe; las 3
+      opciones aparecen en Captura; elegir Formulario deja **solo** Formulario activo;
+      "¿Formulario básico?" aparece y desaparece con la opción; y en Interacción la fila de Correo
+      trae los 5 chips mientras la de Call Center trae **cero** chips y el campo libre. Sin
+      errores de consola.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,

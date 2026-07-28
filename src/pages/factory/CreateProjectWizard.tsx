@@ -263,6 +263,19 @@ const ToqueRow = ({
  *  varias por acción; "Personalizado" agrega un valor de texto libre. */
 const INTERACCION_OPCIONES = ['Abre', 'No abre', 'Clic', 'No clic', 'Visita landing'] as const;
 
+/**
+ * Interacciones estándar que aplican a cada canal. Solo el correo tiene apertura; WhatsApp y SMS
+ * tienen clic pero no "abre". En los demás (Call Center, BTL, KAM, Relacionamiento, pauta) esos
+ * chips no significan nada — ahí la interacción esperada se escribe a mano ("agenda cita",
+ * "pide info"…), así que la fila queda solo con el campo personalizado.
+ */
+const INTERACCIONES_POR_CANAL: Record<string, readonly string[]> = {
+  Correo: ['Abre', 'No abre', 'Clic', 'No clic', 'Visita landing'],
+  WhatsApp: ['Clic', 'No clic', 'Visita landing'],
+  SMS: ['Clic', 'No clic', 'Visita landing'],
+};
+const opcionesDeCanal = (canal: string): readonly string[] => INTERACCIONES_POR_CANAL[canal] ?? [];
+
 /** Lista de interacciones de un toque, tolerando el formato legacy de una sola (`interaccion`). */
 const interaccionesDe = (row: { interaccion?: string; interacciones?: string[] }): string[] =>
   row.interacciones ?? (row.interaccion ? [row.interaccion] : []);
@@ -279,7 +292,13 @@ const InteraccionRow = ({
   const Icon = CHANNELS.find((c) => c.id === row.canal)?.icon ?? Mail;
   const selected = interaccionesDe(row);
   const [customInput, setCustomInput] = useState('');
-  const customChips = selected.filter((v) => !INTERACCION_OPCIONES.includes(v as (typeof INTERACCION_OPCIONES)[number]));
+  const opciones = opcionesDeCanal(row.canal);
+  // "Personalizada" es todo lo que no sea una opción del canal. Se compara contra la lista
+  // completa, no contra `opciones`: si no, al quitarle "Abre" a un canal lo ya guardado
+  // aparecería como chip personalizado en vez de simplemente dejar de ofrecerse.
+  const customChips = selected.filter(
+    (v) => !INTERACCION_OPCIONES.includes(v as (typeof INTERACCION_OPCIONES)[number]),
+  );
 
   const toggle = (value: string) =>
     onUpdate(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
@@ -301,7 +320,7 @@ const InteraccionRow = ({
         )}
       </span>
       <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
-        {INTERACCION_OPCIONES.map((op) => {
+        {opciones.map((op) => {
           const active = selected.includes(op);
           return (
             <button
@@ -328,13 +347,17 @@ const InteraccionRow = ({
             <X className="h-3 w-3" />
           </button>
         ))}
+        {/* Sin chips estándar el campo es lo único que hay, así que se le da más ancho y un
+            texto que explique qué escribir; junto a los chips va compacto como hasta ahora. */}
         <input
-          placeholder="+ Personalizado…"
+          placeholder={opciones.length ? '+ Personalizado…' : 'Escribe la interacción esperada…'}
           value={customInput}
           onChange={(e) => setCustomInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
           onBlur={addCustom}
-          className="h-7 w-32 rounded-md border border-dashed border-input bg-background px-2 text-[11px] outline-none focus:ring-1 focus:ring-ring"
+          className={`h-7 rounded-md border border-dashed border-input bg-background px-2 text-[11px] outline-none focus:ring-1 focus:ring-ring ${
+            opciones.length ? 'w-32' : 'w-56'
+          }`}
         />
       </div>
     </div>
@@ -676,14 +699,17 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   // Interacciones (múltiples) de una acción de Atracción, editadas desde la etapa de Interacción.
   const updateCanalRowInteracciones = (id: string, values: string[]) =>
     setCanalesRows((prev) => prev.map((r) => (r.id === id ? { ...r, interacciones: values } : r)));
-  // Captura: alterna landing/formulario compartiendo el estado de `requerimientos` (una sola
-  // fuente de verdad con Requerimiento — Motor del proceso). No toca "ninguno" ni la exclusividad.
-  const toggleCapturaReq = (reqId: 'landing' | 'formulario') =>
-    setRequerimientos((prev) =>
-      prev.includes(reqId)
-        ? prev.filter((r) => r !== reqId)
-        : [...prev.filter((r) => r !== 'ninguno'), reqId]
-    );
+  /**
+   * Captura de interés: única fuente de verdad de los requerimientos desde que se quitó el
+   * bloque "Requerimiento (Motor del proceso)", que preguntaba lo mismo más abajo.
+   *
+   * **Selección excluyente**: landing, formulario o ninguno, uno solo a la vez. Con Landing +
+   * Formulario marcados a la vez salían dos formularios (el paso "Formulario de la landing" de
+   * la cadena de Landing y el nodo suelto del requerimiento "Formulario de inscripción"), que es
+   * la duplicidad de tareas que había que evitar. Volver a tocar la opción activa la desmarca.
+   */
+  const seleccionarCaptura = (reqId: ReqId) =>
+    setRequerimientos((prev) => (prev.includes(reqId) ? [] : [reqId]));
   // Validación: segmentos a cruzar contra CRM (Renovado / No renovado / …), guardados en el motor.
   const toggleValidacionSegmento = (seg: string) =>
     setMotor((m) => {
@@ -1593,32 +1619,87 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                 )}
                               </div>
                             ) : isCaptura ? (
-                              /* Captura: mapea si la campaña usa Landing y/o Formulario (misma
-                                 fuente de verdad que Requerimiento — Motor del proceso). */
+                              /* Captura: acá se elige el requerimiento de la campaña. Es el único
+                                 lugar donde se pregunta — el bloque "Requerimiento (Motor del
+                                 proceso)" que repetía esto más abajo se eliminó. */
                               <div className="space-y-2 border-t border-border/40 pt-3">
-                                <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">¿Cómo se captura el interés?</Label>
+                                <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">¿Cómo se captura el interés? *</Label>
                                 <p className="text-[11px] text-muted-foreground italic">
-                                  Marca si esta campaña usa Landing y/o Formulario de inscripción. Se sincroniza con Requerimiento (Motor del proceso).
+                                  Elige una sola opción: es la que genera las tareas del entregable.
                                 </p>
+                                {!reqSatisfied && (
+                                  <p className="text-[11px] font-medium text-destructive">
+                                    Debes elegir una opción para continuar.
+                                  </p>
+                                )}
                                 <div className="flex flex-wrap gap-2 pt-1">
-                                  {(['landing', 'formulario'] as const).map((reqId) => {
-                                    const active = requerimientos.includes(reqId);
+                                  {REQUERIMIENTOS.map((req) => {
+                                    const active = requerimientos.includes(req.id);
                                     return (
                                       <button
-                                        key={reqId}
+                                        key={req.id}
                                         type="button"
-                                        onClick={() => toggleCapturaReq(reqId)}
+                                        onClick={() => seleccionarCaptura(req.id)}
                                         className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
                                           active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
                                         }`}
                                       >
-                                        {reqId === 'landing' ? 'Landing' : 'Formulario de inscripción'}
+                                        {req.label}
                                       </button>
                                     );
                                   })}
                                 </div>
-                                {capturaReqs.length === 0 && (
-                                  <p className="text-[11px] text-muted-foreground italic pt-1">Sin captura por landing ni formulario en esta campaña.</p>
+
+                                {/* ¿Formulario básico? — se mantiene tal cual estaba en el bloque
+                                    eliminado; solo cambió de lugar para quedar junto a la opción
+                                    que la dispara. */}
+                                {requerimientos.includes('formulario') && (
+                                  <div className="mt-3 p-3 rounded-lg border border-border/60 bg-card/50 space-y-3">
+                                    <Label className="text-sm font-semibold block">¿Formulario básico?</Label>
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setFormularioConfig((prev) => ({ ...prev, basico: true }))}
+                                        className={`px-4 py-2 rounded-lg text-xs font-medium border transition-all ${
+                                          formularioConfig.basico === true
+                                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                                        }`}
+                                      >
+                                        Sí
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setFormularioConfig((prev) => ({ ...prev, basico: false }))}
+                                        className={`px-4 py-2 rounded-lg text-xs font-medium border transition-all ${
+                                          formularioConfig.basico === false
+                                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
+                                        }`}
+                                      >
+                                        No
+                                      </button>
+                                    </div>
+
+                                    {formularioConfig.basico === true && (
+                                      <p className="text-xs text-muted-foreground italic">
+                                        Se creará la tarea "Formulario de inscripción básico" para el gestor de canales.
+                                      </p>
+                                    )}
+
+                                    {formularioConfig.basico === false && (
+                                      <div className="space-y-1.5 border-t border-border/40 pt-3">
+                                        <Label className="text-xs">Campos adicionales del formulario</Label>
+                                        <textarea
+                                          rows={2}
+                                          placeholder="Ej: Teléfono, cargo, empresa, ciudad…"
+                                          value={formularioConfig.camposAdicionales}
+                                          onChange={(e) => setFormularioConfig((prev) => ({ ...prev, camposAdicionales: e.target.value }))}
+                                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-factory/40 resize-none"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             ) : isValidacion ? (
@@ -1882,97 +1963,9 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                 );
               })()}
 
-              {/* ─── Requerimiento (Motor del proceso) ─── */}
-              <div className="border-t pt-4">
-                <Label className="text-sm font-semibold uppercase tracking-wider text-muted-foreground block mb-3">
-                  Requerimiento (Motor del proceso) *
-                </Label>
-                <p className="text-xs text-muted-foreground mb-3 italic">
-                  Selecciona los requerimientos de la campaña para generar las tareas correspondientes en el brief de fábrica.
-                </p>
-                {!reqSatisfied && (
-                  <p className="text-xs mb-3 -mt-2 font-medium text-destructive">
-                    Debes elegir "Landing", "Formulario de inscripción" o "No requiere formulario/landing" para continuar.
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  {REQUERIMIENTOS.map((req) => {
-                    const active = requerimientos.includes(req.id);
-                    return (
-                      <button
-                        key={req.id}
-                        type="button"
-                        onClick={() =>
-                          setRequerimientos((prev) => {
-                            if (active) return prev.filter((r) => r !== req.id);
-                            // "ninguno" es excluyente con landing/formulario y viceversa.
-                            if (req.id === 'ninguno') return ['ninguno'];
-                            return [...prev.filter((r) => r !== 'ninguno'), req.id];
-                          })
-                        }
-                        className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
-                          active
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
-                        }`}
-                      >
-                        {req.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* ─── Formulario básico? (solo cuando está seleccionado Formulario de inscripción) ─── */}
-                {requerimientos.includes('formulario') && (
-                  <div className="mt-4 p-4 rounded-lg border border-border/60 bg-card/50 space-y-3">
-                    <Label className="text-sm font-semibold block">¿Formulario básico?</Label>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFormularioConfig((prev) => ({ ...prev, basico: true }))}
-                        className={`px-4 py-2 rounded-lg text-xs font-medium border transition-all ${
-                          formularioConfig.basico === true
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
-                        }`}
-                      >
-                        Sí
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormularioConfig((prev) => ({ ...prev, basico: false }))}
-                        className={`px-4 py-2 rounded-lg text-xs font-medium border transition-all ${
-                          formularioConfig.basico === false
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-border bg-card text-muted-foreground hover:border-muted-foreground'
-                        }`}
-                      >
-                        No
-                      </button>
-                    </div>
-
-                    {formularioConfig.basico === true && (
-                      <p className="text-xs text-muted-foreground italic">
-                        Se creará la tarea "Formulario de inscripción básico" para el gestor de canales.
-                      </p>
-                    )}
-
-                    {formularioConfig.basico === false && (
-                      <div className="space-y-1.5 border-t border-border/40 pt-3">
-                        <Label className="text-xs">Campos adicionales del formulario</Label>
-                        <textarea
-                          rows={2}
-                          placeholder="Ej: Teléfono, cargo, empresa, ciudad…"
-                          value={formularioConfig.camposAdicionales}
-                          onChange={(e) => setFormularioConfig((prev) => ({ ...prev, camposAdicionales: e.target.value }))}
-                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-factory/40 resize-none"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-              </div>
+              {/* El bloque "Requerimiento (Motor del proceso)" vivía acá y preguntaba lo mismo
+                  que la etapa "Captura de interés" de arriba. Se eliminó para dejar una sola
+                  fuente de verdad; la pregunta "¿Formulario básico?" se movió tal cual allá. */}
             </div>
           )}
 

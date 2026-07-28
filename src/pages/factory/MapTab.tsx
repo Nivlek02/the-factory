@@ -640,11 +640,13 @@ const PREFIJO_METRICAS = 'Recolectar métricas de ';
  * de pauta no se borran — siguen en su propia tarea —, simplemente no entran acá.
  */
 const CANALES_ENVIO = [
-  { id: 'Correo', icon: Mail },
-  { id: 'WhatsApp', icon: MessageCircle },
-  { id: 'SMS', icon: Smartphone },
+  { id: 'Correo', icon: Mail, color: '#2563EB' },      // azul
+  { id: 'WhatsApp', icon: MessageCircle, color: '#16A34A' }, // verde
+  { id: 'SMS', icon: Smartphone, color: '#38BDF8' },   // azul claro
 ];
 const esCanalMedido = (canal: string) => CANALES_ENVIO.some((c) => c.id === canal);
+const colorDe = (canal: string) =>
+  CANALES_ENVIO.find((c) => c.id === canal)?.color ?? 'hsl(var(--muted-foreground))';
 
 /** Lo que sigue después de "Recolectar métricas de ". Se corta por prefijo y no con
  *  `/…de (\w+)/` (como hace FactoryPage) porque `\w+` parte los nombres con espacio o tilde:
@@ -696,18 +698,18 @@ const CeldaNum = ({ children }: { children: React.ReactNode }) => (
   <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">{children}</td>
 );
 
-/** Número con su porcentaje al lado. Sin dato imprime un solo "—": mostrar "— · —" (el guion
- *  del valor más el del porcentaje) llenaba las tarjetas de ruido donde justamente no hay nada. */
-const NumConPct = ({ valor, sobre }: { valor: number; sobre: number }) => {
-  if (valor <= 0) return <>—</>;
-  const pct = fmtPct(valor, sobre);
-  return (
-    <>
-      {fmtNum(valor)}
-      {pct !== '—' && <span className="text-muted-foreground font-normal"> · {pct}</span>}
-    </>
-  );
-};
+/** Una métrica del desglose: etiqueta a la izquierda, valor a la derecha. Los porcentajes van
+ *  como ítem propio (no colgados del número) para que las tarjetas queden alineadas entre sí. */
+const ItemMetrica = ({
+  label, valor, destacado, ancho,
+}: { label: string; valor: string; destacado?: boolean; ancho?: boolean }) => (
+  <div className={`flex justify-between gap-2 ${ancho ? 'col-span-2' : ''}`}>
+    <span className="text-muted-foreground">{label}</span>
+    <span className={`tabular-nums ${destacado ? 'font-semibold text-primary' : 'font-medium'}`}>
+      {valor}
+    </span>
+  </div>
+);
 
 export const MetricsDashboardTab = ({ project }: Props) => {
   const { totales, porCanal, salidas } = useMemo(() => {
@@ -781,10 +783,20 @@ export const MetricsDashboardTab = ({ project }: Props) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
           {porCanal.map(([canal, acc]) => {
             const Icono = iconoDe(canal);
+            const color = colorDe(canal);
             return (
-              <div key={canal} className="rounded-lg border border-border/60 bg-card p-3 shadow-sm">
+              <div
+                key={canal}
+                className="rounded-lg border border-border/60 bg-card p-3 shadow-sm border-l-4"
+                style={{ borderLeftColor: color }}
+              >
                 <div className="flex items-center gap-2 mb-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-muted/60 flex items-center justify-center text-muted-foreground shrink-0">
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                    // El color va en el ícono y en la franja de la izquierda, no en el texto:
+                    // a 11-12px estos tonos no dan contraste suficiente para leerse cómodos.
+                    style={{ backgroundColor: `${color}1A`, color }}
+                  >
                     <Icono className="h-3.5 w-3.5" />
                   </div>
                   <span className="text-sm font-semibold truncate" title={canal}>{canal}</span>
@@ -792,27 +804,21 @@ export const MetricsDashboardTab = ({ project }: Props) => {
                     <span className="ml-auto text-[10px] text-muted-foreground shrink-0">Sin datos</span>
                   )}
                 </div>
-                {/* Sin "Base": el desglose se queda en Enviados y Clics, más Apertura donde
-                    existe (solo Correo). */}
+                {/* Cada porcentaje es su propio ítem, con su etiqueta: colgado al lado del
+                    número quedaba desalineado entre tarjetas. Sin "Base" (ver CANALES_ENVIO);
+                    Apertura solo donde existe. */}
+                {/* Cada métrica va con su porcentaje al lado en la misma fila: en un flujo de 2
+                    columnas a secas quedaba "Apertura % | Clics", que no se puede leer. */}
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                  <div className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">Enviados</span>
-                    <span className="font-medium tabular-nums">{fmtNum(acc.enviados)}</span>
-                  </div>
+                  <ItemMetrica label="Enviados" valor={fmtNum(acc.enviados)} ancho />
                   {mideApertura(canal) && (
-                    <div className="flex justify-between gap-2">
-                      <span className="text-muted-foreground">Apertura</span>
-                      <span className="font-medium tabular-nums">
-                        <NumConPct valor={acc.apertura} sobre={acc.enviados} />
-                      </span>
-                    </div>
+                    <>
+                      <ItemMetrica label="Apertura" valor={fmtNum(acc.apertura)} />
+                      <ItemMetrica label="Apertura %" valor={fmtPct(acc.apertura, acc.enviados)} destacado />
+                    </>
                   )}
-                  <div className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">Clics</span>
-                    <span className="font-medium tabular-nums">
-                      <NumConPct valor={acc.clics} sobre={acc.enviados} />
-                    </span>
-                  </div>
+                  <ItemMetrica label="Clics" valor={fmtNum(acc.clics)} />
+                  <ItemMetrica label="Clic %" valor={fmtPct(acc.clics, acc.enviados)} destacado />
                 </div>
               </div>
             );
@@ -840,7 +846,11 @@ export const MetricsDashboardTab = ({ project }: Props) => {
                   <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Fecha</th>
                   <th className="px-2 py-2 text-right font-medium">Enviados</th>
                   <th className="px-2 py-2 text-right font-medium">Apertura</th>
+                  {/* Cada porcentaje en su propia columna: al ir pegado al número quedaba
+                      colgando y las cifras no se podían comparar de una columna a otra. */}
+                  <th className="px-2 py-2 text-right font-medium whitespace-nowrap">Apertura %</th>
                   <th className="px-2 py-2 text-right font-medium">Clics</th>
+                  <th className="px-2 py-2 text-right font-medium whitespace-nowrap">Clic %</th>
                 </tr>
               </thead>
               <tbody>
@@ -850,7 +860,7 @@ export const MetricsDashboardTab = ({ project }: Props) => {
                     <tr key={s.id} className="border-b border-border/40 last:border-0">
                       <td className="px-2 py-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <Icono className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <Icono className="h-3.5 w-3.5 shrink-0" style={{ color: colorDe(s.canal) }} />
                           <span className="font-medium truncate" title={s.canal}>{s.canal}</span>
                           {!s.conDatos && (
                             <Badge variant="outline" className="text-[9px] px-1.5 py-0 shrink-0">
@@ -863,8 +873,14 @@ export const MetricsDashboardTab = ({ project }: Props) => {
                         {s.fecha ? formatFechaCorta(s.fecha) : '—'}
                       </td>
                       <CeldaNum>{fmtNum(s.enviados)}</CeldaNum>
-                      <CeldaNum><NumConPct valor={s.apertura} sobre={s.enviados} /></CeldaNum>
-                      <CeldaNum><NumConPct valor={s.clics} sobre={s.enviados} /></CeldaNum>
+                      <CeldaNum>{fmtNum(s.apertura)}</CeldaNum>
+                      <CeldaNum>
+                        <span className="font-semibold text-primary">{fmtPct(s.apertura, s.enviados)}</span>
+                      </CeldaNum>
+                      <CeldaNum>{fmtNum(s.clics)}</CeldaNum>
+                      <CeldaNum>
+                        <span className="font-semibold text-primary">{fmtPct(s.clics, s.enviados)}</span>
+                      </CeldaNum>
                     </tr>
                   );
                 })}

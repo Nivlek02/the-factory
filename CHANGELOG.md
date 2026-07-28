@@ -25,6 +25,28 @@ en ningún otro archivo.
 
 ---
 
+## [1.4.0] — 2026-07-28
+
+### Cambiado
+
+- **El requerimiento de la campaña se elige en un solo lugar:** la etapa "Captura de interés" de
+  Canales y Comportamiento, que ahora incluye "No requiere formulario/landing". Se eliminó el
+  bloque "Requerimiento (Motor del proceso)" del final de ese mismo paso, que preguntaba lo mismo.
+  La pregunta "¿Formulario básico?" es la misma de siempre, ahora justo debajo de la opción que
+  la dispara.
+- **Solo se puede elegir una opción de captura a la vez.** Con Landing y Formulario marcados
+  juntos se generaban dos formularios (el de la cadena de Landing y el del requerimiento suelto),
+  que es la duplicidad de tareas que había que evitar.
+- En el paso de **Interacción**, los canales que no tienen abre/clic —Call Center, BTL, KAM,
+  Relacionamiento y pauta— ya no muestran esos chips: queda solo el campo para escribir la
+  interacción esperada. WhatsApp y SMS pierden "Abre" y "No abre" (no tienen apertura); Correo
+  no cambia.
+- **Dashboard de métricas más legible:** cada porcentaje es su propia columna en la tabla de
+  salidas y su propio ítem en las tarjetas de canal, en vez de ir colgado del número. Los canales
+  llevan color: Correo azul, WhatsApp verde y SMS azul claro.
+
+---
+
 ## [1.3.0] — 2026-07-28
 
 ### Cambiado
