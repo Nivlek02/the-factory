@@ -184,5 +184,9 @@ export const notificarAprobada = (project: FactoryProject, brief: FabricaBriefIt
 export const notificarCorreccion = (project: FactoryProject, brief: FabricaBriefItem, nota: string) =>
   notificarResultado('tarea.correccion', project, brief, nota);
 
-/** Prueba desde Ajustes: se envía al correo de quien la pide. Esta sí espera respuesta. */
+/**
+ * Envío de prueba al correo de quien lo pide (esta sí espera respuesta). **Sin uso desde la UI**:
+ * la tarjeta de Ajustes se quitó una vez confirmado que el correo funciona. Se mantiene porque la
+ * edge function sigue soportando el evento `prueba` y volver a exponerlo es agregar un botón.
+ */
 export const enviarCorreoDePrueba = () => invocar({ evento: 'prueba' });

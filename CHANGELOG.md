@@ -25,6 +25,15 @@ en ningún otro archivo.
 
 ---
 
+## [1.1.1] — 2026-07-28
+
+### Eliminado
+
+- Se quitó la tarjeta "Notificaciones por correo" de Ajustes, con su botón de envío de prueba.
+  Servía para comprobar que el correo funcionaba; ya está confirmado y en funcionamiento.
+
+---
+
 ## [1.1.0] — 2026-07-28
 
 ### Agregado

@@ -41,9 +41,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, Send, ShieldAlert, Search, ArrowDownUp, ArrowUp, ArrowDown } from 'lucide-react';
+import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, ShieldAlert, Search, ArrowDownUp, ArrowUp, ArrowDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { enviarCorreoDePrueba } from '@/services/emailNotifications';
 
 /** Mismo mínimo que valida la edge function admin-usuarios; si cambia, cambiar en ambos. */
 const MIN_PASSWORD = 8;
@@ -98,8 +97,6 @@ const SettingsPage = () => {
   const [editPassword, setEditPassword] = useState('');
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-
-  const [isSendingTest, setIsSendingTest] = useState(false);
 
   // Load users on mount
   useEffect(() => {
@@ -518,64 +515,6 @@ const SettingsPage = () => {
             </CardContent>
           </Card>
 
-          {/* Notificaciones por correo */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Send className="h-5 w-5" />
-                Notificaciones por correo
-              </CardTitle>
-              <CardDescription>
-                El equipo recibe un correo cuando se le asigna una tarea, cuando un entregable pasa
-                a revisión y cuando la Estratega lo aprueba o pide correcciones.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Los correos salen de la función <code className="text-xs">notificar-correo</code>.
-                Si algo no llega, esta prueba lo confirma sin tener que mover una tarea real: se
-                envía a tu propio correo ({currentUser?.email}), o a la dirección de pruebas si el
-                envío todavía está en ese modo.
-              </p>
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  disabled={isSendingTest}
-                  onClick={async () => {
-                    setIsSendingTest(true);
-                    try {
-                      const r = await enviarCorreoDePrueba();
-                      // En modo de prueba el correo NO llega a quien lo pidió: mandarlo a revisar
-                      // su bandeja sería mandarlo a buscar algo que nunca va a estar ahí.
-                      const destino = r.enviadoA?.[0] ?? currentUser?.email;
-                      toast(
-                        r.success
-                          ? {
-                              title: r.modoPrueba
-                                ? 'Enviado (modo de prueba)'
-                                : 'Correo de prueba enviado',
-                              description: `Revisa la bandeja de ${destino}. Si no llega en un par de minutos, mira la carpeta de spam.`,
-                            }
-                          : { title: 'No se pudo enviar', description: r.error, variant: 'destructive' }
-                      );
-                    } catch (e) {
-                      toast({
-                        title: 'No se pudo enviar',
-                        description: e instanceof Error ? e.message : String(e),
-                        variant: 'destructive',
-                      });
-                    } finally {
-                      // En el finally a propósito: antes estaba después del await y cualquier
-                      // excepción dejaba el botón girando para siempre (que es justo lo que pasaba).
-                      setIsSendingTest(false);
-                    }
-                  }}
-                >
-                  {isSendingTest ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enviar correo de prueba'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
