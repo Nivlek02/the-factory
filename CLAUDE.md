@@ -1127,6 +1127,52 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       caso de página-4-y-filtrar, orden por usuario, y "Acceso" con su inversión. Typecheck sigue
       con **1 solo error preexistente**; `npm run build` limpio.
 
+35. **Landing pasa de un nodo suelto a una cadena de 3 pasos (Copys → Formulario → Cargue)**
+    - Antes, marcar "Landing" creaba **un solo nodo raíz** (`landing`, rol Gestor de canales) con
+      una tarea "Landing page" y entregable URL. Ahora crea una **cadena que cuelga de Copys**:
+      el copywriter redacta el copy de la landing como una tarea más dentro de **Copys** →
+      **"Formulario de landing"** (Gestor de canales) → **"Cargue de landing"** (Soporte,
+      entregable = link). Cada paso se activa solo al aprobarse el anterior.
+    - **Decisiones confirmadas con el usuario** (`AskUserQuestion`): (1) la cadena **reusa** el
+      nodo Copys existente en vez de tener un nodo de copy propio — el copy de la landing convive
+      con los copys de campaña; (2) el paso de formulario de la landing es **independiente** del
+      requerimiento "Formulario de inscripción", que sigue creando su propio nodo raíz suelto. Con
+      los dos marcados salen dos nodos de formulario distintos, y es a propósito.
+    - **Copys ahora se bifurca en TRES ramas** (Diseño, Call Center, landing) y no deben cruzarse:
+      aprobar el copy de la landing NO puede crear tarea en Diseño, igual que ya pasaba con el
+      guion de Call Center. `activateNextStage` se reescribió alrededor de una tabla
+      `AUTO_ADVANCE` (por stageType: nombre fijo de la tarea + si es checkpoint único) más un
+      predicado `avanzaDesde()` que decide qué rama dispara cada entregable. Reemplaza al viejo
+      `AUTO_ADVANCE_STAGE_TYPES` + los `if` sueltos, que ya no escalaban a tres ramas.
+    - **`isLandingCopy` vive en `DeliverableSummary.ts`, no en StrategyBriefPanels** — lo necesitan
+      los dos y StrategyBriefPanels ya importa de ahí (al revés sería import circular).
+      **`isUrlBrief` tuvo que excluirlo explícitamente**: pasó a `/landing/i` para cubrir "Cargue
+      de la landing" y "Formulario de la landing", y sin la exclusión el copy de la landing —que
+      lleva "landing" en el nombre y es texto enriquecido— se habría renderizado como un link.
+    - **`roleId` real en los nodos nuevos** (`gestor_canales`, `soporte`) en vez de `null`. El
+      resto de nodos lo tiene en `null`, así que las tareas que crea `activateNextStage` heredan
+      la **etiqueta** como roleId ('Diseñador' en vez de 'diseno') y `isTaskOwnedBy` no las
+      reconoce → no salen en "Mis tareas" de esa persona. Es un bug preexistente que **no se
+      arregló para los demás nodos** (fuera de alcance), pero la cadena de landing nace correcta.
+    - **Ruteo de entregables**: `stampCanalNodeIds` suma `copys: /^Copy de landing/i` para anclar
+      el copy a Copys — sin eso aparecería además en la cadena de landing, porque ambos matchean
+      "landing". Y ancla por texto exacto el "Landing page" de proyectos viejos al nodo de cargue,
+      porque ese nodo **cambió de rol** (Gestor de canales → Soporte) y el entregable viejo ya no
+      coincide por `roleLabel`. Por lo mismo, en `briefsForNode` la rama de `landing` se evalúa
+      **antes** del filtro por rol.
+    - **Proyectos ya existentes**: conservan su nodo `landing` viejo y siguen funcionando igual.
+      `syncRequerimientoNodes` los migra cuando alguien **edite y guarde** la campaña: le antepone
+      el nodo de formulario y convierte el cargue a Soporte. Ojo con el estado resultante: como
+      esos proyectos nunca tuvieron un "Copy de landing", el nodo de formulario queda **vacío**
+      hasta que alguien cree la tarea a mano — la cadena no se rellena retroactivamente.
+    - Verificado con Playwright end-to-end (sesión y `factory_projects` stubbeados, **cero
+      escrituras a la base real**): campaña nueva con Landing → los 5 nodos correctos y sin el
+      "Landing" suelto viejo; "Copy de landing" aparece en Copys con editor de texto (no URL);
+      aprobarlo activa "Formulario de la landing" (Gestor de canales, campo de link, sin editor) y
+      **NO** deja nada en Diseño; aprobar ese activa "Cargue de la landing" (Soporte, campo de
+      link). El diagrama muestra a Copys bifurcando en las dos ramas. Typecheck con el único error
+      preexistente; `npm run build` limpio.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,

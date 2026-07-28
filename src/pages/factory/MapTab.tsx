@@ -66,7 +66,8 @@ const DIAGRAM_COLORS = {
 
 const STAGES: StageMeta[] = [
   { type: 'formulario', label: 'Formulario',         short: 'Form',     icon: FileText,        color: DIAGRAM_COLORS.green,   suggestRole: ['Diseñador', 'SEO', 'Mercadeo'] },
-  { type: 'landing',    label: 'Landing',            short: 'Landing',  icon: LayoutPanelTop,  color: DIAGRAM_COLORS.purple,  suggestRole: ['Diseñador', 'SEO'] },
+  { type: 'landing_formulario', label: 'Formulario de landing', short: 'Form. landing', icon: FileText, color: DIAGRAM_COLORS.green, suggestRole: ['Gestor de canales'] },
+  { type: 'landing',    label: 'Cargue de landing',  short: 'Landing',  icon: LayoutPanelTop,  color: DIAGRAM_COLORS.purple,  suggestRole: ['Soporte'] },
   { type: 'copys',      label: 'Copys',              short: 'Copys',    icon: PenLine,         color: DIAGRAM_COLORS.cyan,    suggestRole: ['Copy'] },
   { type: 'diseno',     label: 'Diseño de piezas',   short: 'Diseño',   icon: Palette,         color: DIAGRAM_COLORS.purple,  suggestRole: ['Diseñador'] },
   { type: 'pauta',      label: 'Pauta en redes sociales', short: 'Pauta', icon: Megaphone,      color: DIAGRAM_COLORS.pink,    suggestRole: ['Trafficker'] },

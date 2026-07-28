@@ -876,9 +876,12 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       }
     }
 
-    // ─── Tarea de landing page — responsabilidad del Gestor de canales ───
+    // ─── Landing: arranca en Copys ───
+    // La landing es una cadena de 3 pasos (ver buildLandingChain en factoryStore): el copywriter
+    // redacta el copy acá, y al aprobarlo se activan solos el formulario (Gestor de canales) y el
+    // cargue (Soporte). Por eso solo se siembra la PRIMERA tarea.
     if (reqs.includes('landing')) {
-      addItem('gestor_canales', 'Gestor de canales', 'Landing page');
+      addItem('copy', 'Copywriter', 'Copy de landing');
     }
 
     // ─── Tarea de formulario de inscripción ───

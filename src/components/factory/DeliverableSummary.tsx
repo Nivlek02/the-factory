@@ -42,7 +42,16 @@ const formatSimpleDate = (dateStr?: string | null) => {
 
 export const isCanalBrief = (tarea: string) => tarea.startsWith('Configurar envío por');
 export const isMetricsBrief = (tarea: string) => tarea.startsWith('Recolectar métricas de');
-export const isUrlBrief = (tarea: string) => tarea.includes('Landing') || tarea.includes('Formulario de inscripción');
+
+/** El copy de la landing vive dentro del nodo Copys y es texto enriquecido, no una URL — pero
+ *  lleva "landing" en el nombre, así que hay que excluirlo explícitamente de `isUrlBrief`.
+ *  También lo usa `activateNextStage` para no disparar Diseño desde él. */
+export const isLandingCopy = (tarea: string) => /^Copy de landing/i.test(tarea);
+
+/** Entregables cuyo contenido es un link, no contenido: toda la cadena de landing (formulario y
+ *  cargue) y el formulario de inscripción. */
+export const isUrlBrief = (tarea: string) =>
+  !isLandingCopy(tarea) && (/landing/i.test(tarea) || tarea.includes('Formulario de inscripción'));
 
 /** Vista de solo lectura de un entregable — usada en Equipo y en los paneles de Construir estrategia. */
 export const DeliverableSummary = ({ brief }: { brief: FabricaBriefItem }) => {

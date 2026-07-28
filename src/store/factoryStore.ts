@@ -212,6 +212,7 @@ export interface ProjectTask {
 
 export type StrategyStageType =
   | 'formulario'
+  | 'landing_formulario'
   | 'landing'
   | 'copys'
   | 'aprobacion'
@@ -327,35 +328,57 @@ interface FactoryStore {
  *  aparte: cada entregable pasa por revisión dentro de su propia tarea (ver `hasApprovalStage` en
  *  StrategyBriefPanels). Users can branch/extend it further from "Construir estrategia". */
 const buildDefaultStrategyNodes = (requerimientos: string[] = []): StrategyNode[] => {
-  const node = (
-    id: string,
-    stageType: StrategyStageType,
-    label: string,
-    roleLabel: string,
-    dependsOn: string[]
-  ): StrategyNode => ({
-    id, stageType, label, roleId: null, roleLabel, memberId: null, memberName: null,
-    status: 'pending', dependsOn,
-  });
-
   const copyId = `node-${uid()}`;
   const disenoId = `node-${uid()}`;
   const enviosId = `node-${uid()}`;
 
   const nodes: StrategyNode[] = [
-    node(copyId, 'copys', 'Copys', 'Copywriter', []),
-    node(disenoId, 'diseno', 'Diseño de piezas', 'Diseñador', [copyId]),
-    node(enviosId, 'envios', 'Envío de acciones', 'Gestor de canales', [disenoId]),
+    stageNode(copyId, 'copys', 'Copys', 'Copywriter', []),
+    stageNode(disenoId, 'diseno', 'Diseño de piezas', 'Diseñador', [copyId]),
+    stageNode(enviosId, 'envios', 'Envío de acciones', 'Gestor de canales', [disenoId]),
   ];
 
   if (requerimientos.includes('landing')) {
-    nodes.push(node(`node-${uid()}`, 'landing', 'Landing', 'Gestor de canales', []));
+    nodes.push(...buildLandingChain(copyId));
   }
   if (requerimientos.includes('formulario')) {
-    nodes.push(node(`node-${uid()}`, 'formulario', 'Formulario de inscripción', 'Gestor de canales', []));
+    nodes.push(stageNode(`node-${uid()}`, 'formulario', 'Formulario de inscripción', 'Gestor de canales', []));
   }
 
   return nodes;
+};
+
+const stageNode = (
+  id: string,
+  stageType: StrategyStageType,
+  label: string,
+  roleLabel: string,
+  dependsOn: string[],
+  roleId: string | null = null
+): StrategyNode => ({
+  id, stageType, label, roleId, roleLabel, memberId: null, memberName: null,
+  status: 'pending', dependsOn,
+});
+
+/**
+ * Cadena de la landing: cuelga del nodo Copys (el copywriter redacta el copy de la landing como
+ * una tarea más dentro de Copys) → "Formulario de landing" (Gestor de canales) → "Cargue de
+ * landing" (Soporte, entregable = link). Cada paso se activa solo al aprobarse el anterior, ver
+ * `activateNextStage` en StrategyBriefPanels.
+ *
+ * Ojo: el paso de formulario de ACÁ es el formulario embebido en la landing y es independiente
+ * del requerimiento "Formulario de inscripción", que sigue creando su propio nodo raíz suelto.
+ *
+ * A diferencia del resto de nodos, estos llevan `roleId` real (no null): sin él, las tareas que
+ * crea `activateNextStage` heredan la ETIQUETA como roleId ('Soporte' en vez de 'soporte') y
+ * `isTaskOwnedBy` no las reconoce, así que no saldrían en "Mis tareas" de esa persona.
+ */
+const buildLandingChain = (copysNodeId: string): StrategyNode[] => {
+  const formId = `node-${uid()}`;
+  return [
+    stageNode(formId, 'landing_formulario', 'Formulario de landing', 'Gestor de canales', [copysNodeId], 'gestor_canales'),
+    stageNode(`node-${uid()}`, 'landing', 'Cargue de landing', 'Soporte', [formId], 'soporte'),
+  ];
 };
 
 /** Migración en lectura: los proyectos creados antes de este cambio pueden traer nodos
@@ -396,31 +419,56 @@ const mergeGuionNodes = (nodes: StrategyNode[]): StrategyNode[] => {
     });
 };
 
-/** Mapea cada requerimiento del wizard al stage raíz correspondiente en el flujo de trabajo. */
-const REQ_TO_STAGE: Record<string, { stageType: StrategyStageType; label: string; roleLabel: string }> = {
-  landing: { stageType: 'landing', label: 'Landing', roleLabel: 'Gestor de canales' },
-  formulario: { stageType: 'formulario', label: 'Formulario de inscripción', roleLabel: 'Gestor de canales' },
-};
-
-/** Sincroniza los nodos raíz (landing/formulario/pauta) del flujo de trabajo con los
- *  requerimientos actuales del proyecto al editarlo — agrega los que falten y quita los que
- *  ya no estén seleccionados, sin tocar el resto de la cadena (Copys → Diseño → Envíos) ni
- *  nodos agregados a mano. Corrige que un requerimiento desmarcado (ej. "Formulario de
- *  inscripción") dejara su nodo huérfano en Flujo de trabajo. */
+/** Sincroniza los nodos del flujo de trabajo que dependen de los requerimientos del wizard con
+ *  los requerimientos actuales al editar el proyecto — agrega los que falten y quita los que ya
+ *  no estén seleccionados, sin tocar la cadena Copys → Diseño → Envíos ni nodos agregados a mano.
+ *  Corrige que un requerimiento desmarcado dejara su nodo huérfano en Flujo de trabajo.
+ *
+ *  "Formulario de inscripción" es un nodo raíz suelto; "Landing" es una cadena de 2 nodos que
+ *  cuelga de Copys (ver `buildLandingChain`). */
 const syncRequerimientoNodes = (nodes: StrategyNode[], requerimientos: string[]): StrategyNode[] => {
   let result = nodes;
-  for (const [reqId, cfg] of Object.entries(REQ_TO_STAGE)) {
-    const hasReq = requerimientos.includes(reqId);
-    const existing = result.find((n) => n.stageType === cfg.stageType);
-    if (hasReq && !existing) {
-      result = [...result, {
-        id: `node-${uid()}`, stageType: cfg.stageType, label: cfg.label, roleId: null,
-        roleLabel: cfg.roleLabel, memberId: null, memberName: null, status: 'pending', dependsOn: [],
-      }];
-    } else if (!hasReq && existing) {
-      result = result.filter((n) => n.id !== existing.id);
-    }
+
+  // ── Formulario de inscripción: nodo raíz, como siempre ──
+  const hasFormulario = requerimientos.includes('formulario');
+  const formulario = result.find((n) => n.stageType === 'formulario');
+  if (hasFormulario && !formulario) {
+    result = [...result, stageNode(`node-${uid()}`, 'formulario', 'Formulario de inscripción', 'Gestor de canales', [])];
+  } else if (!hasFormulario && formulario) {
+    result = result.filter((n) => n.id !== formulario.id);
   }
+
+  // ── Landing: cadena Copys → Formulario de landing → Cargue de landing ──
+  const hasLanding = requerimientos.includes('landing');
+  const cargue = result.find((n) => n.stageType === 'landing');
+  const formLanding = result.find((n) => n.stageType === 'landing_formulario');
+
+  if (!hasLanding) {
+    return result.filter((n) => n.stageType !== 'landing' && n.stageType !== 'landing_formulario');
+  }
+
+  const copys = result.find((n) => n.stageType === 'copys');
+  if (!copys) return result; // sin Copys no hay de dónde colgar la cadena
+
+  if (!cargue && !formLanding) return [...result, ...buildLandingChain(copys.id)];
+
+  // Proyectos creados antes de esta cadena traen un solo nodo `landing` suelto (raíz, rol Gestor
+  // de canales). Al editarlos se completa: se le antepone el paso de formulario y el cargue pasa
+  // a Soporte. Los entregables que ya tuviera no se tocan.
+  const formId = formLanding?.id ?? `node-${uid()}`;
+  if (!formLanding) {
+    result = [...result, stageNode(formId, 'landing_formulario', 'Formulario de landing', 'Gestor de canales', [copys.id], 'gestor_canales')];
+  }
+  if (!cargue) {
+    result = [...result, stageNode(`node-${uid()}`, 'landing', 'Cargue de landing', 'Soporte', [formId], 'soporte')];
+  } else if (cargue.roleLabel !== 'Soporte' || !cargue.dependsOn.includes(formId)) {
+    result = result.map((n) =>
+      n.id === cargue.id
+        ? { ...n, label: 'Cargue de landing', roleLabel: 'Soporte', roleId: 'soporte', dependsOn: [formId] }
+        : n
+    );
+  }
+
   return result;
 };
 
@@ -506,11 +554,22 @@ const CANAL_NODE_TEXT_PATTERN: Partial<Record<StrategyStageType, RegExp>> = {
   kam: /\bKAM\b/i,
   btl: /\bBTL\b/i,
   relacionamiento: /relacionamiento/i,
+  // El copy de la landing vive en el nodo Copys, mezclado con los copys de campaña; sin
+  // estampar su nodo aparecería además en la cadena de landing (ambos matchean "landing").
+  copys: /^Copy de landing/i,
 };
 
 const stampCanalNodeIds = (nodes: StrategyNode[], briefs: FabricaBriefItem[]): FabricaBriefItem[] =>
   briefs.map((b) => {
     if (b.currentNodeId) return b;
+
+    // El nodo de cargue de landing pasó de Gestor de canales a Soporte, así que el entregable
+    // "Landing page" de proyectos viejos ya no coincide por rol: se ancla por su texto exacto.
+    if (/^Landing page$/i.test(b.tarea)) {
+      const cargue = nodes.find((n) => n.stageType === 'landing');
+      if (cargue) return { ...b, currentNodeId: cargue.id };
+    }
+
     const match = nodes.find((n) => {
       if (n.roleLabel !== b.roleLabel) return false;
       const pattern = CANAL_NODE_TEXT_PATTERN[n.stageType];

@@ -12,6 +12,7 @@ import {
   getBriefStatus,
   isCanalBrief,
   isUrlBrief,
+  isLandingCopy,
 } from '@/components/factory/DeliverableSummary';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,14 +45,34 @@ const formatDateTime = (iso: string) =>
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 
-/** Etapas cuya aprobación puede activar automáticamente una tarea en el siguiente nodo de la
- *  cadena (ver `activateNextStage`). Copys se bifurca hacia Diseño y hacia Call Center. */
-const AUTO_ADVANCE_STAGE_TYPES: StrategyNode['stageType'][] = ['diseno', 'callcenter'];
-
 /** El guion de la llamada vive como una tarea más dentro de Copys (mismo roleLabel Copywriter),
  *  pero conceptualmente pertenece solo a la rama de Call Center — no debe disparar Diseño, y el
  *  resto de copys no debe disparar el registro de Call Center. Ver también `briefsForNode`. */
 const isCallCenterGuion = (tarea: string) => /guion/i.test(tarea) && /call center/i.test(tarea);
+
+/**
+ * Etapas cuya aprobación puede activar automáticamente una tarea en el siguiente nodo de la
+ * cadena (ver `activateNextStage`). Copys se bifurca hacia Diseño, Call Center y la landing.
+ *
+ * `tarea` fija el nombre de la tarea creada; sin él se hereda el del entregable aprobado (que es
+ * lo que se quiere en Diseño: la pieza se llama igual que su copy). `unico` = un solo checkpoint
+ * por nodo, sin importar cuántos entregables se aprueben aguas arriba.
+ */
+const AUTO_ADVANCE: Partial<Record<StrategyNode['stageType'], { tarea?: string; unico?: boolean }>> = {
+  diseno: {},
+  callcenter: { tarea: 'Registrar realización — Call Center', unico: true },
+  landing_formulario: { tarea: 'Formulario de la landing', unico: true },
+  landing: { tarea: 'Cargue de la landing', unico: true },
+};
+
+/** ¿El nodo `stageType` se activa al aprobar este entregable? Las tres ramas que salen de Copys
+ *  (Diseño, Call Center y landing) no se cruzan: cada entregable dispara solo la suya. */
+const avanzaDesde = (stageType: StrategyNode['stageType'], tarea: string): boolean => {
+  if (stageType === 'callcenter') return isCallCenterGuion(tarea);
+  if (stageType === 'landing_formulario') return isLandingCopy(tarea);
+  if (stageType === 'diseno') return !isCallCenterGuion(tarea) && !isLandingCopy(tarea);
+  return true; // landing ← landing_formulario: cadena lineal, sin bifurcación
+};
 
 /** Al aprobar un entregable, activa automáticamente una tarea pendiente para el siguiente nodo de
  *  la cadena: cualquier copy que NO sea el guion de Call Center → Diseño; el guion → el registro
@@ -63,33 +84,28 @@ const isCallCenterGuion = (tarea: string) => /guion/i.test(tarea) && /call cente
  *  sabe en qué nodo vive la tarea que se está aprobando. */
 const activateNextStage = (project: FactoryProject, currentNodeId: string, brief: FabricaBriefItem) => {
   const nodes = project.strategyNodes ?? [];
-  const isGuion = isCallCenterGuion(brief.tarea);
-  const nextNodes = nodes.filter((n) => {
-    if (!n.dependsOn.includes(currentNodeId) || !n.roleLabel || !AUTO_ADVANCE_STAGE_TYPES.includes(n.stageType)) {
-      return false;
-    }
-    if (n.stageType === 'callcenter') return isGuion;
-    if (n.stageType === 'diseno') return !isGuion;
-    return true;
-  });
+  const nextNodes = nodes.filter(
+    (n) =>
+      n.dependsOn.includes(currentNodeId) &&
+      !!n.roleLabel &&
+      !!AUTO_ADVANCE[n.stageType] &&
+      avanzaDesde(n.stageType, brief.tarea)
+  );
   if (nextNodes.length === 0) return;
+
   const live = useFactoryStore.getState().projects.find((p) => p.id === project.id) ?? project;
   const toAdd: Omit<FabricaBriefItem, 'id' | 'checked'>[] = [];
   for (const n of nextNodes) {
-    if (n.stageType === 'callcenter') {
-      // El registro de Call Center es un checkpoint único por nodo: solo se crea una vez.
-      const already = (live.fabricaBriefs ?? []).some((b) => b.currentNodeId === n.id);
-      if (already) continue;
-      toAdd.push({
-        roleId: n.roleId ?? n.roleLabel!, roleLabel: n.roleLabel!,
-        tarea: 'Registrar realización — Call Center', currentNodeId: n.id, workflowStatus: 'pending',
-      });
-    } else {
-      toAdd.push({
-        roleId: n.roleId ?? n.roleLabel!, roleLabel: n.roleLabel!,
-        tarea: brief.tarea, currentNodeId: n.id, workflowStatus: 'pending',
-      });
-    }
+    const cfg = AUTO_ADVANCE[n.stageType]!;
+    // Checkpoint único: no se duplica por más entregables que se aprueben aguas arriba.
+    if (cfg.unico && (live.fabricaBriefs ?? []).some((b) => b.currentNodeId === n.id)) continue;
+    toAdd.push({
+      roleId: n.roleId ?? n.roleLabel!,
+      roleLabel: n.roleLabel!,
+      tarea: cfg.tarea ?? brief.tarea,
+      currentNodeId: n.id,
+      workflowStatus: 'pending',
+    });
   }
   if (toAdd.length > 0) useFactoryStore.getState().addFabricaBriefs(project.id, toAdd);
 };
@@ -103,9 +119,13 @@ const activateNextStage = (project: FactoryProject, currentNodeId: string, brief
 export const briefsForNode = (project: FactoryProject, node: StrategyNode): FabricaBriefItem[] =>
   (project.fabricaBriefs ?? []).filter((b) => {
     if (b.currentNodeId) return b.currentNodeId === node.id;
+    // El cargue de landing pasó de Gestor de canales a Soporte: los entregables de proyectos
+    // viejos conservan el rol anterior, así que acá no se puede filtrar por rol.
+    if (node.stageType === 'landing') return /^(Landing page|Cargue de la landing)$/i.test(b.tarea);
     if (b.roleLabel !== node.roleLabel) return false;
     if (node.stageType === 'envios') return isCanalBrief(b.tarea);
-    if (node.stageType === 'landing') return b.tarea.includes('Landing');
+    if (node.stageType === 'landing_formulario') return /^Formulario de la landing/i.test(b.tarea);
+    // El copy de la landing vive en Copys (roleLabel Copywriter), no acá.
     if (node.stageType === 'formulario') return b.tarea.includes('Formulario de inscripción');
     // KAM/BTL/Relacionamiento/Call Center comparten roleLabel "Estratega" — sin esto, un
     // entregable sin currentNodeId (que debería estar cubierto por stampCanalNodeIds, ver
@@ -650,7 +670,7 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
           brief={openBrief}
           nodeId={node.id}
           hasApprovalStage={hasApprovalStage}
-          urlOnly={node.stageType === 'landing' || node.stageType === 'formulario'}
+          urlOnly={node.stageType === 'landing' || node.stageType === 'landing_formulario' || node.stageType === 'formulario'}
           queue={inReview}
           onClose={() => setOpenBrief(null)}
           onAdvance={setOpenBrief}
