@@ -1275,14 +1275,20 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
 
 ## Pendientes / próximos pasos
 
-- [ ] **Terminar de configurar las notificaciones por correo (punto 33)** — sin esto no sale ni un
-  correo. **Confirmado el 2026-07-28 contra Supabase real: la función NO está desplegada**
-  (`POST .../functions/v1/notificar-correo` → `404 NOT_FOUND`), que es por lo que fallaba el botón
-  de prueba (ver punto 37):
-  1. `supabase functions deploy notificar-correo`
-  2. Crear cuenta en Resend y sacar la API key.
-  3. Secrets: `supabase secrets set RESEND_API_KEY=... APP_URL=https://tremubaq.vercel.app RESEND_MODO_PRUEBA=<el correo dueño de la cuenta de Resend>`
-  4. Probar con "Enviar correo de prueba" en Ajustes, y después mover una tarea real.
+- [x] ~~**Desplegar y configurar las notificaciones por correo (punto 33)**~~ — hecho el
+  2026-07-28. `notificar-correo` **está desplegada** (antes daba `404 NOT_FOUND`; ahora un POST sin
+  token responde `401 Missing authorization header`). Secrets puestos: `RESEND_API_KEY`,
+  `RESEND_MODO_PRUEBA`, `APP_URL`. **`RESEND_FROM` NO se puso a propósito**: su default
+  (`Tremu <onboarding@resend.dev>`) es el único remitente válido mientras no haya dominio
+  verificado. La API key se validó enviando un correo real por `api.resend.com` (HTTP 200).
+  **Falta ejercitar el camino completo desde la UI** (Ajustes → "Enviar correo de prueba"), que
+  requiere sesión en Tremu.
+  - **Cuentas (que nadie recordaba):** Supabase es **`kazuhacoc01@gmail.com`**; Resend es
+    **`kelvinjrtrujillo@gmail.com`** — son distintas, y `RESEND_MODO_PRUEBA` tiene que ser la de
+    Resend o los envíos rebotan con 403.
+  - **Plan de Resend:** gratis = 3.000 correos/mes, **tope de 100/día**, 1 dominio. El siguiente
+    es $20/mes por 50.000. El sistema agrupa **un correo por rol**, no por tarea (crear una
+    campaña son ~5-6 correos), así que el tope diario queda muy holgado.
 - [ ] **Verificar el dominio en Resend para que el equipo reciba de verdad** — hoy se eligió
   arrancar SIN dominio, así que todo va redirigido a una sola dirección (`RESEND_MODO_PRUEBA`) y
   **nadie del equipo recibe sus notificaciones**. Al verificar `camarabaq.org.co` por DNS: apuntar
@@ -1322,6 +1328,9 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
 - [ ] **Revocar el access token de Supabase (`sbp_...`)** usado el 2026-07-16 para aplicar la
   migración — se pegó en el chat y da acceso a **toda la cuenta**, no solo a este proyecto:
   https://supabase.com/dashboard/account/tokens
+- [ ] **Rotar la API key de Resend** — la actual (`re_LDKrS…`) se pegó en un chat el 2026-07-28.
+  Se rota en https://resend.com/api-keys y basta con volver a correr
+  `supabase secrets set RESEND_API_KEY=...`; no hay cambios de código.
 - [ ] **Borrar la rama `origin/worktree-bitacora-rediseno-tremu`** — su PR #1 ya se mergeó.
 - [ ] **Investigar el `406` del `upsert` a `factory_projects`** — apareció al verificar el punto 23.
   Ojo: el 406 de la consola **no era ese** — era `app_version` + `.single()` sin sesión, y **ya no
