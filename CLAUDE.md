@@ -1294,6 +1294,14 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       / 4.380 / 5.365), los nombres largos completos, los porcentajes bien (36% apertura de
       Correo, 15% clics de WhatsApp), badges de "Sin datos"/"Sin métricas", sin overflow
       horizontal y sin errores de consola.
+    - **Ajuste pedido enseguida (`1.2.1`):** fuera "Base" de las tarjetas del desglose (el volumen
+      queda en la tabla de Salidas) y fuera "Apertura"/"Enviados" en los canales que no los
+      capturan — `capturaEnvioYApertura()` es hoy `canal === 'Correo'`, espejo del switch de
+      campos de `FactoryPage`. **Si algún día ese formulario empieza a pedir esos campos para
+      WhatsApp/SMS, hay que actualizar esa función o las tarjetas seguirán escondiéndolos.**
+      Como el denominador del porcentaje de clics dejó de estar a la vista, se dejó en el
+      `title` de la fila. La grilla lleva `items-start` para que las tarjetas de un solo dato no
+      se estiren al alto de la de Correo.
 
 ## Rediseño visual "Tremu ISO" — CERRADO
 

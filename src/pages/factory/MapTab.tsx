@@ -670,6 +670,11 @@ const sumarEn = (acc: Acumulado, m: Record<string, string>) => {
 
 const fmtNum = (n: number) => (n > 0 ? n.toLocaleString('es-CO') : '—');
 
+/** Solo Correo captura "Enviados" y "Apertura": el formulario de métricas de los demás canales
+ *  pide únicamente base y clics (ver el switch de campos en FactoryPage). En WhatsApp, SMS o
+ *  pauta esas dos filas serían un guion permanente, así que no se muestran. */
+const capturaEnvioYApertura = (canal: string) => canal === 'Correo';
+
 /** Porcentaje sobre el alcance real. WhatsApp y SMS no capturan "Enviados" (su formulario solo
  *  pide Base y Clics), así que ahí el denominador es la base — si no, saldría siempre "—". */
 const fmtPct = (parte: number, sobre: number) =>
@@ -759,7 +764,9 @@ export const MetricsDashboardTab = ({ project }: Props) => {
           <Workflow className="h-3 w-3" />
           Desglose por canal
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {/* items-start: sin esto la grilla estira todas las tarjetas al alto de la más alta
+            (Correo, que tiene 3 métricas) y las de un solo dato quedan medio vacías. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
           {porCanal.map(([canal, acc]) => {
             const Icono = iconoDe(canal);
             const alcance = acc.enviados || acc.base;
@@ -774,22 +781,30 @@ export const MetricsDashboardTab = ({ project }: Props) => {
                     <span className="ml-auto text-[10px] text-muted-foreground shrink-0">Sin datos</span>
                   )}
                 </div>
+                {/* Sin "Base" a pedido: el volumen se sigue viendo en la tabla de Salidas.
+                    Enviados y Apertura solo en los canales que los capturan (ver capturaEnvioYApertura):
+                    en WhatsApp/SMS serían un guion permanente. */}
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                  <div className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">Base</span>
-                    <span className="font-medium tabular-nums">{fmtNum(acc.base)}</span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">Enviados</span>
-                    <span className="font-medium tabular-nums">{fmtNum(acc.enviados)}</span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">Apertura</span>
-                    <span className="font-medium tabular-nums">
-                      <NumConPct valor={acc.apertura} sobre={alcance} />
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-2">
+                  {capturaEnvioYApertura(canal) && (
+                    <>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Enviados</span>
+                        <span className="font-medium tabular-nums">{fmtNum(acc.enviados)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Apertura</span>
+                        <span className="font-medium tabular-nums">
+                          <NumConPct valor={acc.apertura} sobre={alcance} />
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  <div
+                    className="flex justify-between gap-2"
+                    // El porcentaje se calcula sobre un número que ya no está a la vista: se deja
+                    // el denominador en el tooltip para que se pueda comprobar de dónde sale.
+                    title={alcance > 0 ? `Sobre ${alcance.toLocaleString('es-CO')}` : undefined}
+                  >
                     <span className="text-muted-foreground">Clics</span>
                     <span className="font-medium tabular-nums">
                       <NumConPct valor={acc.clics} sobre={alcance} />

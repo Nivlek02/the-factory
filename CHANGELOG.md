@@ -25,6 +25,18 @@ en ningún otro archivo.
 
 ---
 
+## [1.2.1] — 2026-07-28
+
+### Cambiado
+
+- El desglose por canal ya no muestra "Base" — el volumen se sigue viendo en la tabla de salidas
+  de abajo.
+- Las tarjetas de WhatsApp, SMS y pauta ya no muestran "Apertura" ni "Enviados": esos canales no
+  registran esos datos, así que solo aparecía un guion. Correo, que sí los tiene, no cambia.
+  El porcentaje de clics conserva su referencia en el tooltip de la fila.
+
+---
+
 ## [1.2.0] — 2026-07-28
 
 ### Agregado
