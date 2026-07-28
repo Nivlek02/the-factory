@@ -4,10 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, ExternalLink, Copy, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
-type ActiveTab = 'webinars' | 'proyectos';
-
 const WEBINARS_URL = 'https://n8n.camarabaq.org.co/webhook/webinars';
-const PROYECTOS_URL = 'https://n8n.camarabaq.org.co/webhook/proyectos_eventos';
 const REGISTROS_WEBHOOK = 'https://n8n.camarabaq.org.co/webhook/webinars_registros';
 
 type Webinar = {
@@ -21,28 +18,11 @@ type Webinar = {
   tipo?: string;
 };
 
-type ProyectoItem = {
-  titulo: string;
-  tipo: string;
-  inscritos: number;
-  link: string;
-  has_link: boolean;
-};
-
 type WebinarsData = {
   success?: boolean;
   total?: number;
   updated_at?: string;
   webinars?: Webinar[];
-};
-
-type ProyectosData = {
-  success?: boolean;
-  total?: number;
-  updated_at?: string;
-  eventos?: ProyectoItem[];
-  proyectos?: ProyectoItem[];
-  sin_clasificar?: ProyectoItem[];
 };
 
 const cardStyle: React.CSSProperties = {
@@ -102,10 +82,8 @@ const secondaryBtn: React.CSSProperties = {
 };
 
 const WebinarsPage = () => {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('webinars');
   const [isLoading, setIsLoading] = useState(true);
   const [webinarsData, setWebinarsData] = useState<WebinarsData | null>(null);
-  const [proyectosData, setProyectosData] = useState<ProyectosData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [manualId, setManualId] = useState('');
 
@@ -125,31 +103,9 @@ const WebinarsPage = () => {
     }
   }, []);
 
-  const fetchProyectos = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(PROYECTOS_URL);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const payload: ProyectosData = Array.isArray(json) ? json[0] : json;
-      setProyectosData(payload || {});
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al cargar');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (activeTab === 'webinars') fetchWebinars();
-    else fetchProyectos();
-  }, [activeTab, fetchWebinars, fetchProyectos]);
-
-  const handleRefresh = () => {
-    if (activeTab === 'webinars') fetchWebinars();
-    else fetchProyectos();
-  };
+    fetchWebinars();
+  }, [fetchWebinars]);
 
   const copyLink = async (url: string) => {
     if (!url) {
@@ -185,65 +141,6 @@ const WebinarsPage = () => {
     }
   };
 
-  const renderProyectoTable = (title: string, items: ProyectoItem[]) => (
-    <div className="mb-8">
-      <h2 className="text-xl font-semibold text-foreground mb-3">{title}</h2>
-      <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-foreground text-background">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium">Título</th>
-              <th className="text-center px-4 py-3 font-medium">Inscritos</th>
-              <th className="text-left px-4 py-3 font-medium">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="text-center text-muted-foreground italic py-6">
-                  No hay registros disponibles
-                </td>
-              </tr>
-            ) : (
-              items.map((item, idx) => (
-                <tr key={idx} className="border-b last:border-b-0 hover:bg-muted/50 transition-colors">
-                  <td className="px-4 py-3" style={{ overflowWrap: 'anywhere' }}>{item.titulo}</td>
-                  <td className="px-4 py-3 text-center font-medium">{item.inscritos}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {item.has_link && item.link ? (
-                        <>
-                          <a
-                            href={item.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-semibold hover:opacity-90 transition-opacity"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            Ver inscritos
-                          </a>
-                          <button
-                            onClick={() => copyLink(item.link)}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-secondary/80 transition-colors border border-border"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                            Copiar link
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground text-sm italic">Sin link</span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-
   const webinars = webinarsData?.webinars || [];
 
   return (
@@ -254,19 +151,7 @@ const WebinarsPage = () => {
         </div>
 
         <div className="mb-4 flex gap-2 flex-wrap">
-          <Button
-            variant={activeTab === 'webinars' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('webinars')}
-          >
-            Webinars
-          </Button>
-          <Button
-            variant={activeTab === 'proyectos' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('proyectos')}
-          >
-            Proyectos y eventos
-          </Button>
-          <Button variant="outline" onClick={handleRefresh} disabled={isLoading}>
+          <Button variant="outline" onClick={fetchWebinars} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Actualizar
           </Button>
@@ -282,7 +167,7 @@ const WebinarsPage = () => {
             <div className="text-center py-16 text-destructive">
               Error al cargar los datos: {error}
             </div>
-          ) : activeTab === 'webinars' ? (
+          ) : (
             <>
               <div className="flex justify-between items-center mb-3">
                 <p className="text-sm text-muted-foreground">
@@ -372,19 +257,7 @@ const WebinarsPage = () => {
                 </Button>
               </div>
             </>
-          ) : proyectosData ? (
-            <>
-              {proyectosData.updated_at && (
-                <p className="text-xs text-muted-foreground mb-4">
-                  Actualizado: {new Date(proyectosData.updated_at).toLocaleString('es-CO')}
-                </p>
-              )}
-              {renderProyectoTable('Eventos', proyectosData.eventos || [])}
-              {renderProyectoTable('Proyectos', proyectosData.proyectos || [])}
-              {proyectosData.sin_clasificar && proyectosData.sin_clasificar.length > 0 &&
-                renderProyectoTable('Sin clasificar', proyectosData.sin_clasificar)}
-            </>
-          ) : null}
+          )}
         </div>
       </div>
     </Layout>
