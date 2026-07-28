@@ -1266,6 +1266,35 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       de consola. Typecheck con el único error preexistente (`CreateProjectWizard.tsx:482`);
       `npm run build` limpio.
 
+38. **Dashboard de métricas: desglose por canal + lista de salidas** (versión `1.2.0`)
+    - El tab solo tenía 4 tarjetas con los **totales** de toda la campaña. Se agregaron dos
+      bloques debajo: **Desglose por canal** (una tarjeta por canal con base/enviados/apertura/
+      clics + porcentaje) y **Salidas** (tabla con cada envío, su fecha y sus métricas).
+    - **De dónde salen los datos:** de los briefs `Recolectar métricas de {X}`, que se crean solos
+      al marcar un envío como realizado (nodo Envío de acciones) o al publicar una campaña de
+      pauta. **La granularidad es por canal, no por toque** — hay un solo brief por canal aunque
+      el Plan de canales tenga 3 toques de Correo — así que una "salida" en esta tabla es un
+      canal, no una fila del plan. Si algún día se quiere por toque, hay que cambiar la
+      deduplicación de `activateNextStage`, no el dashboard.
+    - **Correo/WhatsApp/SMS siempre se muestran**, con o sin datos (marcados "Sin datos"): el
+      objetivo es que se vea lo que falta cargar, no que el canal desaparezca. El resto de
+      canales solo aparece si tiene métricas.
+    - **Ojo con los campos según canal:** el formulario de métricas de `FactoryPage` pide 4
+      campos para Correo (base/enviados/apertura/clics) pero **solo base y clics para los demás**.
+      Por eso el porcentaje se calcula sobre `enviados || baseTotal` — si se usara solo
+      `enviados`, WhatsApp y SMS mostrarían "—" siempre. Donde no hay valor se imprime **un solo
+      guion**, no "— · —".
+    - **`canalDeMetricas()` corta por prefijo, no con `/…de (\w+)/`** como hace `FactoryPage`
+      (línea ~582): ese `\w+` parte los nombres con espacio o tilde — "Call Center" quedaría en
+      "Call" y una campaña de pauta perdería medio nombre. **Ese bug sigue vivo en FactoryPage**
+      (solo afecta a qué campos muestra el formulario), no se tocó por estar fuera del pedido.
+    - Verificado con Playwright (datos stubbeados, cero escrituras reales) con 5 salidas que
+      cubren los casos raros: Correo con los 4 campos, WhatsApp sin `enviados`, SMS vacío, una
+      campaña de pauta con espacios en el nombre y Call Center: totales correctos (73.500 / 12.180
+      / 4.380 / 5.365), los nombres largos completos, los porcentajes bien (36% apertura de
+      Correo, 15% clics de WhatsApp), badges de "Sin datos"/"Sin métricas", sin overflow
+      horizontal y sin errores de consola.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,

@@ -25,6 +25,25 @@ en ningún otro archivo.
 
 ---
 
+## [1.2.0] — 2026-07-28
+
+### Agregado
+
+- **Desglose por canal en el Dashboard de métricas.** Además de los totales de la campaña, ahora
+  hay una tarjeta por canal — Correo, WhatsApp y SMS siempre visibles, más cualquier otro que
+  tenga métricas cargadas (pauta, Call Center) — con base, enviados, apertura y clics, y el
+  porcentaje al lado de apertura y clics. Un canal sin datos aparece igual, marcado "Sin datos",
+  para que se note lo que falta por cargar.
+- **Lista de salidas** debajo del desglose: cada envío con su fecha y sus métricas, y una marca
+  "Sin métricas" en los que todavía nadie llenó.
+
+### Cambiado
+
+- El primer bloque del dashboard ahora se llama "Totales de la campaña", para distinguirlo del
+  desglose por canal que va debajo.
+
+---
+
 ## [1.1.1] — 2026-07-28
 
 ### Eliminado

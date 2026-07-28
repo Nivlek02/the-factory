@@ -18,6 +18,7 @@ import {
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   TrendingUp, Users, RefreshCw, CalendarClock,
   Briefcase, Store, Handshake, PhoneCall, Mail, MailOpen,
+  MessageCircle, Smartphone,
   MousePointerClick, Link2, ShieldCheck, Flag,
   Heart, Brain, Gift,
 } from 'lucide-react';
@@ -626,48 +627,235 @@ export const WorkflowTab = ({ project }: Props) => {
 
 // ─── Dashboard de métricas ────────────────────────────────────────────────
 
+// ─── Dashboard de métricas ────────────────────────────────────────────────────
+
+const PREFIJO_METRICAS = 'Recolectar métricas de ';
+
+/** Canales de envío directo que siempre se muestran, tengan datos o no: son los que la campaña
+ *  usa para salir a la base. El resto (Pauta, etc.) solo aparece si alguien cargó métricas. */
+const CANALES_ENVIO = [
+  { id: 'Correo', label: 'Correo', icon: Mail },
+  { id: 'WhatsApp', label: 'WhatsApp', icon: MessageCircle },
+  { id: 'SMS', label: 'SMS', icon: Smartphone },
+];
+
+/** Lo que sigue después de "Recolectar métricas de ". Se corta por prefijo y no con
+ *  `/…de (\w+)/` (como hace FactoryPage) porque `\w+` parte los nombres con espacio o tilde:
+ *  "Call Center" quedaría en "Call" y una campaña de pauta perdería medio nombre. */
+const canalDeMetricas = (tarea: string) => tarea.slice(PREFIJO_METRICAS.length).trim();
+
+const aNumero = (v?: string) => {
+  const n = parseInt(v ?? '', 10);
+  return Number.isFinite(n) ? n : 0;
+};
+const tieneDato = (v?: string) => (v ?? '').trim() !== '';
+
+interface Acumulado {
+  base: number;
+  enviados: number;
+  apertura: number;
+  clics: number;
+  conDatos: boolean;
+}
+const acumuladoVacio = (): Acumulado => ({ base: 0, enviados: 0, apertura: 0, clics: 0, conDatos: false });
+
+const sumarEn = (acc: Acumulado, m: Record<string, string>) => {
+  acc.base += aNumero(m.baseTotal);
+  acc.enviados += aNumero(m.enviados);
+  acc.apertura += aNumero(m.apertura);
+  acc.clics += aNumero(m.clics);
+  acc.conDatos =
+    acc.conDatos || ['baseTotal', 'enviados', 'apertura', 'clics'].some((k) => tieneDato(m[k]));
+};
+
+const fmtNum = (n: number) => (n > 0 ? n.toLocaleString('es-CO') : '—');
+
+/** Porcentaje sobre el alcance real. WhatsApp y SMS no capturan "Enviados" (su formulario solo
+ *  pide Base y Clics), así que ahí el denominador es la base — si no, saldría siempre "—". */
+const fmtPct = (parte: number, sobre: number) =>
+  sobre > 0 && parte > 0 ? `${Math.round((parte / sobre) * 100)}%` : '—';
+
+const CeldaNum = ({ children }: { children: React.ReactNode }) => (
+  <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">{children}</td>
+);
+
+/** Número con su porcentaje al lado. Sin dato imprime un solo "—": mostrar "— · —" (el guion
+ *  del valor más el del porcentaje) llenaba las tarjetas de ruido donde justamente no hay nada. */
+const NumConPct = ({ valor, sobre }: { valor: number; sobre: number }) => {
+  if (valor <= 0) return <>—</>;
+  const pct = fmtPct(valor, sobre);
+  return (
+    <>
+      {fmtNum(valor)}
+      {pct !== '—' && <span className="text-muted-foreground font-normal"> · {pct}</span>}
+    </>
+  );
+};
+
 export const MetricsDashboardTab = ({ project }: Props) => {
-  const loopMetrics = useMemo(() => {
-    const metricsBriefs = (project.fabricaBriefs ?? []).filter(
-      (b) => b.tarea.startsWith('Recolectar métricas de') && b.deliverableMetricas
+  const { totales, porCanal, salidas } = useMemo(() => {
+    const briefs = (project.fabricaBriefs ?? []).filter((b) => b.tarea.startsWith(PREFIJO_METRICAS));
+
+    const totales = acumuladoVacio();
+    const porCanal = new Map<string, Acumulado>();
+    // Los 3 canales de envío se siembran vacíos para que la tarjeta exista aunque nadie haya
+    // cargado nada: así se ve que el dato falta, en vez de que el canal simplemente no aparezca.
+    CANALES_ENVIO.forEach((c) => porCanal.set(c.id, acumuladoVacio()));
+
+    const salidas = briefs.map((b) => {
+      const m = b.deliverableMetricas ?? {};
+      const canal = canalDeMetricas(b.tarea);
+      sumarEn(totales, m);
+      if (!porCanal.has(canal)) porCanal.set(canal, acumuladoVacio());
+      sumarEn(porCanal.get(canal)!, m);
+
+      const alcance = aNumero(m.enviados) || aNumero(m.baseTotal);
+      return {
+        id: b.id,
+        canal,
+        fecha: b.fechaAccion ?? null,
+        base: aNumero(m.baseTotal),
+        enviados: aNumero(m.enviados),
+        apertura: aNumero(m.apertura),
+        clics: aNumero(m.clics),
+        alcance,
+        conDatos: ['baseTotal', 'enviados', 'apertura', 'clics'].some((k) => tieneDato(m[k])),
+      };
+    });
+
+    // Primero los 3 canales de envío en su orden fijo; después lo demás (pauta, etc.).
+    const orden = CANALES_ENVIO.map((c) => c.id);
+    const listaCanales = [...porCanal.entries()].sort(
+      (a, b) =>
+        (orden.indexOf(a[0]) === -1 ? 99 : orden.indexOf(a[0])) -
+        (orden.indexOf(b[0]) === -1 ? 99 : orden.indexOf(b[0])),
     );
 
-    let totalBase = 0;
-    let totalEnviados = 0;
-    let totalApertura = 0;
-    let totalClics = 0;
-
-    for (const b of metricsBriefs) {
-      const m = b.deliverableMetricas!;
-      totalBase     += parseInt(m.baseTotal ?? '0');
-      totalEnviados += parseInt(m.enviados  ?? '0');
-      totalApertura += parseInt(m.apertura  ?? '0');
-      totalClics    += parseInt(m.clics     ?? '0');
-    }
-
-    const fmt = (n: number) => n > 0 ? n.toLocaleString('es-CO') : '—';
-
-    return {
-      base:     { value: fmt(totalBase),     delta: '—' },
-      enviados: { value: fmt(totalEnviados), delta: '—' },
-      apertura: { value: fmt(totalApertura), delta: '—' },
-      clics:    { value: fmt(totalClics),    delta: '—' },
-    };
+    return { totales, porCanal: listaCanales, salidas };
   }, [project.fabricaBriefs]);
+
+  const iconoDe = (canal: string) =>
+    CANALES_ENVIO.find((c) => c.id === canal)?.icon ?? Megaphone;
 
   return (
     <div className="space-y-4">
+      {/* Totales de la campaña */}
       <div className="rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-3">
           <TrendingUp className="h-3 w-3" />
-          Dashboard de métricas
+          Totales de la campaña
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <LoopMetric label="Base total" value={loopMetrics.base.value} delta={loopMetrics.base.delta} icon={<Users className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Enviados" value={loopMetrics.enviados.value} delta={loopMetrics.enviados.delta} icon={<Send className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Apertura" value={loopMetrics.apertura.value} delta={loopMetrics.apertura.delta} icon={<MailOpen className="h-3.5 w-3.5" />} />
-          <LoopMetric label="Clics" value={loopMetrics.clics.value} delta={loopMetrics.clics.delta} icon={<MousePointerClick className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Base total" value={fmtNum(totales.base)} delta="—" icon={<Users className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Enviados" value={fmtNum(totales.enviados)} delta="—" icon={<Send className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Apertura" value={fmtNum(totales.apertura)} delta="—" icon={<MailOpen className="h-3.5 w-3.5" />} />
+          <LoopMetric label="Clics" value={fmtNum(totales.clics)} delta="—" icon={<MousePointerClick className="h-3.5 w-3.5" />} />
         </div>
+      </div>
+
+      {/* Desglose por canal */}
+      <div className="rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-3">
+          <Workflow className="h-3 w-3" />
+          Desglose por canal
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {porCanal.map(([canal, acc]) => {
+            const Icono = iconoDe(canal);
+            const alcance = acc.enviados || acc.base;
+            return (
+              <div key={canal} className="rounded-lg border border-border/60 bg-card p-3 shadow-sm">
+                <div className="flex items-center gap-2 mb-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-muted/60 flex items-center justify-center text-muted-foreground shrink-0">
+                    <Icono className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-sm font-semibold truncate" title={canal}>{canal}</span>
+                  {!acc.conDatos && (
+                    <span className="ml-auto text-[10px] text-muted-foreground shrink-0">Sin datos</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Base</span>
+                    <span className="font-medium tabular-nums">{fmtNum(acc.base)}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Enviados</span>
+                    <span className="font-medium tabular-nums">{fmtNum(acc.enviados)}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Apertura</span>
+                    <span className="font-medium tabular-nums">
+                      <NumConPct valor={acc.apertura} sobre={alcance} />
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Clics</span>
+                    <span className="font-medium tabular-nums">
+                      <NumConPct valor={acc.clics} sobre={alcance} />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Lista de salidas */}
+      <div className="rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-3">
+          <Send className="h-3 w-3" />
+          Salidas ({salidas.length})
+        </h3>
+        {salidas.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-4 text-center">
+            Todavía no hay salidas. Se crean solas al marcar un envío como realizado en el nodo
+            "Envío de acciones", o al publicar una campaña de pauta.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border/60">
+                  <th className="px-2 py-2 text-left font-medium">Salida</th>
+                  <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Fecha</th>
+                  <th className="px-2 py-2 text-right font-medium">Base</th>
+                  <th className="px-2 py-2 text-right font-medium">Enviados</th>
+                  <th className="px-2 py-2 text-right font-medium">Apertura</th>
+                  <th className="px-2 py-2 text-right font-medium">Clics</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salidas.map((s) => {
+                  const Icono = iconoDe(s.canal);
+                  return (
+                    <tr key={s.id} className="border-b border-border/40 last:border-0">
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Icono className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="font-medium truncate" title={s.canal}>{s.canal}</span>
+                          {!s.conDatos && (
+                            <Badge variant="outline" className="text-[9px] px-1.5 py-0 shrink-0">
+                              Sin métricas
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 text-muted-foreground whitespace-nowrap">
+                        {s.fecha ? formatFechaCorta(s.fecha) : '—'}
+                      </td>
+                      <CeldaNum>{fmtNum(s.base)}</CeldaNum>
+                      <CeldaNum>{fmtNum(s.enviados)}</CeldaNum>
+                      <CeldaNum><NumConPct valor={s.apertura} sobre={s.alcance} /></CeldaNum>
+                      <CeldaNum><NumConPct valor={s.clics} sobre={s.alcance} /></CeldaNum>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
