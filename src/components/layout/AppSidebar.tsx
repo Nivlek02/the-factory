@@ -138,18 +138,37 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
 
       {/* Footer */}
       <div className={`p-3 border-t border-sidebar-border ${collapsed ? 'flex flex-col items-center gap-2' : ''}`}>
-        <div className="flex items-center gap-3 px-1">
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-[11px] font-semibold text-primary-foreground shadow-sm">
-            {currentUser?.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2) || 'U'}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate leading-tight">
-              {currentUser?.fullName || 'Usuario'}
-            </p>
-            <p className="text-[11px] text-sidebar-foreground/55 truncate">
-              {currentUser ? (currentUser.displayRole ?? ROLE_LABELS[currentUser.role]) : ''}
-            </p>
-          </div>
+        <div className={`flex items-center gap-3 ${collapsed ? '' : 'px-1'}`}>
+          {/* shrink-0: sin esto el avatar se aplasta a óvalo cuando el espacio aprieta. */}
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <div className="w-8 h-8 shrink-0 rounded-full bg-primary flex items-center justify-center text-[11px] font-semibold text-primary-foreground shadow-sm">
+                {currentUser?.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2) || 'U'}
+              </div>
+            </TooltipTrigger>
+            {/* Colapsado el nombre no cabe: se lee en el tooltip, igual que las opciones del menú. */}
+            {collapsed && (
+              <TooltipContent side="right" sideOffset={10}>
+                <p className="font-medium">{currentUser?.fullName || 'Usuario'}</p>
+                <p className="text-xs opacity-70">
+                  {currentUser ? (currentUser.displayRole ?? ROLE_LABELS[currentUser.role]) : ''}
+                </p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+          {/* Colapsado el sidebar mide 64px: este bloque desbordaba porque el pie es un flex
+              column con items-center, así que la fila se dimensionaba a su contenido (el nombre
+              completo) en vez de al ancho disponible, y ni min-w-0 ni truncate lo contenían. */}
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate leading-tight">
+                {currentUser?.fullName || 'Usuario'}
+              </p>
+              <p className="text-[11px] text-sidebar-foreground/55 truncate">
+                {currentUser ? (currentUser.displayRole ?? ROLE_LABELS[currentUser.role]) : ''}
+              </p>
+            </div>
+          )}
           {!collapsed && (
             <Tooltip>
               <TooltipTrigger asChild>

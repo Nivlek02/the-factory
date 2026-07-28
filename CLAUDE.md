@@ -1101,6 +1101,32 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       credenciales documentadas (`ktrujillo` / `Colombia2026*` con el correo de la cuenta), así que
       no se ejercitó ni la pantalla de Ajustes ni un flujo de aprobación real en el navegador.
 
+34. **Fix: el nombre de usuario se salía del sidebar colapsado + buscar/ordenar en Usuarios
+    Registrados**
+    - **Causa del desborde** (`AppSidebar.tsx`): colapsado el sidebar mide `w-16` (64px), pero el
+      bloque de nombre/rol del pie **se seguía renderizando**. No bastaba con `min-w-0` +
+      `truncate`: el pie en modo colapsado es `flex flex-col items-center`, y con `items-center` los
+      hijos toman ancho de contenido (`auto`) en vez de estirarse — así que la fila se dimensionaba
+      al nombre completo y se salía de la caja. Todos los demás elementos del sidebar ya ocultaban
+      su texto y lo pasaban a un `Tooltip`; el pie era el único sin ese tratamiento. Ahora hace lo
+      mismo: colapsado solo queda el avatar, y **el nombre + rol se leen en el tooltip**. De paso el
+      avatar lleva `shrink-0` (sin eso se aplastaba a óvalo cuando el espacio apretaba).
+    - **Buscar y ordenar en "Usuarios Registrados"** (`SettingsPage.tsx`), mismo patrón visual que
+      la toolbar de "Mis tareas": campo de búsqueda + `Select` de criterio + botón de dirección.
+      Busca por usuario, nombre, correo y **etiqueta de rol**; ordena por Usuario/Nombre/Correo/
+      Rol/**Acceso**. Detalles que importan: la búsqueda **ignora tildes** (`norm` con
+      `normalize('NFD')`, así "munoz" encuentra a "Muñoz"); se ordena y se busca por
+      `displayRole ?? ROLE_LABELS[role]` — la etiqueta que se VE, que puede ser un cargo por
+      persona (ver `CARGO_POR_USUARIO`), no la del rol; "Acceso" pone **"Sin acceso" primero**
+      porque es la lista sobre la que hay que actuar; y al filtrar **la página se resetea** si
+      quedó fuera de rango (estar en la página 4 y buscar algo con 1 resultado mostraba una tabla
+      vacía sin explicación).
+    - Verificado con Playwright contra la UI real, con 22 usuarios simulados (stub de la sesión en
+      `localStorage` + `page.route` sobre `usuarios_roles`, porque no tengo credenciales de
+      producción): búsqueda sin tildes, por rol, por correo, sin resultados con mensaje propio, el
+      caso de página-4-y-filtrar, orden por usuario, y "Acceso" con su inversión. Typecheck sigue
+      con **1 solo error preexistente**; `npm run build` limpio.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,

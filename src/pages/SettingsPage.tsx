@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
 import Layout from '@/components/layout/Layout';
 import { useAuthStore, AppRole, ROLE_LABELS, AppUser } from '@/store/authStore';
@@ -41,12 +41,26 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, Send, ShieldAlert } from 'lucide-react';
+import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, Send, ShieldAlert, Search, ArrowDownUp, ArrowUp, ArrowDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { enviarCorreoDePrueba } from '@/services/emailNotifications';
 
 /** Mismo mínimo que valida la edge function admin-usuarios; si cambia, cambiar en ambos. */
 const MIN_PASSWORD = 8;
+
+type UserSortKey = 'usuario' | 'nombre' | 'correo' | 'rol' | 'acceso';
+
+const USER_SORT_OPTIONS: { value: UserSortKey; label: string }[] = [
+  { value: 'usuario', label: 'Usuario' },
+  { value: 'nombre', label: 'Nombre' },
+  { value: 'correo', label: 'Correo' },
+  { value: 'rol', label: 'Rol' },
+  { value: 'acceso', label: 'Acceso' },
+];
+
+/** Búsqueda sin tildes: "Munoz" tiene que encontrar a "Muñoz" y "jose" a "José". */
+const norm = (s: string) =>
+  (s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 const SettingsPage = () => {
   const {
@@ -68,6 +82,11 @@ const SettingsPage = () => {
   // Pagination
   const [userPage, setUserPage] = useState(1);
   const USERS_PER_PAGE = 5;
+
+  // Búsqueda y ordenamiento de la lista de usuarios
+  const [userSearch, setUserSearch] = useState('');
+  const [userSortBy, setUserSortBy] = useState<UserSortKey>('nombre');
+  const [userSortDir, setUserSortDir] = useState<'asc' | 'desc'>('asc');
 
   // Edit user state
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
@@ -198,6 +217,45 @@ const SettingsPage = () => {
 
   const getRoleLabel = (role: AppRole) => ROLE_LABELS[role] ?? role;
 
+  /** Etiqueta que se VE en la tabla: puede ser un cargo por persona, no la del rol (ver
+   *  CARGO_POR_USUARIO). Se ordena y se busca por esto para que coincida con lo que se lee. */
+  const etiquetaRol = (u: AppUser) => u.displayRole ?? getRoleLabel(u.role);
+
+  /** userId cae al id de la fila cuando no hay cuenta en auth.users (ver rowToUser). */
+  const tieneAcceso = (u: AppUser) => u.userId !== u.id;
+
+  const usuariosVisibles = useMemo(() => {
+    const q = norm(userSearch.trim());
+    const filtrados = q
+      ? users.filter((u) =>
+          [u.username, u.fullName, u.email, etiquetaRol(u)].some((campo) => norm(campo).includes(q))
+        )
+      : users;
+
+    const cmp = (a: AppUser, b: AppUser): number => {
+      switch (userSortBy) {
+        case 'usuario': return a.username.localeCompare(b.username, 'es');
+        case 'correo':  return (a.email ?? '').localeCompare(b.email ?? '', 'es');
+        case 'rol':     return etiquetaRol(a).localeCompare(etiquetaRol(b), 'es') || a.fullName.localeCompare(b.fullName, 'es');
+        // "Sin acceso" primero: es la lista sobre la que hay que actuar (crearles la cuenta).
+        case 'acceso':  return Number(tieneAcceso(a)) - Number(tieneAcceso(b)) || a.fullName.localeCompare(b.fullName, 'es');
+        case 'nombre':
+        default:        return a.fullName.localeCompare(b.fullName, 'es');
+      }
+    };
+
+    const ordenados = [...filtrados].sort(cmp);
+    return userSortDir === 'desc' ? ordenados.reverse() : ordenados;
+  }, [users, userSearch, userSortBy, userSortDir]);
+
+  const totalUserPages = Math.max(1, Math.ceil(usuariosVisibles.length / USERS_PER_PAGE));
+
+  // Al buscar u ordenar, la página actual puede quedar fuera de rango (ej. estabas en la 4 y el
+  // filtro dejó 1 sola página) y la tabla se vería vacía sin explicación.
+  useEffect(() => {
+    if (userPage > totalUserPages) setUserPage(1);
+  }, [userPage, totalUserPages]);
+
   // Ajustes es solo para quienes pueden gestionar usuarios (Estratega/Soporte). El item del
   // sidebar ya se oculta; esto bloquea también la navegación directa por URL a /settings.
   if (!puedeGestionar) return <Navigate to="/" replace />;
@@ -305,9 +363,52 @@ const SettingsPage = () => {
                   </div>
                 </div>
               )}
+              {/* Buscar + ordenar */}
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="Buscar por nombre, usuario, correo o rol…"
+                    className="h-8 pl-8 text-xs"
+                    aria-label="Buscar usuarios"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <ArrowDownUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  <Select value={userSortBy} onValueChange={(v) => setUserSortBy(v as UserSortKey)}>
+                    <SelectTrigger className="h-8 w-[170px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {USER_SORT_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>Ordenar: {o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => setUserSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                    title={userSortDir === 'asc' ? 'Ascendente' : 'Descendente'}
+                    aria-label={userSortDir === 'asc' ? 'Ascendente' : 'Descendente'}
+                  >
+                    {userSortDir === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
+              </div>
+
+              {userSearch.trim() && (
+                <p className="text-xs text-muted-foreground mb-2">
+                  {usuariosVisibles.length} de {users.length} usuarios coinciden con "{userSearch.trim()}"
+                </p>
+              )}
+
               {(() => {
-                const totalUserPages = Math.ceil(users.length / USERS_PER_PAGE);
-                const paginatedUsers = users.slice((userPage - 1) * USERS_PER_PAGE, userPage * USERS_PER_PAGE);
+                const paginatedUsers = usuariosVisibles.slice((userPage - 1) * USERS_PER_PAGE, userPage * USERS_PER_PAGE);
                 return (
                   <>
                     <Table>
@@ -321,10 +422,12 @@ const SettingsPage = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {users.length === 0 ? (
+                        {usuariosVisibles.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                              No hay usuarios registrados
+                              {userSearch.trim()
+                                ? `Ningún usuario coincide con "${userSearch.trim()}"`
+                                : 'No hay usuarios registrados'}
                             </TableCell>
                           </TableRow>
                         ) : (
@@ -338,11 +441,9 @@ const SettingsPage = () => {
                               <TableCell>
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <Badge className={getRoleBadgeColor(user.role)} title={`Rol: ${getRoleLabel(user.role)}`}>
-                                    {user.displayRole ?? getRoleLabel(user.role)}
+                                    {etiquetaRol(user)}
                                   </Badge>
-                                  {/* userId cae al id de la fila cuando no hay cuenta en auth.users
-                                      (ver rowToUser en authService): esa igualdad = no puede entrar. */}
-                                  {user.userId === user.id && (
+                                  {!tieneAcceso(user) && (
                                     <Badge
                                       variant="outline"
                                       className="border-state-review/40 bg-state-review-bg text-state-review text-[10px] px-1.5"
