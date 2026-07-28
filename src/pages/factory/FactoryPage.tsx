@@ -579,8 +579,9 @@ const TeamTasksTab = ({
             // Métricas y URL (Landing/Formulario) no tienen hoy un lugar en "Construir estrategia",
             // así que se siguen editando aquí. Copy/Diseño y el estado de envío se editan allá.
             if (isMetricsBrief(deliverableBrief.tarea)) {
-              const canalMatch = deliverableBrief.tarea.match(/Recolectar métricas de (\w+)/);
-              const canalTipo = canalMatch?.[1] ?? '';
+              // Se corta por prefijo: el /…de (\w+)/ que había antes partía los nombres con
+              // espacio o tilde ("Call Center" → "Call") y le mostraba los campos equivocados.
+              const canalTipo = deliverableBrief.tarea.replace(/^Recolectar métricas de /, '').trim();
               const fields = canalTipo === 'Correo'
                 ? [
                     { key: 'baseTotal', label: 'Base total' },
@@ -589,7 +590,9 @@ const TeamTasksTab = ({
                     { key: 'clics', label: 'Clics' },
                   ]
                 : [
-                    { key: 'baseTotal', label: 'Base total' },
+                    // WhatsApp/SMS no tienen apertura ni una "base" distinta de lo que sale:
+                    // se pide directamente lo enviado, que es lo que muestra el dashboard.
+                    { key: 'enviados', label: 'Enviados' },
                     { key: 'clics', label: 'Clics' },
                   ];
               return (

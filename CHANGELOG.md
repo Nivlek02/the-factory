@@ -25,6 +25,22 @@ en ningún otro archivo.
 
 ---
 
+## [1.3.0] — 2026-07-28
+
+### Cambiado
+
+- **El Dashboard de métricas mide solo Correo, WhatsApp y SMS.** Call Center nunca tuvo métricas
+  (su entregable es "¿se realizó? sí/no") y las de pauta viven en Meta y Google, así que ya no
+  aparecen acá. Los datos de pauta no se borran: siguen en su propia tarea.
+- **El desglose por canal quedó en Enviados y Clics**, más Apertura solo en Correo, que es el
+  único canal donde ese dato existe.
+- En las métricas de WhatsApp y SMS ahora se pide **"Enviados"** en vez de "Base total": es el
+  mismo número, con el nombre que le corresponde. Lo que ya estaba cargado se sigue viendo.
+- Se quitó "Base" de la tabla de salidas y la tarjeta "Base total" de los totales — con Base
+  fuera del resto del tablero, ese número solo lo aportaba Correo y el total quedaba cojo.
+
+---
+
 ## [1.2.1] — 2026-07-28
 
 ### Cambiado

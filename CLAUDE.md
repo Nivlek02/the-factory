@@ -1302,6 +1302,22 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       Como el denominador del porcentaje de clics dejó de estar a la vista, se dejó en el
       `title` de la fila. La grilla lleva `items-start` para que las tarjetas de un solo dato no
       se estiren al alto de la de Correo.
+    - **Recorte final (`1.3.0`), pedido por el usuario:** el dashboard mide **solo Correo,
+      WhatsApp y SMS** (`esCanalMedido`). Se confirmó leyendo el código que **Call Center nunca
+      generó métricas** (usa `DoneDateBriefPanel`; solo `DeliveryBriefPanel` y `PautaBriefPanel`
+      crean `Recolectar métricas de …`), así que ahí no se pierde nada. **Pauta sí las genera** y
+      esas tareas se siguen creando y llenando — únicamente **se ocultan** de este tab; si algún
+      día hay que verlas, es quitar el filtro, no recuperar datos. El filtro se aplica **en el
+      origen** para que los totales cuadren con la suma del desglose.
+    - Métricas por canal: **Enviados + Clics, y Apertura solo en Correo** (`mideApertura`). Se
+      quitó "Base" de todo el tab (tarjetas, tabla y la tarjeta "Base total" de los totales):
+      solo Correo la captura, así que el total salía cojo.
+    - **Se cambió el formulario de métricas** (`FactoryPage`): para los canales que no son Correo
+      ahora pide `enviados` en vez de `baseTotal`. Lo ya cargado no se pierde porque
+      `enviadosDe()` hace `enviados || baseTotal` — **si se quita ese fallback, las métricas
+      registradas antes del 2026-07-28 se ven en cero.**
+    - De paso se corrigió ahí el `/…de (\w+)/` documentado arriba (cortaba "Call Center" en
+      "Call" y mostraba los campos equivocados); ahora corta por prefijo igual que el dashboard.
 
 ## Rediseño visual "Tremu ISO" — CERRADO
 

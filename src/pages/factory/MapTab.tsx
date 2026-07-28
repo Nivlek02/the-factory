@@ -631,13 +631,20 @@ export const WorkflowTab = ({ project }: Props) => {
 
 const PREFIJO_METRICAS = 'Recolectar métricas de ';
 
-/** Canales de envío directo que siempre se muestran, tengan datos o no: son los que la campaña
- *  usa para salir a la base. El resto (Pauta, etc.) solo aparece si alguien cargó métricas. */
+/**
+ * Los únicos canales que este dashboard mide, y siempre se muestran tengan datos o no.
+ *
+ * Fuera quedan a propósito Call Center (su entregable es "¿se realizó? sí/no + fecha", nunca
+ * generó una tarea de métricas) y Pauta: esa **sí** crea "Recolectar métricas de {campaña}" al
+ * publicarse, pero sus números viven en Meta/Google y no son comparables con un envío. Los datos
+ * de pauta no se borran — siguen en su propia tarea —, simplemente no entran acá.
+ */
 const CANALES_ENVIO = [
-  { id: 'Correo', label: 'Correo', icon: Mail },
-  { id: 'WhatsApp', label: 'WhatsApp', icon: MessageCircle },
-  { id: 'SMS', label: 'SMS', icon: Smartphone },
+  { id: 'Correo', icon: Mail },
+  { id: 'WhatsApp', icon: MessageCircle },
+  { id: 'SMS', icon: Smartphone },
 ];
+const esCanalMedido = (canal: string) => CANALES_ENVIO.some((c) => c.id === canal);
 
 /** Lo que sigue después de "Recolectar métricas de ". Se corta por prefijo y no con
  *  `/…de (\w+)/` (como hace FactoryPage) porque `\w+` parte los nombres con espacio o tilde:
@@ -659,9 +666,16 @@ interface Acumulado {
 }
 const acumuladoVacio = (): Acumulado => ({ base: 0, enviados: 0, apertura: 0, clics: 0, conDatos: false });
 
+/**
+ * Enviados del registro. El `|| baseTotal` es por compatibilidad: hasta hoy el formulario de
+ * WhatsApp/SMS pedía "Base total" en vez de "Enviados", así que lo ya cargado vive en esa clave.
+ * Sin este fallback, las métricas registradas antes de este cambio se verían en cero.
+ */
+const enviadosDe = (m: Record<string, string>) => aNumero(m.enviados) || aNumero(m.baseTotal);
+
 const sumarEn = (acc: Acumulado, m: Record<string, string>) => {
   acc.base += aNumero(m.baseTotal);
-  acc.enviados += aNumero(m.enviados);
+  acc.enviados += enviadosDe(m);
   acc.apertura += aNumero(m.apertura);
   acc.clics += aNumero(m.clics);
   acc.conDatos =
@@ -670,13 +684,11 @@ const sumarEn = (acc: Acumulado, m: Record<string, string>) => {
 
 const fmtNum = (n: number) => (n > 0 ? n.toLocaleString('es-CO') : '—');
 
-/** Solo Correo captura "Enviados" y "Apertura": el formulario de métricas de los demás canales
- *  pide únicamente base y clics (ver el switch de campos en FactoryPage). En WhatsApp, SMS o
- *  pauta esas dos filas serían un guion permanente, así que no se muestran. */
-const capturaEnvioYApertura = (canal: string) => canal === 'Correo';
+/** Solo Correo mide apertura: es el único canal donde el dato existe. En WhatsApp y SMS la fila
+ *  sería un guion permanente, así que solo llevan Enviados y Clics. */
+const mideApertura = (canal: string) => canal === 'Correo';
 
-/** Porcentaje sobre el alcance real. WhatsApp y SMS no capturan "Enviados" (su formulario solo
- *  pide Base y Clics), así que ahí el denominador es la base — si no, saldría siempre "—". */
+/** Porcentaje sobre los enviados. */
 const fmtPct = (parte: number, sobre: number) =>
   sobre > 0 && parte > 0 ? `${Math.round((parte / sobre) * 100)}%` : '—';
 
@@ -699,41 +711,40 @@ const NumConPct = ({ valor, sobre }: { valor: number; sobre: number }) => {
 
 export const MetricsDashboardTab = ({ project }: Props) => {
   const { totales, porCanal, salidas } = useMemo(() => {
-    const briefs = (project.fabricaBriefs ?? []).filter((b) => b.tarea.startsWith(PREFIJO_METRICAS));
+    // Solo Correo/WhatsApp/SMS: lo de pauta y cualquier otro registro queda fuera del dashboard
+    // (ver CANALES_ENVIO). Se filtra acá, en el origen, para que los totales de arriba siempre
+    // cuadren con la suma del desglose y de las salidas.
+    const briefs = (project.fabricaBriefs ?? []).filter(
+      (b) => b.tarea.startsWith(PREFIJO_METRICAS) && esCanalMedido(canalDeMetricas(b.tarea)),
+    );
 
     const totales = acumuladoVacio();
     const porCanal = new Map<string, Acumulado>();
-    // Los 3 canales de envío se siembran vacíos para que la tarjeta exista aunque nadie haya
-    // cargado nada: así se ve que el dato falta, en vez de que el canal simplemente no aparezca.
+    // Los 3 canales se siembran vacíos para que la tarjeta exista aunque nadie haya cargado
+    // nada: así se ve que el dato falta, en vez de que el canal simplemente no aparezca.
     CANALES_ENVIO.forEach((c) => porCanal.set(c.id, acumuladoVacio()));
 
     const salidas = briefs.map((b) => {
       const m = b.deliverableMetricas ?? {};
       const canal = canalDeMetricas(b.tarea);
       sumarEn(totales, m);
-      if (!porCanal.has(canal)) porCanal.set(canal, acumuladoVacio());
       sumarEn(porCanal.get(canal)!, m);
 
-      const alcance = aNumero(m.enviados) || aNumero(m.baseTotal);
+      const enviados = enviadosDe(m);
       return {
         id: b.id,
         canal,
         fecha: b.fechaAccion ?? null,
-        base: aNumero(m.baseTotal),
-        enviados: aNumero(m.enviados),
+        enviados,
         apertura: aNumero(m.apertura),
         clics: aNumero(m.clics),
-        alcance,
         conDatos: ['baseTotal', 'enviados', 'apertura', 'clics'].some((k) => tieneDato(m[k])),
       };
     });
 
-    // Primero los 3 canales de envío en su orden fijo; después lo demás (pauta, etc.).
     const orden = CANALES_ENVIO.map((c) => c.id);
     const listaCanales = [...porCanal.entries()].sort(
-      (a, b) =>
-        (orden.indexOf(a[0]) === -1 ? 99 : orden.indexOf(a[0])) -
-        (orden.indexOf(b[0]) === -1 ? 99 : orden.indexOf(b[0])),
+      (a, b) => orden.indexOf(a[0]) - orden.indexOf(b[0]),
     );
 
     return { totales, porCanal: listaCanales, salidas };
@@ -750,8 +761,9 @@ export const MetricsDashboardTab = ({ project }: Props) => {
           <TrendingUp className="h-3 w-3" />
           Totales de la campaña
         </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <LoopMetric label="Base total" value={fmtNum(totales.base)} delta="—" icon={<Users className="h-3.5 w-3.5" />} />
+        {/* Sin "Base total": con Base fuera del desglose, ese número solo lo aportaría Correo
+            (es el único canal cuyo formulario lo pide) y el total quedaría cojo. */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <LoopMetric label="Enviados" value={fmtNum(totales.enviados)} delta="—" icon={<Send className="h-3.5 w-3.5" />} />
           <LoopMetric label="Apertura" value={fmtNum(totales.apertura)} delta="—" icon={<MailOpen className="h-3.5 w-3.5" />} />
           <LoopMetric label="Clics" value={fmtNum(totales.clics)} delta="—" icon={<MousePointerClick className="h-3.5 w-3.5" />} />
@@ -769,7 +781,6 @@ export const MetricsDashboardTab = ({ project }: Props) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
           {porCanal.map(([canal, acc]) => {
             const Icono = iconoDe(canal);
-            const alcance = acc.enviados || acc.base;
             return (
               <div key={canal} className="rounded-lg border border-border/60 bg-card p-3 shadow-sm">
                 <div className="flex items-center gap-2 mb-2.5">
@@ -781,33 +792,25 @@ export const MetricsDashboardTab = ({ project }: Props) => {
                     <span className="ml-auto text-[10px] text-muted-foreground shrink-0">Sin datos</span>
                   )}
                 </div>
-                {/* Sin "Base" a pedido: el volumen se sigue viendo en la tabla de Salidas.
-                    Enviados y Apertura solo en los canales que los capturan (ver capturaEnvioYApertura):
-                    en WhatsApp/SMS serían un guion permanente. */}
+                {/* Sin "Base": el desglose se queda en Enviados y Clics, más Apertura donde
+                    existe (solo Correo). */}
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                  {capturaEnvioYApertura(canal) && (
-                    <>
-                      <div className="flex justify-between gap-2">
-                        <span className="text-muted-foreground">Enviados</span>
-                        <span className="font-medium tabular-nums">{fmtNum(acc.enviados)}</span>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <span className="text-muted-foreground">Apertura</span>
-                        <span className="font-medium tabular-nums">
-                          <NumConPct valor={acc.apertura} sobre={alcance} />
-                        </span>
-                      </div>
-                    </>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Enviados</span>
+                    <span className="font-medium tabular-nums">{fmtNum(acc.enviados)}</span>
+                  </div>
+                  {mideApertura(canal) && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Apertura</span>
+                      <span className="font-medium tabular-nums">
+                        <NumConPct valor={acc.apertura} sobre={acc.enviados} />
+                      </span>
+                    </div>
                   )}
-                  <div
-                    className="flex justify-between gap-2"
-                    // El porcentaje se calcula sobre un número que ya no está a la vista: se deja
-                    // el denominador en el tooltip para que se pueda comprobar de dónde sale.
-                    title={alcance > 0 ? `Sobre ${alcance.toLocaleString('es-CO')}` : undefined}
-                  >
+                  <div className="flex justify-between gap-2">
                     <span className="text-muted-foreground">Clics</span>
                     <span className="font-medium tabular-nums">
-                      <NumConPct valor={acc.clics} sobre={alcance} />
+                      <NumConPct valor={acc.clics} sobre={acc.enviados} />
                     </span>
                   </div>
                 </div>
@@ -835,7 +838,6 @@ export const MetricsDashboardTab = ({ project }: Props) => {
                 <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border/60">
                   <th className="px-2 py-2 text-left font-medium">Salida</th>
                   <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Fecha</th>
-                  <th className="px-2 py-2 text-right font-medium">Base</th>
                   <th className="px-2 py-2 text-right font-medium">Enviados</th>
                   <th className="px-2 py-2 text-right font-medium">Apertura</th>
                   <th className="px-2 py-2 text-right font-medium">Clics</th>
@@ -860,10 +862,9 @@ export const MetricsDashboardTab = ({ project }: Props) => {
                       <td className="px-2 py-2 text-muted-foreground whitespace-nowrap">
                         {s.fecha ? formatFechaCorta(s.fecha) : '—'}
                       </td>
-                      <CeldaNum>{fmtNum(s.base)}</CeldaNum>
                       <CeldaNum>{fmtNum(s.enviados)}</CeldaNum>
-                      <CeldaNum><NumConPct valor={s.apertura} sobre={s.alcance} /></CeldaNum>
-                      <CeldaNum><NumConPct valor={s.clics} sobre={s.alcance} /></CeldaNum>
+                      <CeldaNum><NumConPct valor={s.apertura} sobre={s.enviados} /></CeldaNum>
+                      <CeldaNum><NumConPct valor={s.clics} sobre={s.enviados} /></CeldaNum>
                     </tr>
                   );
                 })}
