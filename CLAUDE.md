@@ -1349,6 +1349,20 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       "¿Formulario básico?" aparece y desaparece con la opción; y en Interacción la fila de Correo
       trae los 5 chips mientras la de Call Center trae **cero** chips y el campo libre. Sin
       errores de consola.
+    - **Fix inmediato (`1.4.1`): esconder los chips no bastaba.** El diagrama del ciclo
+      (`EcosystemCycleDiagram`) seguía pintando "Call Center: Clic, No clic" porque los toques ya
+      guardados conservan esas selecciones en `interacciones` — el cambio anterior solo dejó de
+      ofrecerlas. La regla se movió a **`src/lib/interacciones.ts`** (la necesitan el wizard y el
+      diagrama; tenerla solo en el wizard fue justamente la causa) y el diagrama ahora filtra con
+      `interaccionesValidas(canal, row)`: descarta las estándar que el canal no admite y conserva
+      las personalizadas. Un toque sin interacciones válidas **se sigue listando**, con el nombre
+      del canal a secas y sin los dos puntos colgando.
+    - `updateCanalRow` limpia las interacciones al **cambiar de canal**, para no dejar datos
+      invisibles (un toque que era Correo con "Abre" y pasa a Call Center). **No se migró la base**
+      — el filtro de lectura hace innecesario tocarla, igual que `stripApprovalNodes`.
+    - Verificado con Playwright sobre datos sucios a propósito: Call Center con `['Clic','No clic']`
+      sale como **"Call Center"** solo; con `['Clic','Agenda cita']` sale **"Call Center: Agenda
+      cita"**; Correo conserva sus dos; y un SMS con un "Abre" viejo queda en **"SMS: Clic"**.
 
 ## Rediseño visual "Tremu ISO" — CERRADO
 

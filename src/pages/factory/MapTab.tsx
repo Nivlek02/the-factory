@@ -39,6 +39,7 @@ import {
   ContentBriefPanel, DeliveryBriefPanel, DoneDateBriefPanel, PautaBriefPanel, briefsForNode,
 } from './StrategyBriefPanels';
 import { getBriefStatus } from '@/components/factory/DeliverableSummary';
+import { interaccionesValidas } from '@/lib/interacciones';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Stage palette: the strategic building blocks of a marketing project
@@ -1163,11 +1164,14 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
             // La etapa de Interacción muestra las interacciones esperadas de cada acción de
             // Atracción (una acción puede tener varias).
             const atrEtapa = etapas.find((e) => e.tipo === 'atraccion');
+            // `interaccionesValidas` descarta las estándar que ese canal no admite: los toques
+            // guardados antes de esa regla pueden traer un "Clic" en un Call Center, y sin este
+            // filtro el diagrama lo seguiría mostrando. Un toque sin interacciones válidas se
+            // sigue listando, solo que con el nombre del canal a secas.
             const interacciones = etapa.tipo === 'interaccion' && atrEtapa
               ? (project.canales ?? [])
                   .filter((c) => c.etapaId === atrEtapa.id)
-                  .map((c) => ({ canal: c.canal, list: c.interacciones ?? (c.interaccion ? [c.interaccion] : []) }))
-                  .filter((c) => c.list.length > 0)
+                  .map((c) => ({ canal: c.canal, list: interaccionesValidas(c.canal, c) }))
               : [];
             // Captura: Landing y/o Formulario (de los requerimientos de la campaña).
             const capturaReqs = etapa.tipo === 'captura'
@@ -1217,16 +1221,22 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
                 ) : etapa.tipo === 'interaccion' ? (
                   interacciones.length > 0 ? (
                     <div className="mt-1.5 flex flex-col gap-1">
-                      {interacciones.map((c, ci) => (
-                        <span
-                          key={`${c.canal}-${ci}`}
-                          className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
-                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
-                          title={`${c.canal}: ${c.list.join(', ')}`}
-                        >
-                          {c.canal}: {c.list.join(', ')}
-                        </span>
-                      ))}
+                      {interacciones.map((c, ci) => {
+                        // Sin interacciones válidas se imprime solo el canal, sin los dos puntos
+                        // colgando: es el caso de Call Center y compañía cuando nadie escribió
+                        // una interacción personalizada.
+                        const texto = c.list.length > 0 ? `${c.canal}: ${c.list.join(', ')}` : c.canal;
+                        return (
+                          <span
+                            key={`${c.canal}-${ci}`}
+                            className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
+                            style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                            title={texto}
+                          >
+                            {texto}
+                          </span>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-[9px] text-muted-foreground mt-1">Sin interacciones</p>

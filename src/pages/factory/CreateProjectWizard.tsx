@@ -20,6 +20,9 @@ import {
 } from 'lucide-react';
 
 import { FactoryProject } from '@/store/factoryStore';
+import {
+  INTERACCION_OPCIONES, opcionesDeCanal, interaccionesDe, interaccionesValidas,
+} from '@/lib/interacciones';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -261,24 +264,8 @@ const ToqueRow = ({
 
 /** Opciones de interacción esperada tras un toque, en la etapa de Interacción. Se pueden elegir
  *  varias por acción; "Personalizado" agrega un valor de texto libre. */
-const INTERACCION_OPCIONES = ['Abre', 'No abre', 'Clic', 'No clic', 'Visita landing'] as const;
-
-/**
- * Interacciones estándar que aplican a cada canal. Solo el correo tiene apertura; WhatsApp y SMS
- * tienen clic pero no "abre". En los demás (Call Center, BTL, KAM, Relacionamiento, pauta) esos
- * chips no significan nada — ahí la interacción esperada se escribe a mano ("agenda cita",
- * "pide info"…), así que la fila queda solo con el campo personalizado.
- */
-const INTERACCIONES_POR_CANAL: Record<string, readonly string[]> = {
-  Correo: ['Abre', 'No abre', 'Clic', 'No clic', 'Visita landing'],
-  WhatsApp: ['Clic', 'No clic', 'Visita landing'],
-  SMS: ['Clic', 'No clic', 'Visita landing'],
-};
-const opcionesDeCanal = (canal: string): readonly string[] => INTERACCIONES_POR_CANAL[canal] ?? [];
-
-/** Lista de interacciones de un toque, tolerando el formato legacy de una sola (`interaccion`). */
-const interaccionesDe = (row: { interaccion?: string; interacciones?: string[] }): string[] =>
-  row.interacciones ?? (row.interaccion ? [row.interaccion] : []);
+// La regla de qué interacciones admite cada canal vive en src/lib/interacciones.ts porque el
+// diagrama del ecosistema (MapTab) necesita la misma para no pintar selecciones inválidas.
 
 /** Una fila de la etapa de Interacción: muestra una acción sembrada en Atracción (canal, solo
  *  lectura) y permite elegir VARIAS interacciones esperadas (chips toggleables + personalizadas).
@@ -695,7 +682,17 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   };
   const removeCanalRow = (id: string) => setCanalesRows((prev) => prev.filter((r) => r.id !== id));
   const updateCanalRow = (id: string, field: string, value: string) =>
-    setCanalesRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+    setCanalesRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const next = { ...r, [field]: value };
+        // Al cambiar de canal se limpian las interacciones que el nuevo canal no admite: si no,
+        // un toque que era Correo con "Abre" y pasa a Call Center se guardaría con un "Abre"
+        // invisible en la UI que igual aparecería en el diagrama del ecosistema.
+        if (field === 'canal') next.interacciones = interaccionesValidas(value, r);
+        return next;
+      }),
+    );
   // Interacciones (múltiples) de una acción de Atracción, editadas desde la etapa de Interacción.
   const updateCanalRowInteracciones = (id: string, values: string[]) =>
     setCanalesRows((prev) => prev.map((r) => (r.id === id ? { ...r, interacciones: values } : r)));

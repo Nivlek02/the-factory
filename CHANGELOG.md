@@ -25,6 +25,19 @@ en ningún otro archivo.
 
 ---
 
+## [1.4.1] — 2026-07-28
+
+### Corregido
+
+- **El diagrama del ciclo ya no muestra "clic / no clic" en Call Center** ni en los demás canales
+  que no tienen esas interacciones. Ahora muestra lo que se haya escrito en el campo
+  personalizado y, si no se escribió nada, solo el nombre del canal. Aplica también a campañas
+  guardadas antes del cambio, sin tener que volver a editarlas.
+- Al cambiar el canal de una acción se limpian las interacciones que el canal nuevo no admite,
+  para que no queden datos invisibles arrastrados del canal anterior.
+
+---
+
 ## [1.4.0] — 2026-07-28
 
 ### Cambiado
