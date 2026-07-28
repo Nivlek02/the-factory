@@ -33,26 +33,77 @@ interface Respuesta {
   modoPrueba?: boolean;
 }
 
-const invocar = async (body: Payload): Promise<Respuesta> => {
-  const { data, error } = await supabase.functions.invoke('notificar-correo', { body });
+/** Si la función no responde en este tiempo, se corta: nada acá justifica esperar más. */
+const TIMEOUT_MS = 20_000;
 
-  // invoke() marca error para cualquier no-2xx, pero el motivo real viene en el cuerpo.
-  if (error) {
-    const detalle = await (error as { context?: Response }).context
-      ?.json()
-      .then((b: { error?: string }) => b?.error)
-      .catch(() => null);
-    return { success: false, error: detalle ?? error.message };
+/**
+ * Saca el motivo real del error de `invoke()`.
+ *
+ * `error.context` es `any` y cambia según el tipo de fallo: para un no-2xx es un `Response`
+ * (el motivo viene en el cuerpo), pero para un fallo de red/CORS es el `TypeError` crudo del
+ * fetch. Llamarle `.json()` a eso último tira "context.json is not a function" — y como esto
+ * corre dentro de la promesa que espera el botón de "Enviar correo de prueba", esa excepción
+ * dejaba el botón cargando para siempre. De ahí que acá se compruebe el tipo antes de tocarlo.
+ */
+const motivoDelError = async (error: { message?: string; context?: unknown }): Promise<string> => {
+  const ctx = error?.context;
+  if (typeof Response !== 'undefined' && ctx instanceof Response) {
+    try {
+      const cuerpo = (await ctx.clone().json()) as { error?: string; message?: string };
+      const detalle = cuerpo?.error ?? cuerpo?.message;
+      if (detalle) {
+        // 404 del gateway = la función no está desplegada. Sin esto el usuario ve
+        // "Requested function was not found" y no sabe qué hacer con eso.
+        if (ctx.status === 404) {
+          return `La función notificar-correo no está desplegada en Supabase (404). Falta ejecutar: supabase functions deploy notificar-correo`;
+        }
+        return detalle;
+      }
+    } catch {
+      /* el cuerpo no era JSON: se sigue con el mensaje genérico */
+    }
+    return `El servidor respondió ${ctx.status}.`;
   }
-  if (data?.error) return { success: false, error: data.error as string };
-  return { success: true, ...(data ?? {}) };
+  // Fallo de red, CORS o preflight rechazado (típico cuando la función no existe: el gateway
+  // responde el preflight sin permitir content-type y el navegador bloquea el POST).
+  if (error?.message?.includes('Failed to send a request')) {
+    return 'No se pudo contactar la función notificar-correo. Puede que no esté desplegada en Supabase o que no haya conexión.';
+  }
+  return error?.message ?? 'Error desconocido al invocar notificar-correo.';
+};
+
+const invocar = async (body: Payload): Promise<Respuesta> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const { data, error } = await supabase.functions.invoke('notificar-correo', {
+      body,
+      signal: controller.signal,
+    });
+
+    // invoke() marca error para cualquier no-2xx, pero el motivo real viene en el cuerpo.
+    if (error) return { success: false, error: await motivoDelError(error) };
+    if (data?.error) return { success: false, error: data.error as string };
+    return { success: true, ...(data ?? {}) };
+  } catch (e) {
+    // Red de seguridad: pase lo que pase acá adentro, esta promesa SIEMPRE resuelve. Quien la
+    // espera (el botón de prueba) no puede quedarse colgado por una excepción inesperada.
+    if (controller.signal.aborted) {
+      return { success: false, error: `La función no respondió en ${TIMEOUT_MS / 1000} segundos.` };
+    }
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 /** Dispara sin bloquear: quien llama sigue su flujo aunque el correo tarde o falle. */
 const disparar = (body: Payload) => {
-  void invocar(body).then((r) => {
-    if (!r.success) console.warn('[notificar-correo] no se envió:', r.error);
-  });
+  void invocar(body)
+    .then((r) => {
+      if (!r.success) console.warn('[notificar-correo] no se envió:', r.error);
+    })
+    .catch((e) => console.warn('[notificar-correo] falló la invocación:', e));
 };
 
 /**

@@ -25,6 +25,32 @@ en ningún otro archivo.
 
 ---
 
+## [1.1.0] — 2026-07-28
+
+### Agregado
+
+- **Seguimiento de eventos** muestra una barra con porcentaje mientras carga, en vez de un
+  spinner sin información. La consulta a Zoom puede tardar varios segundos y antes no se sabía
+  si algo estaba pasando.
+
+### Cambiado
+
+- **El diagrama de Flujo de trabajo se lee mucho mejor.** Las líneas entre etapas ahora son
+  negras, van en ángulo recto de tarjeta a tarjeta y terminan en una flecha, así que se sigue la
+  secuencia de un vistazo (antes eran curvas grises casi invisibles que pasaban por debajo de
+  las tarjetas). Los nodos tienen más aire entre ellos y las etapas ya no se aplastan en
+  pantallas angostas: si no caben, el diagrama se desplaza en horizontal en vez de recortar los
+  títulos. La exportación a imagen sigue saliendo completa.
+
+### Corregido
+
+- **"Enviar correo de prueba" (Ajustes) ya no se queda cargando para siempre.** Cuando la
+  función de correo no responde, el botón vuelve a la normalidad y explica qué pasó — incluido
+  el caso actual, en el que la función todavía no está desplegada en Supabase. Antes el error se
+  tragaba y el botón quedaba girando hasta recargar la página.
+
+---
+
 ## [1.0.0] — 2026-07-28
 
 Primera versión numerada. Hasta acá la app se identificaba con el SHA del commit (`1ed3c5d`),

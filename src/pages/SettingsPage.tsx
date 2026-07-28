@@ -543,19 +543,32 @@ const SettingsPage = () => {
                   disabled={isSendingTest}
                   onClick={async () => {
                     setIsSendingTest(true);
-                    const r = await enviarCorreoDePrueba();
-                    setIsSendingTest(false);
-                    // En modo de prueba el correo NO llega a quien lo pidió: mandarlo a revisar
-                    // su bandeja sería mandarlo a buscar algo que nunca va a estar ahí.
-                    const destino = r.enviadoA?.[0] ?? currentUser?.email;
-                    toast(
-                      r.success
-                        ? {
-                            title: r.modoPrueba ? 'Enviado (modo de prueba)' : 'Correo de prueba enviado',
-                            description: `Revisa la bandeja de ${destino}. Si no llega en un par de minutos, mira la carpeta de spam.`,
-                          }
-                        : { title: 'No se pudo enviar', description: r.error, variant: 'destructive' }
-                    );
+                    try {
+                      const r = await enviarCorreoDePrueba();
+                      // En modo de prueba el correo NO llega a quien lo pidió: mandarlo a revisar
+                      // su bandeja sería mandarlo a buscar algo que nunca va a estar ahí.
+                      const destino = r.enviadoA?.[0] ?? currentUser?.email;
+                      toast(
+                        r.success
+                          ? {
+                              title: r.modoPrueba
+                                ? 'Enviado (modo de prueba)'
+                                : 'Correo de prueba enviado',
+                              description: `Revisa la bandeja de ${destino}. Si no llega en un par de minutos, mira la carpeta de spam.`,
+                            }
+                          : { title: 'No se pudo enviar', description: r.error, variant: 'destructive' }
+                      );
+                    } catch (e) {
+                      toast({
+                        title: 'No se pudo enviar',
+                        description: e instanceof Error ? e.message : String(e),
+                        variant: 'destructive',
+                      });
+                    } finally {
+                      // En el finally a propósito: antes estaba después del await y cualquier
+                      // excepción dejaba el botón girando para siempre (que es justo lo que pasaba).
+                      setIsSendingTest(false);
+                    }
                   }}
                 >
                   {isSendingTest ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enviar correo de prueba'}

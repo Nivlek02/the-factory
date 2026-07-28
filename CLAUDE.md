@@ -1216,6 +1216,56 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       inspeccionado a mano. **Sin verificación visual con Playwright** (el cambio de UI es una
       línea de texto de 10px en el sidebar y el texto del banner).
 
+37. **Fix: "Enviar correo de prueba" se colgaba + barra con % en Seguimiento + conectores negros
+    en el diagrama de Flujo de trabajo** (versión `1.1.0`)
+    - **El botón de correo de prueba quedaba girando para siempre.** Causa exacta (reproducida
+      con Playwright: con el código viejo el botón no se recuperaba en 30s y no salía ningún
+      aviso; con el nuevo responde en ~170ms): `invocar()` en `emailNotifications.ts` hacía
+      `error.context?.json()`, pero **`context` es `any` y cambia según el tipo de fallo** — para
+      un no-2xx es un `Response`, pero para un fallo de red/CORS es el `TypeError` crudo del
+      fetch, que no tiene `.json()`. Esa excepción hacía **rechazar** la promesa que esperaba el
+      `onClick`, así que el `setIsSendingTest(false)` que venía después del `await` nunca corría.
+      Dos capas de arreglo: `motivoDelError()` comprueba `instanceof Response` antes de tocarlo,
+      `invocar()` **siempre resuelve** (try/catch + timeout de 20s) y el `onClick` pone
+      `setIsSendingTest(false)` en un `finally`.
+    - **La razón de fondo por la que falla el correo sigue ahí y es de configuración, no de
+      código: `notificar-correo` NO está desplegada.** Verificado contra Supabase real:
+      `POST .../functions/v1/notificar-correo` responde `404 NOT_FOUND` (`admin-usuarios`, la
+      única desplegada, responde 200 al preflight). Ahora el aviso lo dice con el comando exacto
+      a ejecutar en vez de "Edge Function returned a non-2xx status code". Ver el pendiente.
+    - **Seguimiento de eventos: barra con porcentaje** (`useProgresoCarga` nuevo en `src/hooks/`).
+      El progreso es **estimado sobre el tiempo**, no bytes: la espera real es que n8n responda
+      (TTFB), así que una barra por `Content-Length` se quedaría en 0% y saltaría a 100% de golpe.
+      Avanza con `1 - e^-t` hacia un techo de 92% — nunca dice 100% antes de tiempo — y al llegar
+      la respuesta salta a 100%. El hook expone `visible`, que se mantiene 350ms extra: si se usa
+      solo `isLoading`, el 100% no alcanza a verse nunca. El error se evalúa **antes** que la
+      barra, para no mostrar 100% y después un fallo.
+    - **Diagrama de Flujo de trabajo — conectores en píxeles.** Los SVG usaban
+      `preserveAspectRatio="none"` con un viewBox normalizado (1×filas), lo que **deformaba** las
+      curvas y hacía imposible una punta de flecha decente (los `marker` se estiran con el
+      escalado no uniforme). Ahora los dos SVG trabajan en píxeles: el abanico del inicio tiene
+      ancho fijo (48px) y el área de ramas se **mide con un `ResizeObserver`** (ref de callback,
+      porque el contenedor no existe cuando la campaña no tiene nodos). Los trazos van de **borde
+      derecho de la tarjeta origen a borde izquierdo de la destino** (antes de centro a centro,
+      tapados por las tarjetas), en `hsl(var(--foreground))` (#12141B) y con flecha; el recorrido
+      es ortogonal con esquinas redondeadas (`elbowPath`), que es como se lee un diagrama de
+      flujo. Cada SVG define su **propio** marker: los `id` son globales en el documento y los dos
+      se montan a la vez.
+    - **El nodo de inicio pasó de `w-28 sm:w-32` a un ancho fijo de 128px** — con dos anchos
+      posibles según el breakpoint, la geometría del abanico no se podía calcular sin medirlo
+      también.
+    - **Las columnas ya no se aplastan.** Eran `1fr` puro: a 1024px cada tarjeta quedaba en ~90px
+      y los títulos salían cortados ("Diseñ de piez"). Ahora hay un mínimo de **190px** por
+      columna y, si no cabe, el diagrama **scrollea en horizontal** dentro de su contenedor. El
+      `diagramRef` que exporta el PNG quedó en el contenido completo (no en el contenedor con
+      scroll) para que **la imagen siga saliendo entera** — verificado exportando a 1024px.
+    - Verificado con Playwright (sesión y `factory_projects` stubbeados, **cero escrituras a la
+      base real**) con una campaña de 10 nodos y Copys bifurcando en 3 ramas: 10 conectores con
+      flecha, un solo color de trazo `rgb(18,20,28)`, cero textos cortados a 1024px, contenedor
+      scrolleable (766px de contenido en 432px visibles), PNG exportado completo, y cero errores
+      de consola. Typecheck con el único error preexistente (`CreateProjectWizard.tsx:482`);
+      `npm run build` limpio.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
@@ -1226,7 +1276,9 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
 ## Pendientes / próximos pasos
 
 - [ ] **Terminar de configurar las notificaciones por correo (punto 33)** — sin esto no sale ni un
-  correo (la función responde 200 sin enviar, a propósito):
+  correo. **Confirmado el 2026-07-28 contra Supabase real: la función NO está desplegada**
+  (`POST .../functions/v1/notificar-correo` → `404 NOT_FOUND`), que es por lo que fallaba el botón
+  de prueba (ver punto 37):
   1. `supabase functions deploy notificar-correo`
   2. Crear cuenta en Resend y sacar la API key.
   3. Secrets: `supabase secrets set RESEND_API_KEY=... APP_URL=https://tremubaq.vercel.app RESEND_MODO_PRUEBA=<el correo dueño de la cuenta de Resend>`

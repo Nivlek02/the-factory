@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toPng } from 'html-to-image';
 import {
   FactoryProject,
@@ -183,6 +183,48 @@ function computeTreeLayout(nodes: StrategyNode[]): TreeLayout {
   };
 }
 
+/**
+ * Conector ortogonal (horizontal → vertical → horizontal) con las esquinas redondeadas, en
+ * píxeles. Es el trazo típico de un diagrama de flujo: se sigue la secuencia con la vista
+ * mucho mejor que con una curva que cruza en diagonal, sobre todo cuando un nodo se bifurca.
+ */
+const elbowPath = (x1: number, y1: number, x2: number, y2: number, radio = 10): string => {
+  const dx = x2 - x1;
+  if (Math.abs(y2 - y1) < 1) return `M ${x1} ${y1} H ${x2}`;
+  const mx = x1 + dx / 2;
+  const dir = y2 > y1 ? 1 : -1;
+  // El radio no puede pasarse de la mitad de cada tramo o la esquina se sale del recorrido.
+  const r = Math.max(0, Math.min(radio, Math.abs(dx) / 2, Math.abs(y2 - y1) / 2));
+  return [
+    `M ${x1} ${y1}`,
+    `H ${mx - r}`,
+    `Q ${mx} ${y1} ${mx} ${y1 + dir * r}`,
+    `V ${y2 - dir * r}`,
+    `Q ${mx} ${y2} ${mx + r} ${y2}`,
+    `H ${x2}`,
+  ].join(' ');
+};
+
+/** Punta de flecha. Cada SVG define la suya (los `id` son globales en el documento y los dos
+ *  SVG del diagrama se montan a la vez, así que compartir uno solo dejaría un id duplicado). */
+const ARROW_FAN = 'wf-arrow-inicio';
+const ARROW_EDGE = 'wf-arrow-dep';
+const ArrowMarker = ({ id }: { id: string }) => (
+  <defs>
+    <marker
+      id={id}
+      markerWidth="7"
+      markerHeight="7"
+      refX="6"
+      refY="3.5"
+      orient="auto"
+      markerUnits="userSpaceOnUse"
+    >
+      <path d="M 0 0 L 7 3.5 L 0 7 z" fill="hsl(var(--foreground))" />
+    </marker>
+  </defs>
+);
+
 // ─── Metric card ──────────────────────────────────────────────────────────────
 
 const LoopMetric = ({
@@ -231,6 +273,23 @@ export const WorkflowTab = ({ project }: Props) => {
 
   const diagramRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Ancho disponible para el diagrama. Los conectores se dibujan en píxeles (no en un viewBox
+  // normalizado con preserveAspectRatio="none", que deformaba las curvas y haría imposible
+  // poner una punta de flecha decente), así que hay que medirlo. Ref de callback en vez de
+  // useEffect porque el contenedor no existe cuando la campaña todavía no tiene nodos.
+  const [viewportW, setViewportW] = useState(0);
+  const viewportObserver = useRef<ResizeObserver | null>(null);
+  const viewportRef = useCallback((el: HTMLDivElement | null) => {
+    viewportObserver.current?.disconnect();
+    viewportObserver.current = null;
+    if (!el) return;
+    setViewportW(el.getBoundingClientRect().width);
+    const ro = new ResizeObserver(([entry]) => setViewportW(entry.contentRect.width));
+    ro.observe(el);
+    viewportObserver.current = ro;
+  }, []);
+  useEffect(() => () => viewportObserver.current?.disconnect(), []);
 
   const handleExportImage = async () => {
     if (!diagramRef.current) return;
@@ -392,13 +451,42 @@ export const WorkflowTab = ({ project }: Props) => {
           </p>
         </div>
       ) : (() => {
-        const ROW_H = 116;
+        const ROW_H = 124;
+        const START_W = 128; // ancho fijo del nodo de inicio (antes w-28/sm:w-32: con dos anchos
+                             // posibles la geometría del abanico no se podía calcular sin medirlo)
+        const GUTTER = 48;   // ancho del abanico entre "Inicia la campaña" y la primera columna
+        const CARD_PAD = 16; // separación horizontal entre el borde de la tarjeta y su celda
+        const MIN_COL = 190; // ancho mínimo de columna: por debajo el título del nodo se corta
+        const PAD_X = 20;    // p-2 del contenedor + pr-1 del nodo de inicio
         const gridHeight = layout.totalRows * ROW_H;
+        // Si no cabe, las columnas se quedan en su mínimo y el diagrama scrollea en horizontal;
+        // antes se repartía el ancho a la fuerza y a 1024px los nodos salían con el texto cortado.
+        const gridW = Math.max(
+          viewportW - START_W - GUTTER - PAD_X,
+          layout.totalCols * MIN_COL,
+        );
+        const cellW = layout.totalCols > 0 ? gridW / layout.totalCols : 0;
+        // Bordes izquierdo/derecho de la tarjeta de una columna, en px dentro del área de ramas.
+        const leftOf = (col: number) => col * cellW + CARD_PAD;
+        const rightOf = (col: number) => (col + 1) * cellW - CARD_PAD;
+        const yOf = (id: string) => layout.centerYOf.get(id)! * ROW_H;
+
         return (
-          <div ref={diagramRef} className="flex items-stretch gap-0 w-full p-2" style={{ minHeight: gridHeight }}>
-            {/* Nodo de inicio — única entrada, centrado verticalmente frente a todas las ramas */}
-            <div className="shrink-0 flex items-center pr-1">
-              <div className="w-28 sm:w-32 rounded-lg shadow-glow text-primary-foreground bg-primary flex flex-col items-center justify-center text-center px-2 py-2.5">
+          // El scroll vive acá afuera y `diagramRef` (el que exporta el PNG) va en el contenido
+          // completo, para que la imagen salga entera aunque en pantalla haya que scrollear.
+          <div ref={viewportRef} className="w-full overflow-x-auto">
+          <div
+            ref={diagramRef}
+            className="flex items-start gap-0 p-2"
+            style={{ width: START_W + GUTTER + gridW + PAD_X }}
+          >
+            {/* Nodo de inicio — única entrada, centrado verticalmente frente a todas las ramas.
+                Altura fija igual a la grilla para que el abanico salga justo de su centro. */}
+            <div
+              className="shrink-0 flex items-center pr-1"
+              style={{ height: gridHeight, width: START_W + 4 }}
+            >
+              <div className="w-full rounded-lg shadow-glow text-primary-foreground bg-primary flex flex-col items-center justify-center text-center px-2 py-2.5">
                 <Rocket className="h-4 w-4 mb-1" />
                 <p className="text-[11px] font-semibold leading-tight">Inicia la campaña</p>
                 {/* El nombre es libre y puede ser larguísimo o una sola palabra sin espacios:
@@ -413,69 +501,80 @@ export const WorkflowTab = ({ project }: Props) => {
               </div>
             </div>
 
-            {/* Abanico de conexiones: del inicio a la primera tarjeta de cada rama */}
-            <div className="relative shrink-0 self-stretch" style={{ width: 30 }}>
+            {/* Abanico de conexiones: del inicio a la primera tarjeta de cada rama. Ancho fijo,
+                así que el viewBox va en px y las líneas no se deforman. */}
+            <div className="relative shrink-0" style={{ width: GUTTER, height: gridHeight }}>
               <svg
                 className="absolute inset-0 h-full w-full pointer-events-none"
-                viewBox={`0 0 1 ${layout.totalRows}`}
-                preserveAspectRatio="none"
+                viewBox={`0 0 ${GUTTER} ${gridHeight}`}
               >
-                {layout.rootIds.map((id) => {
-                  const cy = layout.centerYOf.get(id)!;
-                  return (
-                    <path
-                      key={id}
-                      d={`M 0 ${layout.totalRows / 2} C 0.5 ${layout.totalRows / 2}, 0.5 ${cy}, 1 ${cy}`}
-                      stroke="hsl(var(--border))"
-                      strokeWidth="2"
-                      fill="none"
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  );
-                })}
+                <ArrowMarker id={ARROW_FAN} />
+                {layout.rootIds.map((id) => (
+                  <path
+                    key={id}
+                    d={elbowPath(0, gridHeight / 2, GUTTER - 8, yOf(id))}
+                    stroke="hsl(var(--foreground))"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                    fill="none"
+                    markerEnd={`url(#${ARROW_FAN})`}
+                  />
+                ))}
               </svg>
             </div>
 
             {/* Área de ramas: cada nodo se coloca en su (columna = profundidad, fila = hoja);
                un SVG por detrás dibuja las dependencias, incluida la bifurcación de Copys
-               (dos curvas saliendo del mismo nodo). Las ramas cortas ocupan solo su columna. */}
-            <div className="relative flex-1 min-w-0" style={{ height: gridHeight }}>
-              <svg
-                className="absolute inset-0 h-full w-full pointer-events-none"
-                viewBox={`0 0 ${layout.totalCols} ${layout.totalRows}`}
-                preserveAspectRatio="none"
-              >
-                {layout.edges.map((e) => {
-                  const pcx = layout.colOf.get(e.fromId)! + 0.5;
-                  const pcy = layout.centerYOf.get(e.fromId)!;
-                  const ccx = layout.colOf.get(e.toId)! + 0.5;
-                  const ccy = layout.centerYOf.get(e.toId)!;
-                  const mx = (pcx + ccx) / 2;
-                  return (
+               (varias líneas saliendo del mismo nodo). Las ramas cortas ocupan solo su columna.
+               El trazo va de borde a borde de tarjeta (no de centro a centro tapado por encima),
+               en negro y con punta de flecha, para que la secuencia se lea de un vistazo. */}
+            <div className="relative shrink-0" style={{ width: gridW, height: gridHeight }}>
+              {gridW > 0 && (
+                <svg
+                  className="absolute inset-0 pointer-events-none"
+                  width={gridW}
+                  height={gridHeight}
+                  viewBox={`0 0 ${gridW} ${gridHeight}`}
+                >
+                  <ArrowMarker id={ARROW_EDGE} />
+                  {layout.edges.map((e) => (
                     <path
                       key={`${e.fromId}-${e.toId}`}
-                      d={`M ${pcx} ${pcy} C ${mx} ${pcy}, ${mx} ${ccy}, ${ccx} ${ccy}`}
-                      stroke="hsl(var(--border))"
-                      strokeWidth="2"
+                      d={elbowPath(
+                        rightOf(layout.colOf.get(e.fromId)!),
+                        yOf(e.fromId),
+                        // -8px: el trazo termina donde empieza la punta de flecha, si no la
+                        // flecha se montaría encima del borde de la tarjeta.
+                        leftOf(layout.colOf.get(e.toId)!) - 8,
+                        yOf(e.toId),
+                      )}
+                      stroke="hsl(var(--foreground))"
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
                       fill="none"
-                      vectorEffect="non-scaling-stroke"
+                      markerEnd={`url(#${ARROW_EDGE})`}
                     />
-                  );
-                })}
-              </svg>
+                  ))}
+                </svg>
+              )}
 
               <div
-                className="relative grid h-full"
+                className="relative grid h-full w-full"
                 style={{
-                  gridTemplateColumns: `repeat(${layout.totalCols}, minmax(0, 1fr))`,
+                  gridTemplateColumns: `repeat(${layout.totalCols}, 1fr)`,
                   gridTemplateRows: `repeat(${layout.totalRows}, 1fr)`,
                 }}
               >
                 {layout.placements.map((p) => (
                   <div
                     key={p.node.id}
-                    className="flex items-center min-w-0 px-1.5"
-                    style={{ gridColumn: p.col + 1, gridRow: `${p.rowStart + 1} / ${p.rowEnd + 1}` }}
+                    className="flex items-center min-w-0"
+                    style={{
+                      gridColumn: p.col + 1,
+                      gridRow: `${p.rowStart + 1} / ${p.rowEnd + 1}`,
+                      paddingLeft: CARD_PAD,
+                      paddingRight: CARD_PAD,
+                    }}
                   >
                     <div className="w-full min-w-0">
                       <NodeCard
@@ -491,6 +590,7 @@ export const WorkflowTab = ({ project }: Props) => {
                 ))}
               </div>
             </div>
+          </div>
           </div>
         );
       })()}

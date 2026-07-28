@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, ExternalLink, Copy, Send } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { RefreshCw, ExternalLink, Copy, Send } from 'lucide-react';
 import { toast } from 'sonner';
+import { useProgresoCarga } from '@/hooks/useProgresoCarga';
 
 const WEBINARS_URL = 'https://n8n.camarabaq.org.co/webhook/webinars';
 const REGISTROS_WEBHOOK = 'https://n8n.camarabaq.org.co/webhook/webinars_registros';
@@ -142,6 +144,9 @@ const WebinarsPage = () => {
   };
 
   const webinars = webinarsData?.webinars || [];
+  // `mostrarCarga` en vez de `isLoading` a secas: mantiene la pantalla de carga el instante
+  // extra que tarda la barra en llegar al 100%, si no ese 100% nunca se alcanza a ver.
+  const { progreso, visible: mostrarCarga } = useProgresoCarga(isLoading);
 
   return (
     <Layout>
@@ -158,14 +163,26 @@ const WebinarsPage = () => {
         </div>
 
         <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 200px)' }}>
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Cargando...</p>
-            </div>
-          ) : error ? (
+          {/* El error va primero: si la carga falló, no tiene sentido seguir mostrando la barra
+              hasta que termine su animación de cierre. */}
+          {error ? (
             <div className="text-center py-16 text-destructive">
               Error al cargar los datos: {error}
+            </div>
+          ) : mostrarCarga ? (
+            <div className="flex flex-col items-center justify-center gap-4 py-20">
+              <div className="w-full max-w-xs space-y-3">
+                <div className="flex items-baseline justify-between">
+                  <p className="text-sm font-medium text-foreground">
+                    {progreso >= 100 ? 'Listo' : 'Cargando eventos'}
+                  </p>
+                  <p className="text-sm font-semibold tabular-nums text-primary">{progreso}%</p>
+                </div>
+                <Progress value={progreso} className="h-2" />
+                <p className="text-xs text-muted-foreground">
+                  Consultando la lista de eventos y sus inscritos. Puede tardar unos segundos.
+                </p>
+              </div>
             </div>
           ) : (
             <>
