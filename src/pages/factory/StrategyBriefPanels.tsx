@@ -255,6 +255,17 @@ const FechaAccionEditor = ({
   );
 };
 
+/** Código corto de la tarea (C1, D2…). Monoespaciado y con ancho mínimo para que la columna de
+ *  códigos quede alineada aunque unos tengan una letra y otros dos (CC, LF). */
+export const CodigoTarea = ({ codigo, className = '' }: { codigo: string; className?: string }) => (
+  <span
+    className={`shrink-0 min-w-[2.25rem] text-center rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-tight text-muted-foreground ${className}`}
+    title="Identificador de la tarea"
+  >
+    {codigo}
+  </span>
+);
+
 const BriefRow = ({
   brief, onClick, badge,
 }: {
@@ -266,6 +277,7 @@ const BriefRow = ({
     onClick={onClick}
     className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md border border-border/60 bg-card/60 hover:bg-muted/40 text-left transition-colors"
   >
+    {brief.codigo && <CodigoTarea codigo={brief.codigo} />}
     <span className="text-sm flex-1 truncate">{brief.tarea}</span>
     <FechaAccionChip fecha={brief.fechaAccion} completada={getBriefStatus(brief) === 'completed'} />
     {hasUnresolvedCorrection(brief) && (
@@ -424,6 +436,7 @@ const BriefDialog = ({
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap">
+            {brief.codigo && <CodigoTarea codigo={brief.codigo} className="text-[11px]" />}
             <span>{brief.tarea}</span>
             <BriefStatusBadge brief={brief} />
           </DialogTitle>

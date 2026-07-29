@@ -169,6 +169,11 @@ export interface FabricaBriefItem {
    *  Alimenta el semáforo de urgencia en Flujo de trabajo. Opcional: las tareas creadas antes
    *  de esto, y las que nadie fechó, simplemente no muestran semáforo. */
   fechaAccion?: string | null;
+  /** Identificador corto de la tarea dentro de su campaña: la letra del tipo de trabajo + un
+   *  consecutivo (`C1`, `C2` para Copys; `D1` para Diseño; `E1` para Envíos…). Sirve para
+   *  referirse a una tarea sin repetir su título entero. Se asigna al crearla y **no cambia**
+   *  aunque la tarea se renombre. Las tareas creadas antes de esto no lo tienen. */
+  codigo?: string;
   /** Nodo de "Construir estrategia" donde vive hoy este entregable (gestión de flujo por-nodo) */
   currentNodeId?: string | null;
   /** Entregable del paso anterior de la cadena que dio origen a esta tarea (lo estampa
@@ -261,6 +266,11 @@ export interface ProjectAttachment {
 
 export interface FactoryProject {
   id: string;
+  /** Número de campaña, consecutivo dentro de la app (1, 2, 3…). Es el identificador que se ve y
+   *  se dicta; el `id` de arriba sigue siendo el interno. Se asigna al crearla, y a las campañas
+   *  anteriores se les asignó una vez por su fecha de creación (ver `asignarNumerosFaltantes`).
+   *  Nunca se reusa: borrar la campaña 3 no hace que la siguiente vuelva a ser 3. */
+  numero?: number | null;
   name: string;
   description: string;
   client: string;
@@ -596,11 +606,131 @@ const patchRoleGroup = (
   fn: (g: ProjectRoleGroup) => ProjectRoleGroup
 ) => groups.map((g) => (g.roleId === roleId ? fn(g) : g));
 
+// --- Identificadores visibles (número de campaña y código de tarea) ---
+
+/** Letra del código de tarea según el tipo de nodo donde vive. Copys → C1, C2…; Diseño → D1…
+ *  `landing_formulario` usa LF para no chocar con el F del formulario de inscripción, que es otra
+ *  cosa (ver punto 35 de la bitácora: son dos formularios distintos a propósito). */
+const LETRA_POR_STAGE: Record<StrategyStageType, string> = {
+  copys: 'C',
+  diseno: 'D',
+  envios: 'E',
+  landing: 'L',
+  landing_formulario: 'LF',
+  formulario: 'F',
+  pauta: 'P',
+  callcenter: 'CC',
+  callcenter_guion: 'C',   // legado: el guion vive hoy dentro de Copys
+  kam: 'K',
+  btl: 'B',
+  relacionamiento: 'R',
+  aprobacion: 'A',         // legado: ya no se crean nodos de este tipo
+  custom: 'T',
+};
+
+/** Letra de respaldo cuando la tarea no tiene nodo (entregables legados sin `currentNodeId`):
+ *  se saca del rol, que es el otro dato que siempre traen. */
+const LETRA_POR_ROL: Record<string, string> = {
+  Copywriter: 'C',
+  Diseñador: 'D',
+  'Gestor de canales': 'E',
+  Estratega: 'S',
+  Soporte: 'Z',
+  Trafficker: 'P',
+  'Social Media': 'P',
+};
+
+const letraDeTarea = (
+  nodes: StrategyNode[],
+  brief: { currentNodeId?: string | null; roleLabel?: string }
+): string => {
+  const node = brief.currentNodeId ? nodes.find((n) => n.id === brief.currentNodeId) : undefined;
+  if (node) return LETRA_POR_STAGE[node.stageType] ?? 'T';
+  return LETRA_POR_ROL[brief.roleLabel ?? ''] ?? 'T';
+};
+
+/**
+ * Asigna código a las tareas que no lo tengan. El consecutivo se calcula **por letra y por
+ * campaña**, mirando los códigos ya usados: así no se repite aunque las tareas entren por caminos
+ * distintos (el lote del wizard, el quick-add de un nodo, o las que nacen al aprobar un paso).
+ * Las que ya tienen código no se tocan — el código es estable de por vida.
+ */
+const asignarCodigos = <T extends FabricaBriefItem>(
+  nodes: StrategyNode[],
+  existentes: FabricaBriefItem[],
+  nuevos: T[]
+): T[] => {
+  const ultimo = new Map<string, number>();
+  for (const b of existentes) {
+    const m = /^([A-Z]+)(\d+)$/.exec(b.codigo ?? '');
+    if (!m) continue;
+    ultimo.set(m[1], Math.max(ultimo.get(m[1]) ?? 0, Number(m[2])));
+  }
+  return nuevos.map((b) => {
+    if (b.codigo) return b;
+    const letra = letraDeTarea(nodes, b);
+    const n = (ultimo.get(letra) ?? 0) + 1;
+    ultimo.set(letra, n);
+    return { ...b, codigo: `${letra}${n}` };
+  });
+};
+
+/**
+ * Recupera el código de las tareas que el wizard de edición reconstruyó: las empareja con las que
+ * había antes por texto + rol. Sin esto, cada "Guardar cambios" les daría un código nuevo (C1 →
+ * C7 → C13…), porque `buildFabricaBriefs` las regenera desde cero con ids nuevos.
+ * Se emparejan de a una (`shift`) para que dos tareas con el mismo nombre no se lleven el mismo
+ * código.
+ */
+const heredarCodigos = (previas: FabricaBriefItem[], nuevas: FabricaBriefItem[]): FabricaBriefItem[] => {
+  const disponibles = new Map<string, string[]>();
+  for (const b of previas) {
+    if (!b.codigo) continue;
+    const k = `${b.tarea}|${b.roleLabel}`;
+    const lista = disponibles.get(k);
+    if (lista) lista.push(b.codigo);
+    else disponibles.set(k, [b.codigo]);
+  }
+  return nuevas.map((b) => {
+    if (b.codigo) return b;
+    const heredado = disponibles.get(`${b.tarea}|${b.roleLabel}`)?.shift();
+    return heredado ? { ...b, codigo: heredado } : b;
+  });
+};
+
+/** Número consecutivo de campaña. Se toma el máximo ya usado + 1 en vez de `length + 1`: si se
+ *  borra una campaña del medio, su número no se recicla y no queda otra con el mismo. */
+const siguienteNumero = (projects: FactoryProject[]): number =>
+  projects.reduce((max, p) => Math.max(max, p.numero ?? 0), 0) + 1;
+
+/** Backfill de una sola vez para las campañas creadas antes de que existieran los números: se
+ *  reparten por fecha de creación ascendente, de modo que la más vieja sea la 1. Devuelve también
+ *  cuáles cambiaron, para persistir solo esas y no reescribir la base entera en cada carga. */
+const asignarNumerosFaltantes = (projects: FactoryProject[]) => {
+  if (projects.every((p) => typeof p.numero === 'number')) return { projects, cambiados: [] as FactoryProject[] };
+  let n = projects.reduce((max, p) => Math.max(max, p.numero ?? 0), 0);
+  const porFecha = [...projects].sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
+  const numeros = new Map<string, number>();
+  for (const p of porFecha) {
+    if (typeof p.numero !== 'number') numeros.set(p.id, ++n);
+  }
+  const cambiados: FactoryProject[] = [];
+  const actualizados = projects.map((p) => {
+    const nuevo = numeros.get(p.id);
+    if (nuevo === undefined) return p;
+    const actualizado = { ...p, numero: nuevo };
+    cambiados.push(actualizado);
+    return actualizado;
+  });
+  return { projects: actualizados, cambiados };
+};
+
 // --- Supabase sync helpers ---
 const rowToProject = (row: any): FactoryProject => {
   const data = row.data || {};
   return {
     id: row.id,
+    numero: typeof data.numero === 'number' ? data.numero : null,
     name: row.name,
     description: row.description ?? '',
     client: row.client ?? '',
@@ -638,6 +768,7 @@ const projectToRow = (p: FactoryProject) => ({
     priority: p.priority,
     due_date: p.dueDate,
     data: {
+      numero: p.numero ?? null,
       roleGroups: p.roleGroups,
       tasks: p.tasks,
       strategyNodes: p.strategyNodes,
@@ -707,7 +838,11 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       set({ isLoaded: true });
       return;
     }
-    set({ projects: (data ?? []).map(rowToProject), isLoaded: true });
+    // Las campañas anteriores a los números consecutivos reciben el suyo acá, una sola vez.
+    // Se persisten solo las que cambiaron; a partir de la siguiente carga esto no hace nada.
+    const { projects, cambiados } = asignarNumerosFaltantes((data ?? []).map(rowToProject));
+    set({ projects, isLoaded: true });
+    cambiados.forEach(syncProject);
   },
 
   addProject: (data) => {
@@ -722,7 +857,7 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       audienciaNarrativa: data.audienciaNarrativa ?? { segmentos: [], metaInscripciones: '', dolor: '', promesa: '', bigIdea: '' },
       canales,
       loops: data.loops ?? [],
-      fabricaBriefs: stampCanalNodeIds(strategyNodes, data.fabricaBriefs ?? []),
+      fabricaBriefs: asignarCodigos(strategyNodes, [], stampCanalNodeIds(strategyNodes, data.fabricaBriefs ?? [])),
       requerimientos: data.requerimientos ?? [],
       segmentLink: data.segmentLink ?? '',
       eventCategory: data.eventCategory ?? '',
@@ -733,6 +868,7 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       mensajeBase: data.mensajeBase ?? { emocion: '', logica: '', motivacion: '', recompensa: '' },
       motor: data.motor ?? { fuenteValidacion: '' },
       id,
+      numero: siguienteNumero(get().projects),
       createdAt: new Date().toISOString(),
       roleGroups: [],
       tasks: [],
@@ -752,9 +888,17 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
         let strategyNodes = p.strategyNodes;
         if (updates.requerimientos) strategyNodes = syncRequerimientoNodes(strategyNodes, updates.requerimientos);
         if (updates.canales) strategyNodes = syncCanalNodes(strategyNodes, updates.canales);
-        const fabricaBriefs = updates.canales || updates.requerimientos
+        const base = updates.canales || updates.requerimientos
           ? stampCanalNodeIds(strategyNodes, updates.fabricaBriefs ?? p.fabricaBriefs)
           : (updates.fabricaBriefs ?? p.fabricaBriefs);
+        // Guardar el wizard de edición reconstruye `fabricaBriefs` desde cero (ver el riesgo del
+        // punto 14 de la bitácora), así que las tareas vuelven sin código. Primero se recupera el
+        // que ya tenían (por texto + rol) y solo lo verdaderamente nuevo estrena consecutivo.
+        const fabricaBriefs = asignarCodigos(
+          strategyNodes,
+          p.fabricaBriefs ?? [],
+          heredarCodigos(p.fabricaBriefs ?? [], base)
+        );
         return { ...p, ...updates, strategyNodes, fabricaBriefs };
       }),
     })),
@@ -898,7 +1042,11 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
         ...p,
         fabricaBriefs: [
           ...(p.fabricaBriefs ?? []),
-          ...briefs.map((b) => ({ ...b, id: uid(), checked: false })),
+          ...asignarCodigos(
+            p.strategyNodes ?? [],
+            p.fabricaBriefs ?? [],
+            briefs.map((b) => ({ ...b, id: uid(), checked: false }))
+          ),
         ],
       })),
     }));

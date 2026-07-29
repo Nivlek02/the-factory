@@ -23,6 +23,7 @@ import { FactoryProject } from '@/store/factoryStore';
 import {
   INTERACCION_OPCIONES, opcionesDeCanal, interaccionesDe, interaccionesValidas,
 } from '@/lib/interacciones';
+import { DRAFT_KEY, borrarBorrador } from '@/lib/campaignDraft';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -585,9 +586,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     editProject?.fabricaBriefs?.map((b) => ({ ...b })) ?? []
   );
 
-  // ─── Draft auto-save to localStorage ───
-  const DRAFT_KEY = 'factory-project-draft';
-  const hasDraft = !isEditing && typeof window !== 'undefined' && localStorage.getItem(DRAFT_KEY) !== null;
+  // ─── Draft auto-save to localStorage (ver src/lib/campaignDraft.ts) ───
 
   // Restore draft from localStorage when opening without editProject
   useEffect(() => {
@@ -629,15 +628,16 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           formularioConfig,
           attachments,
           step,
+          // Marca de tiempo para que el aviso de "campaña sin terminar" pueda decir qué tan
+          // viejo es el borrador (ver `hace` en campaignDraft.ts).
+          guardadoEn: new Date().toISOString(),
         }));
       } catch { /* QuotaExceededError — draft not persisted, data stays in state */ }
     }, 2000);
     return () => clearTimeout(timer);
   }, [open, isEditing, data, audiencia, canalesRows, loopsRows, etapas, mensajeBase, motor, requerimientos, formularioConfig, attachments, step]);
 
-  const clearDraft = () => {
-    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
-  };
+  const clearDraft = borrarBorrador;
 
   // Reset when opening without editProject
   const reset = () => {

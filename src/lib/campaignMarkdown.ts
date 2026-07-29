@@ -78,6 +78,7 @@ export function campaignToMarkdown(project: FactoryProject): string {
 
   const ficha: string[] = [];
   const dato = (k: string, v?: string | null) => v && ficha.push(`| **${k}** | ${celda(v)} |`);
+  dato('Campaña n.º', typeof project.numero === 'number' ? `#${project.numero}` : null);
   dato('Estado', STATE_LABEL[project.state] ?? project.state);
   dato('Prioridad', PRIORITY_LABEL[project.priority] ?? project.priority);
   dato('Estratega', project.strategistName);
@@ -204,7 +205,7 @@ export function campaignToMarkdown(project: FactoryProject): string {
     for (const [rol, items] of porRol) {
       add(`### ${rol}`, '');
       for (const b of items) {
-        add(`#### ${b.tarea}`, '');
+        add(`#### ${b.codigo ? `\`${b.codigo}\` ` : ''}${b.tarea}`, '');
 
         const meta: string[] = [`**Estado:** ${estadoDe(b)}`];
         if (b.fechaAccion) {

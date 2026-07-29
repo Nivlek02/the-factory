@@ -293,12 +293,27 @@ export const WorkflowTab = ({ project }: Props) => {
   }, []);
   useEffect(() => () => viewportObserver.current?.disconnect(), []);
 
+  /** Aire alrededor del diagrama en el PNG exportado (px, antes de aplicar el pixelRatio). */
+  const EXPORT_MARGEN = 28;
+
   const handleExportImage = async () => {
     if (!diagramRef.current) return;
     setIsExporting(true);
     try {
       const bg = getComputedStyle(document.body).backgroundColor || '#ffffff';
-      const dataUrl = await toPng(diagramRef.current, { backgroundColor: bg, pixelRatio: 2, cacheBust: true });
+      // El PNG salía enorme: a `pixelRatio: 2` un diagrama de 1600px de ancho terminaba en 3200px,
+      // y al abrirlo a tamaño real no cabía en pantalla. Se baja a 1.25 (suficiente para que el
+      // texto no se vea pixelado) y se le da un respiro de margen alrededor, que antes no tenía y
+      // hacía que las tarjetas de los extremos quedaran pegadas al borde.
+      const node = diagramRef.current;
+      const dataUrl = await toPng(node, {
+        backgroundColor: bg,
+        pixelRatio: 1.25,
+        cacheBust: true,
+        width: node.scrollWidth + EXPORT_MARGEN * 2,
+        height: node.scrollHeight + EXPORT_MARGEN * 2,
+        style: { margin: `${EXPORT_MARGEN}px` },
+      });
       const link = document.createElement('a');
       const safeName = project.name.trim().replace(/[^\w\-]+/g, '_') || 'proyecto';
       link.download = `flujo-de-trabajo-${safeName}.png`;

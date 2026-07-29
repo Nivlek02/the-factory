@@ -1592,6 +1592,39 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       (240×240 natural), cero desborde horizontal en ambos, y el botón pasa a ancho completo en
       móvil. Envío real confirmado.
 
+47. **Número de campaña, código de tarea y aviso de borrador** (versión `1.8.0`)
+    - **`FactoryProject.numero`** (consecutivo, se ve como `#7`). Se asigna con **máx + 1, no
+      `length + 1`**: borrar una campaña del medio no debe reciclar su número. Las campañas
+      anteriores reciben el suyo en `hydrate` vía `asignarNumerosFaltantes` — **backfill de una
+      sola vez**, por `createdAt` ascendente (la más vieja es la #1), y **persiste solo las que
+      cambiaron**; a partir de la siguiente carga no escribe nada.
+    - **`FabricaBriefItem.codigo`** (`C1`, `D2`, `E1`…). La letra sale del `stageType` del nodo
+      (`LETRA_POR_STAGE`), con respaldo por rol (`LETRA_POR_ROL`) para los entregables legados sin
+      `currentNodeId`. El consecutivo se calcula **leyendo los códigos ya usados**, no contando
+      tareas: así no se repite aunque entren por los tres caminos distintos (lote del wizard,
+      quick-add de un nodo, y `activateNextStage`). `landing_formulario` usa **LF** para no chocar
+      con la **F** del formulario de inscripción — son dos formularios distintos a propósito
+      (punto 35).
+    - **Trampa que obligó a `heredarCodigos`:** guardar el wizard de edición **reconstruye
+      `fabricaBriefs` desde cero** (el riesgo del punto 14), así que las tareas volvían sin código
+      y cada "Guardar cambios" les habría dado uno nuevo: C1 → C7 → C13. Ahora primero se recupera
+      el código por **texto + rol** (emparejando de a uno con `shift`, para que dos tareas del
+      mismo nombre no se lleven el mismo) y solo lo verdaderamente nuevo estrena consecutivo.
+    - **El borrador del wizard YA EXISTÍA** (autoguardado en `localStorage` cada 2 s y restaurado
+      al abrir). Lo que faltaba era que se notara: `hasDraft` estaba calculado y **nunca se usaba**.
+      Se extrajo el acceso a `src/lib/campaignDraft.ts` (antes la clave vivía dentro del wizard, así
+      que desde fuera no había forma de saberlo) y `FactoryPage` muestra una tarjeta "Campaña sin
+      terminar" con nombre, antigüedad y Continuar/Descartar. Se agregó `guardadoEn` al payload
+      para poder decir hace cuánto. **Sigue siendo local al navegador** — no viaja entre equipos;
+      moverlo al servidor implicaría decidir tabla y visibilidad.
+    - **Export del flujo de trabajo:** `pixelRatio` de 2 → **1.25** + margen de 28px. Un diagrama
+      de 1600px salía en 3200px y no cabía en pantalla al abrirlo. Medido con el diagrama de 8
+      nodos y 3 ramas: **1130×865 en vez de 1808×1384**, sin recortes.
+    - Verificado con Playwright (stub, cero escrituras reales): el aviso de borrador con nombre y
+      "hace 1 h"; el backfill asignando **#1 a la campaña más vieja y #2 a la nueva**, persistiendo
+      solo esas dos; los códigos `C1`/`C2` en la lista del nodo y en el título del diálogo; y el PNG
+      exportado medido byte a byte desde su cabecera IHDR. Cero errores de consola.
+
 ### Estado del correo (2026-07-29) — FUNCIONANDO
 
 Transporte: **Gmail por SMTP, único**. Secrets: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `APP_URL`.

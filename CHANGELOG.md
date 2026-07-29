@@ -25,6 +25,34 @@ en ningún otro archivo.
 
 ---
 
+## [1.8.0] — 2026-07-29
+
+### Agregado
+
+- **Número de campaña.** Cada campaña tiene ahora un número consecutivo (`#1`, `#2`…) para poder
+  identificarla y nombrarla sin repetir el título entero. Se ve en la lista, en la cabecera y en el
+  Markdown que se descarga, y **también se puede buscar por él**. A las campañas que ya existían se
+  les asignó su número por orden de creación: la más antigua es la #1.
+- **Identificador por tarea.** Cada tarea lleva un código corto según el tipo de trabajo: `C1`,
+  `C2` para Copys; `D1`, `D2` para Diseño; `E1` para Envíos, y así. Aparece en la lista de tareas
+  del nodo y en el título de la tarea. El código se asigna al crearla y **no cambia** aunque la
+  tarea se renombre.
+- **Aviso de campaña sin terminar.** El asistente ya guardaba solo lo que ibas llenando, pero no
+  había nada que te lo recordara: había que acordarse de abrir "Nueva campaña". Ahora, si dejas una
+  campaña a medias, al entrar aparece arriba de la lista con su nombre, cuándo la guardaste y dos
+  botones: **Continuar** o **Descartar**.
+
+### Cambiado
+
+- **La imagen del flujo de trabajo sale más pequeña.** Antes se exportaba al doble de tamaño y al
+  abrirla no cabía en pantalla. Ahora sale a una escala más manejable y con margen alrededor, para
+  que las tarjetas de los extremos no queden pegadas al borde.
+
+> El borrador se guarda en el navegador donde empezaste la campaña: si cambias de computador, no
+> viaja contigo.
+
+---
+
 ## [1.7.2] — 2026-07-29
 
 ### Cambiado
