@@ -1540,27 +1540,48 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       el servidor SMTP no los descarta.
     - `MAIL_MODO_PRUEBA` es el nombre nuevo, pero **se sigue leyendo `RESEND_MODO_PRUEBA`** para no
       dejar el sistema desprotegido justo en el cambio de transporte.
-    - **Verificado:** secrets puestos por el usuario en su propia terminal (la contraseña nunca pasó
-      por el chat); función desplegada; smoke test con la publishable key como Bearer → responde
-      `{"error":"Sesión inválida"}` **generado por el propio código**, lo que prueba que el módulo
-      carga (o sea, el import de denomailer resuelve). **NO verificado: un envío SMTP real** — hace
-      falta una sesión de usuario y no tengo credenciales de producción (ver el pendiente).
+45. **`denomailer` mata el worker — cliente SMTP escrito a mano, y Resend eliminado**
+    - **El síntoma:** con denomailer, la función devolvía **500 sin cuerpo y sin cabeceras CORS**.
+      Desde el navegador se ve como un error de CORS engañoso ("No 'Access-Control-Allow-Origin'"),
+      que manda a investigar el lado equivocado — el preflight OPTIONS respondía perfecto. Y **no
+      entraba al `catch`**: no era una excepción de JS, era el worker muriéndose, así que no había
+      nada que loguear. (Ojo: esta versión del CLI **no tiene `functions logs`**.)
+    - **Cómo se aisló:** en vez de adivinar, se desplegó un evento `diag` temporal que solo hacía
+      `Deno.connectTls('smtp.gmail.com', 465)` y devolvía el saludo. Respondió
+      `220 smtp.gmail.com ESMTP` → **el runtime SÍ permite sockets TLS salientes**; el problema era
+      la librería. Sin ese paso, la conclusión fácil y equivocada habría sido "Supabase no deja
+      hacer SMTP, hay que cambiar de proveedor".
+    - **Solución: cliente SMTP propio** (~90 líneas, clase `Smtp` en la misma función). El diálogo
+      son ocho comandos y así no hay dependencia externa que se pudra. Detalles que cuestan un bug:
+      las respuestas multilínea van `250-…` y **cierran con `250 ` (código + espacio)** — sin
+      esperar esa línea, el siguiente comando se desincroniza; el asunto lleva acentos y las
+      cabeceras SMTP son ASCII, así que va como **palabra codificada RFC 2047**; y el cuerpo se
+      manda en **base64**, lo que de paso elimina el *dot stuffing* (una línea que empiece con "."
+      corta el mensaje) y el problema de líneas largas. El `AUTH PLAIN` se loguea como
+      `<comando oculto>` para que la contraseña no acabe en un mensaje de error.
+    - **Resend eliminado por completo** (pedido del usuario), junto con el modo de prueba: se
+      borraron `enviarPorResend`, el banner, `MODO_PRUEBA` y los secrets `RESEND_API_KEY` y
+      `RESEND_MODO_PRUEBA`. `enviar()` es hoy Gmail y nada más.
+    - **Verificado con un envío REAL** contra producción (el usuario compartió credenciales):
+      `{"success":true,"destinatarios":1,"enviadoA":["kelvin.trujillo@netsat.co"]}`, y repetido
+      **después** de borrar los secrets de Resend para confirmar que no quedaba ninguna dependencia.
 
-### Estado del correo (2026-07-29)
+### Estado del correo (2026-07-29) — FUNCIONANDO
 
-Transporte: **Gmail por SMTP**. `notificar-correo` desplegada con `GMAIL_USER` +
-`GMAIL_APP_PASSWORD`. **`RESEND_MODO_PRUEBA` sigue puesto a propósito**: hasta confirmar un envío
-real, todo se redirige a esa única dirección. Para soltarlo al equipo:
+Transporte: **Gmail por SMTP, único**. Secrets: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `APP_URL`.
+Sin modo de prueba: **los correos van a sus destinatarios reales**. Envío real confirmado.
+
+Para probar sin tocar una campaña, el evento `prueba` sigue vivo y **solo le manda a quien lo
+llama**. Con un token de sesión:
 
 ```
-npx supabase secrets unset RESEND_MODO_PRUEBA --project-ref yvzpfdwswmjcnipcgclg
+POST https://yvzpfdwswmjcnipcgclg.supabase.co/functions/v1/notificar-correo
+Authorization: Bearer <access_token>   ·   body: {"evento":"prueba"}
 ```
 
-Resend queda como respaldo muerto (`RESEND_API_KEY` sigue puesta pero no se usa mientras haya
-`GMAIL_*`). **El botón "Enviar correo de prueba" de Ajustes ya no existe** — se quitó en `1.1.1`
-tras confirmar Resend, así que hoy la única forma de probar es hacer una acción real en una
-campaña. `enviarCorreoDePrueba()` sigue exportada en `src/services/emailNotifications.ts` sin que
-nadie la llame; el evento `prueba` sigue vivo en la función, así que devolver el botón es solo UI.
+**El botón de Ajustes ya no existe** (se quitó en `1.1.1`); `enviarCorreoDePrueba()` sigue
+exportada en `src/services/emailNotifications.ts` sin que nadie la llame, así que devolverlo es
+solo UI.
 
 ## Rediseño visual "Tremu ISO" — CERRADO
 
@@ -1585,19 +1606,16 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
   - **Plan de Resend:** gratis = 3.000 correos/mes, **tope de 100/día**, 1 dominio. El siguiente
     es $20/mes por 50.000. El sistema agrupa **un correo por rol**, no por tarea (crear una
     campaña son ~5-6 correos), así que el tope diario queda muy holgado.
-- [ ] **Confirmar un envío real por Gmail y quitar `RESEND_MODO_PRUEBA`** — el transporte ya es
-  Gmail SMTP y está desplegado (punto 44), pero **no se ha probado un envío de verdad**: hace falta
-  una sesión de usuario en Tremu. La prueba es hacer una acción real en una campaña (crear una
-  tarea en un nodo, o aprobar un entregable): debe llegar un correo **desde la cuenta de Gmail**
-  —ese es el indicio de que ya no es Resend— con el banner `[PRUEBA]`. Confirmado eso, un comando y
-  el equipo empieza a recibir: `npx supabase secrets unset RESEND_MODO_PRUEBA --project-ref
-  yvzpfdwswmjcnipcgclg`. Si falla, el log de la función lleva la pista escrita (un `535` es
-  contraseña de aplicación mala o revocada).
+- [x] ~~**Poner el correo en producción**~~ — hecho el 2026-07-29 (puntos 44 y 45). Transporte
+  Gmail SMTP, sin modo de prueba, **envío real confirmado**. El equipo recibe sus notificaciones.
+- [ ] **Cambiar la contraseña de `kelvin.trujillo@netsat.co`** — se compartió en el chat el
+  2026-07-29 para poder verificar el envío contra producción. Es una cuenta con rol Soporte, o sea
+  que **puede gestionar usuarios** (ver punto 30).
 - [ ] **Opcional, a mediano plazo: dominio propio para el remitente** — hoy los correos salen de una
-  cuenta de Gmail personal, no de una dirección de la Cámara. Verificar `camarabaq.org.co` en
-  cualquier ESP (o configurar SMTP del dominio) permitiría un remitente institucional; es un
-  registro DNS que **no toca el correo actual de nadie**. Ya no es bloqueante — el equipo recibe
-  igual. Bonus: destrabaría el "olvidé mi contraseña" de más abajo.
+  cuenta de Gmail, no de una dirección de la Cámara. Verificar `camarabaq.org.co` en cualquier ESP
+  (o configurar el SMTP del dominio) permitiría un remitente institucional; es un registro DNS que
+  **no toca el correo actual de nadie**. Ya no es bloqueante — el equipo recibe igual. Bonus:
+  destrabaría el "olvidé mi contraseña" de más abajo.
 - [ ] **Recordatorios por fecha (semáforo) por correo** — quedó FUERA del punto 33. No puede salir
   del navegador: necesita un cron en el servidor (pg_cron o Vercel Cron llamando a una edge
   function) que recorra `factory_projects` y junte las tareas rojas (≤2 días o vencidas) por

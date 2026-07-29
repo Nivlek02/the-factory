@@ -11,38 +11,30 @@
  *   2. Exige que quien llama exista en usuarios_roles (es decir, sea del equipo).
  * No pide rol de gestor: cualquiera del equipo dispara notificaciones al trabajar.
  *
- * TRANSPORTE — hay dos, y se elige solo según qué secrets estén puestos (ver `enviar`):
+ * TRANSPORTE — Gmail por SMTP, y nada más. No necesita dominio propio: se autentica contra la
+ * cuenta de Gmail con una "contraseña de aplicación" y le llega a CUALQUIER destinatario. Como el
+ * que envía es Google, el correo sale alineado (SPF/DKIM de gmail.com) y no cae en spam — que es
+ * justo lo que no se logra mandando desde un gmail a través de un tercero.
  *
- *   1. Gmail por SMTP (preferido). No necesita dominio propio: se autentica contra la cuenta de
- *      Gmail con una "contraseña de aplicación" y le llega a CUALQUIER destinatario. Como el que
- *      envía es Google, el correo sale alineado (SPF/DKIM de gmail.com) y no cae en spam, que es
- *      justo lo que no se puede lograr mandando desde un gmail a través de un tercero.
- *   2. Resend (herencia). Se queda como respaldo para no romper nada mientras se hace el cambio,
- *      pero SIN dominio verificado solo entrega a la dueña de la cuenta — por eso se migró.
+ * Resend se eliminó: sin dominio verificado solo entregaba a la dueña de la cuenta, así que el
+ * equipo nunca recibía nada. Si algún día se quiere un remitente del dominio de la Cámara, el
+ * camino es verificar el dominio en algún proveedor, no volver a este código.
  *
  * Config (secrets de Supabase):
- *   GMAIL_USER          — la cuenta que envía (p.ej. tremu.notificaciones@gmail.com). Google
- *                         reescribe el remitente a esta dirección: no se puede mandar "a nombre
- *                         de" otra sin registrarla como alias verificado.
+ *   GMAIL_USER          — la cuenta que envía. Google reescribe el remitente a esta dirección: no
+ *                         se puede mandar "a nombre de" otra sin registrarla como alias verificado.
  *   GMAIL_APP_PASSWORD  — contraseña de aplicación (16 caracteres, con o sin espacios). NO es la
  *                         clave de la cuenta. Exige verificación en dos pasos activa. No caduca,
  *                         pero se revoca sola si se cambia la contraseña de la cuenta de Google:
  *                         si el correo deja de salir de golpe, esto es lo primero que hay que ver.
  *   MAIL_FROM_NAME      — opcional, nombre visible del remitente (default 'Tremu').
- *   MAIL_MODO_PRUEBA    — una dirección: TODO se redirige ahí y el correo muestra a quién le
- *   (o RESEND_MODO_PRUEBA) habría llegado. Con Gmail ya NO hace falta (no hay restricción de
- *                         destinatarios); sirve para estrenar el cambio sin exponer al equipo.
- *                         Cuando el envío esté confirmado, BORRAR este secret.
  *   APP_URL             — base de los enlaces del correo.
- *   RESEND_API_KEY      — solo para el transporte viejo. Se ignora si GMAIL_* está puesto.
- *   RESEND_FROM         — idem.
  *
- * Si no hay ni GMAIL_* ni RESEND_API_KEY, la función responde 200 sin enviar: la app sigue
- * funcionando mientras se termina de configurar el correo.
+ * Sin GMAIL_USER/GMAIL_APP_PASSWORD la función responde 200 sin enviar, para que la app siga
+ * funcionando en vez de romperse por una notificación.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -57,18 +49,12 @@ const json = (body: unknown, status = 200) =>
   });
 
 const APP_URL = (Deno.env.get('APP_URL') ?? 'https://tremubaq.vercel.app').replace(/\/$/, '');
-/** Si está puesto, NADA sale a sus destinatarios reales: todo se redirige a esta dirección.
- *  Se acepta el nombre viejo (`RESEND_MODO_PRUEBA`) para no dejar el sistema desprotegido en el
- *  momento del cambio de transporte: si solo estaba ese, sigue valiendo. */
-const MODO_PRUEBA =
-  (Deno.env.get('MAIL_MODO_PRUEBA') ?? Deno.env.get('RESEND_MODO_PRUEBA'))?.trim() || null;
 
 const GMAIL_USER = Deno.env.get('GMAIL_USER')?.trim() || null;
 /** Google la muestra en bloques separados por espacios; los descarta al autenticar, pero el
  *  servidor SMTP no, así que se limpian acá antes que hacerle perder media hora a alguien. */
 const GMAIL_APP_PASSWORD = Deno.env.get('GMAIL_APP_PASSWORD')?.replace(/\s+/g, '') || null;
 const FROM_NAME = Deno.env.get('MAIL_FROM_NAME')?.trim() || 'Tremu';
-const RESEND_FROM = Deno.env.get('RESEND_FROM') ?? 'Tremu <onboarding@resend.dev>';
 
 type Evento = 'tarea.asignada' | 'tarea.en_revision' | 'tarea.aprobada' | 'tarea.correccion' | 'prueba';
 
@@ -151,7 +137,6 @@ const plantilla = (opts: {
   pie: string;
 }) => `<!doctype html>
 <html lang="es"><body style="margin:0;padding:24px;background:#EEF1F7;font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#12141B;">
-  <!--AVISO_PRUEBA-->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 1px 3px rgba(18,20,27,.06);">
     <tr><td style="background:${opts.color};padding:18px 28px;">
       <p style="margin:0;font-size:16px;font-weight:700;color:#fff;letter-spacing:-.2px;">${esc(opts.titulo)}</p>
@@ -188,93 +173,128 @@ const plantilla = (opts: {
   </table>
 </body></html>`;
 
-/** Banner que reemplaza a <!--AVISO_PRUEBA--> cuando el envío se redirigió. Sin esto, en modo
- *  prueba llegarían correos idénticos a los reales y nadie sabría para quién eran. */
-const bannerPrueba = (reales: string[]) => `
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto 12px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:14px;">
-    <tr><td style="padding:12px 18px;">
-      <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#92400E;">MODO DE PRUEBA — este correo no llegó a su destinatario real</p>
-      <p style="margin:0;font-size:12px;color:#92400E;">En producción se enviaría a: ${reales.map(esc).join(', ')}</p>
-    </td></tr>
-  </table>`;
+// ─── Cliente SMTP mínimo ────────────────────────────────────────────────────
+// Escrito a mano en vez de usar denomailer: esa librería **mata el worker** en el runtime de
+// Supabase (respuesta 500 sin cuerpo, ni siquiera entra al catch, así que no hay error que
+// loguear). Se comprobó que el runtime SÍ permite el socket — `Deno.connectTls` a
+// smtp.gmail.com:465 devuelve el saludo `220 smtp.gmail.com ESMTP` sin problema —, o sea que el
+// bloqueo era de la librería, no de la plataforma. El diálogo SMTP que se necesita acá son ocho
+// comandos, y así no hay dependencia externa que se pudra.
 
-/** Gmail por SMTP. Se manda **un correo por destinatario**, no uno con todos en copia: así nadie
- *  ve la dirección de los demás (el directorio tiene correos personales) y cada quien ve la suya
- *  en el "Para". El volumen lo permite de sobra — el sistema agrupa un correo por rol, no por
- *  tarea, y el tope diario de una cuenta Gmail gratuita son ~500 destinatarios. */
-const enviarPorGmail = async (destino: string[], asunto: string, html: string) => {
-  const client = new SMTPClient({
-    connection: {
-      hostname: 'smtp.gmail.com',
-      port: 465, // TLS implícito: un salto menos que STARTTLS en 587 y menos cosas que fallen
-      tls: true,
-      auth: { username: GMAIL_USER!, password: GMAIL_APP_PASSWORD! },
-    },
-  });
+const enc = new TextEncoder();
+const dec = new TextDecoder();
 
-  try {
-    for (const to of destino) {
-      await client.send({
-        from: `${FROM_NAME} <${GMAIL_USER}>`,
-        to,
-        subject: asunto,
-        html,
-        content: 'auto', // genera la parte de texto plano a partir del HTML
-      });
+/** base64 de una cadena UTF-8. Por bloques: `String.fromCharCode(...bytes)` de un tirón revienta
+ *  la pila con cuerpos grandes, y el HTML del correo ronda los 3 KB. */
+const b64 = (s: string): string => {
+  const bytes = enc.encode(s);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+};
+
+/** Cabecera con acentos → palabra codificada RFC 2047. Sin esto un asunto con "ñ" o tildes llega
+ *  como basura: las cabeceras SMTP son ASCII. */
+const cabecera = (s: string) => (/^[\x20-\x7E]*$/.test(s) ? s : `=?UTF-8?B?${b64(s)}?=`);
+
+class SmtpError extends Error {}
+
+class Smtp {
+  private pendiente = '';
+  constructor(private conn: Deno.TlsConn) {}
+
+  /** Lee hasta el final de una respuesta SMTP. Las multilínea van `250-...` y cierran con
+   *  `250 ...` (código + espacio); sin esperar esa línea, el siguiente comando se desincroniza. */
+  private async leer(): Promise<string> {
+    const limite = Date.now() + 20_000;
+    for (;;) {
+      const lineas = this.pendiente.split('\r\n');
+      const cerrada = lineas.find((l) => /^\d{3} /.test(l));
+      if (cerrada) {
+        const r = this.pendiente;
+        this.pendiente = '';
+        return r;
+      }
+      if (Date.now() > limite) throw new SmtpError('el servidor no respondió a tiempo');
+      const buf = new Uint8Array(4096);
+      const n = await this.conn.read(buf);
+      if (n === null) throw new SmtpError('el servidor cerró la conexión');
+      this.pendiente += dec.decode(buf.subarray(0, n));
     }
+  }
+
+  /** Envía un comando y exige el código esperado. `secreto` evita que la contraseña, que viaja
+   *  como argumento de AUTH, termine en el mensaje de error y de ahí a los logs. */
+  async cmd(linea: string, espera: number, secreto = false): Promise<string> {
+    await this.conn.write(enc.encode(linea + '\r\n'));
+    const res = await this.leer();
+    if (!res.startsWith(String(espera))) {
+      throw new SmtpError(`${secreto ? '<comando oculto>' : linea.split(' ')[0]} → ${res.trim()}`);
+    }
+    return res;
+  }
+
+  saludo() { return this.leer(); }
+  cerrar() { try { this.conn.close(); } catch { /* ya cerrada */ } }
+}
+
+/** Gmail por SMTP. Se manda **un correo por destinatario**, no uno con todos en el "Para": así
+ *  nadie ve la dirección de los demás (el directorio tiene correos personales) y cada quien ve la
+ *  suya. El volumen lo permite de sobra — el sistema agrupa un correo por rol, no por tarea,
+ *  contra un tope de ~500 destinatarios/día de una cuenta Gmail gratuita. Se reutiliza una sola
+ *  conexión para todos. */
+const enviarPorGmail = async (destino: string[], asunto: string, html: string) => {
+  let smtp: Smtp | null = null;
+  try {
+    smtp = new Smtp(await Deno.connectTls({ hostname: 'smtp.gmail.com', port: 465 }));
+    await smtp.saludo();                                   // 220
+    await smtp.cmd('EHLO tremu', 250);
+    // AUTH PLAIN: base64 de \0usuario\0contraseña. Más simple que AUTH LOGIN (un solo viaje).
+    await smtp.cmd(`AUTH PLAIN ${b64(`\0${GMAIL_USER}\0${GMAIL_APP_PASSWORD}`)}`, 235, true);
+
+    const de = `${cabecera(FROM_NAME)} <${GMAIL_USER}>`;
+    for (const to of destino) {
+      await smtp.cmd(`MAIL FROM:<${GMAIL_USER}>`, 250);
+      await smtp.cmd(`RCPT TO:<${to}>`, 250);
+      await smtp.cmd('DATA', 354);
+      // El cuerpo va en base64: así no hay que preocuparse por líneas largas, por el UTF-8, ni
+      // por el "dot stuffing" (una línea que empiece con "." termina el mensaje antes de tiempo).
+      const mensaje = [
+        `From: ${de}`,
+        `To: <${to}>`,
+        `Subject: ${cabecera(asunto)}`,
+        `Date: ${new Date().toUTCString()}`,
+        'MIME-Version: 1.0',
+        'Content-Type: text/html; charset=utf-8',
+        'Content-Transfer-Encoding: base64',
+        '',
+        b64(html).replace(/(.{76})/g, '$1\r\n'),
+      ].join('\r\n');
+      await smtp.cmd(`${mensaje}\r\n.`, 250);
+    }
+    try { await smtp.cmd('QUIT', 221); } catch { /* da igual si no contesta */ }
     return { ok: true as const, enviadoA: destino };
   } catch (e) {
-    const detalle = String(e).slice(0, 400);
+    const detalle = String(e instanceof Error ? e.message : e).slice(0, 400);
     console.error('GMAIL_ERROR', detalle);
-    // 535 = credenciales rechazadas. Es EL error esperable acá, y casi siempre es lo mismo:
-    // se pegó la clave de la cuenta en vez de una contraseña de aplicación, o se revocó.
-    const pista = /535|username and password not accepted|BadCredentials/i.test(detalle)
-      ? ' — Gmail rechazó las credenciales: revisa que GMAIL_APP_PASSWORD sea una contraseña de aplicación vigente (no la clave de la cuenta) y que la verificación en dos pasos siga activa'
+    // 535 = credenciales rechazadas, y casi siempre es lo mismo: se puso la clave de la cuenta en
+    // vez de una contraseña de aplicación, o se revocó al cambiar la contraseña de Google.
+    const pista = /535|BadCredentials|Username and Password not accepted/i.test(detalle)
+      ? ' — Gmail rechazó las credenciales: GMAIL_APP_PASSWORD tiene que ser una contraseña de aplicación vigente (no la clave de la cuenta) y la verificación en dos pasos debe seguir activa'
       : '';
     return { ok: false as const, motivo: `gmail: ${detalle}${pista}` };
   } finally {
-    // Sin esto la conexión queda colgada y la invocación no termina de cerrar.
-    await client.close().catch(() => {});
+    smtp?.cerrar();
   }
-};
-
-/** Transporte viejo. Sin dominio verificado Resend rechaza (403) todo lo que no vaya a la dueña
- *  de la cuenta — por eso se dejó de usar; queda solo como respaldo. */
-const enviarPorResend = async (destino: string[], asunto: string, html: string) => {
-  const key = Deno.env.get('RESEND_API_KEY')!;
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: RESEND_FROM, to: destino, subject: asunto, html }),
-  });
-
-  if (!res.ok) {
-    const detalle = (await res.text()).slice(0, 400);
-    console.error('RESEND_ERROR', res.status, detalle);
-    const pista =
-      res.status === 403 && !MODO_PRUEBA
-        ? ' — dominio sin verificar en Resend: configura GMAIL_USER/GMAIL_APP_PASSWORD para no depender de eso'
-        : '';
-    return { ok: false as const, motivo: `resend ${res.status}: ${detalle}${pista}` };
-  }
-  return { ok: true as const, enviadoA: destino };
 };
 
 const enviar = async (para: string[], asunto: string, html: string) => {
-  const hayGmail = !!(GMAIL_USER && GMAIL_APP_PASSWORD);
-  if (!hayGmail && !Deno.env.get('RESEND_API_KEY')) {
-    return { ok: false as const, motivo: 'correo sin configurar (falta GMAIL_USER/GMAIL_APP_PASSWORD)' };
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    return { ok: false as const, motivo: 'correo sin configurar (faltan GMAIL_USER / GMAIL_APP_PASSWORD)' };
   }
-
-  // El redirect de modo prueba se aplica una sola vez, antes de elegir transporte: así los dos
-  // se comportan igual y no hay forma de que uno se salte la protección.
-  const destino = MODO_PRUEBA ? [MODO_PRUEBA] : para;
-  const cuerpo = MODO_PRUEBA ? html.replace('<!--AVISO_PRUEBA-->', bannerPrueba(para)) : html;
-  const titulo = MODO_PRUEBA ? `[PRUEBA] ${asunto}` : asunto;
-
-  return hayGmail
-    ? await enviarPorGmail(destino, titulo, cuerpo)
-    : await enviarPorResend(destino, titulo, cuerpo);
+  return await enviarPorGmail(para, asunto, html);
 };
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -316,6 +336,7 @@ serve(async (req) => {
   const { evento } = body;
   if (!evento) return json({ error: 'Falta el evento' }, 400);
 
+
   // ── 2. Prueba de configuración: se manda a quien la pide, a nadie más. ──
   if (evento === 'prueba') {
     const r = await enviar(
@@ -330,13 +351,11 @@ serve(async (req) => {
         tareas: ['Redactar copy para Correo — Convocatoria inicial', 'Diseño de pieza para Instagram'],
         fecha: new Date().toISOString().slice(0, 10),
         porQuien: quienLlama.nombre_completo,
-        pie: 'Correo de prueba enviado desde Ajustes → Notificaciones por correo.',
+        pie: 'Correo de prueba de la configuración de notificaciones.',
       })
     );
-    // La prueba sí devuelve a dónde fue: en modo prueba el correo no llega a quien lo pidió,
-    // y decir "revisa tu bandeja" a secas mandaría a buscar un correo que nunca va a estar ahí.
     return r.ok
-      ? json({ success: true, destinatarios: 1, enviadoA: r.enviadoA, modoPrueba: !!MODO_PRUEBA })
+      ? json({ success: true, destinatarios: 1, enviadoA: r.enviadoA })
       : json({ error: `No se pudo enviar: ${r.motivo}` }, 502);
   }
 

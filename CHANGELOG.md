@@ -37,8 +37,8 @@ en ningún otro archivo.
 - Cada persona recibe **su propia copia**: antes iban todos los destinatarios en el mismo correo y
   se veían las direcciones entre sí.
 
-> Este cambio vive en el servidor, no en la app. Mientras se confirma el primer envío real, los
-> correos siguen redirigidos a una sola bandeja y llegan marcados `[PRUEBA]`.
+> Este cambio vive en el servidor, no en la app. **Envío real confirmado el 2026-07-29**: ya no hay
+> modo de prueba y los correos llegan a sus destinatarios.
 
 ---
 
