@@ -6,6 +6,7 @@ import {
   useFactoryStore,
 } from '@/store/factoryStore';
 import { useAuthStore } from '@/store/authStore';
+import { ROLE_LABELS, type AppRole } from '@/services/authService';
 import {
   DeliverableSummary,
   BriefStatusBadge,
@@ -78,6 +79,14 @@ const AUTO_ADVANCE: Partial<Record<
   landing: { tarea: 'Cargue de la landing', unico: true },
 };
 
+/** Etiqueta de rol → id interno ('Diseñador' → 'diseno'). Los `roleLabel` de los nodos son texto
+ *  para mostrar; el `roleId` de una tarea tiene que ser el id, porque es con lo que
+ *  `isTaskOwnedBy` decide de quién es. Si la etiqueta no está en el catálogo (ej. 'Social Media',
+ *  que no es uno de los roles de equipo) se devuelve tal cual: es lo que ya pasaba y sigue
+ *  funcionando para el match por nombre del grupo de rol. */
+const roleIdDeEtiqueta = (label: string): string =>
+  (Object.keys(ROLE_LABELS) as AppRole[]).find((id) => ROLE_LABELS[id] === label) ?? label;
+
 /** ¿El nodo `stageType` se activa al aprobar este entregable? Las tres ramas que salen de Copys
  *  (Diseño, Call Center y landing) no se cruzan: cada entregable dispara solo la suya. */
 const avanzaDesde = (stageType: StrategyNode['stageType'], tarea: string): boolean => {
@@ -113,7 +122,10 @@ const activateNextStage = (project: FactoryProject, currentNodeId: string, brief
     // Checkpoint único: no se duplica por más entregables que se aprueben aguas arriba.
     if (cfg.unico && (live.fabricaBriefs ?? []).some((b) => b.currentNodeId === n.id)) continue;
     toAdd.push({
-      roleId: n.roleId ?? n.roleLabel!,
+      // El nodo puede no traer `roleId` (la mayoría lo tiene en null): antes se caía a la ETIQUETA
+      // ('Diseñador'), y como `isTaskOwnedBy` compara contra el id del rol ('diseno'), la tarea no
+      // le aparecía a nadie en "Mis tareas". Se traduce la etiqueta a su id.
+      roleId: n.roleId ?? roleIdDeEtiqueta(n.roleLabel!),
       roleLabel: n.roleLabel!,
       tarea: cfg.tarea ?? cfg.renombrar?.(brief.tarea) ?? brief.tarea,
       currentNodeId: n.id,
@@ -363,7 +375,15 @@ const BriefDialog = ({
   const lastCorrection = [...priorComments].reverse().find((c) => c.isAdjustmentRequest);
 
   const advanceOrClose = () => {
-    const next = queue?.find((b) => b.id !== brief.id) ?? null;
+    const siguiente = queue?.find((b) => b.id !== brief.id) ?? null;
+    // El `queue` es del render anterior: si se abriera ese objeto tal cual, se vería el entregable
+    // como estaba antes. Se relee del store por id para mostrar su estado actual.
+    const vivo = siguiente
+      ? useFactoryStore.getState().projects
+          .find((p) => p.id === project.id)
+          ?.fabricaBriefs?.find((b) => b.id === siguiente.id)
+      : null;
+    const next = vivo ?? siguiente;
     if (next && onAdvance) onAdvance(next); else onClose();
   };
 

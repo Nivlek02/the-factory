@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import type { Attachment } from '@/components/ui/file-upload';
 import { notificarTareasAsignadas } from '@/services/emailNotifications';
@@ -705,14 +706,32 @@ const siguienteNumero = (projects: FactoryProject[]): number =>
 
 /** Backfill de una sola vez para las campañas creadas antes de que existieran los números: se
  *  reparten por fecha de creación ascendente, de modo que la más vieja sea la 1. Devuelve también
- *  cuáles cambiaron, para persistir solo esas y no reescribir la base entera en cada carga. */
+ *  cuáles cambiaron, para persistir solo esas y no reescribir la base entera en cada carga.
+ *
+ *  Repara además los DUPLICADOS: `siguienteNumero` calcula el consecutivo con la lista que tiene
+ *  el navegador en memoria, así que dos campañas creadas a la vez (dos personas, o dos pestañas)
+ *  salían las dos con el mismo `#`. Acá se resuelve al leer, dejándole el número a la más vieja y
+ *  renumerando la otra — la regla es determinista (orden por `createdAt`), así que los dos
+ *  navegadores llegan al mismo resultado sin coordinarse. */
 const asignarNumerosFaltantes = (projects: FactoryProject[]) => {
-  if (projects.every((p) => typeof p.numero === 'number')) return { projects, cambiados: [] as FactoryProject[] };
+  const numerados = projects.filter((p) => typeof p.numero === 'number');
+  const hayDuplicados = new Set(numerados.map((p) => p.numero)).size !== numerados.length;
+  if (!hayDuplicados && numerados.length === projects.length) {
+    return { projects, cambiados: [] as FactoryProject[] };
+  }
   let n = projects.reduce((max, p) => Math.max(max, p.numero ?? 0), 0);
   const porFecha = [...projects].sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
   const numeros = new Map<string, number>();
+  const vistos = new Set<number>();
   for (const p of porFecha) {
-    if (typeof p.numero !== 'number') numeros.set(p.id, ++n);
+    if (typeof p.numero !== 'number') {
+      numeros.set(p.id, ++n);
+    } else if (vistos.has(p.numero)) {
+      // Ya lo tiene otra campaña más vieja: esta estrena número al final de la fila.
+      numeros.set(p.id, ++n);
+    } else {
+      vistos.add(p.numero);
+    }
   }
   const cambiados: FactoryProject[] = [];
   const actualizados = projects.map((p) => {
@@ -768,6 +787,9 @@ const projectToRow = (p: FactoryProject) => ({
     priority: p.priority,
     due_date: p.dueDate,
     data: {
+      // Contador de escrituras, lo fija `syncProject` justo antes de guardar (ver la guardia de
+      // escritura obsoleta). Acá solo se declara para que el objeto tenga la forma correcta.
+      revision: 0,
       numero: p.numero ?? null,
       roleGroups: p.roleGroups,
       tasks: p.tasks,
@@ -790,16 +812,76 @@ const projectToRow = (p: FactoryProject) => ({
     },
 });
 
+/**
+ * GUARDIA DE ESCRITURA OBSOLETA — la campaña se guarda como un solo blob JSONB, así que cada
+ * escritura reemplaza el proyecto ENTERO. Con dos personas trabajando a la vez, quien guardaba
+ * de último pisaba el trabajo del otro **sin ningún error ni aviso**: bastaba con dejar la
+ * pestaña abierta un rato (nada vuelve a leer de la base sola) y tocar cualquier cosa para
+ * escribir una copia vieja encima de lo que otro acababa de aprobar.
+ *
+ * Se resuelve con un contador `data.revision` por campaña: antes de escribir se compara el que
+ * hay en la base contra el último que conocemos. Si el de la base es mayor, alguien más escribió
+ * en el medio: NO se pisa — se recarga esa campaña con lo que hay en la base y se avisa, para
+ * que la persona repita su cambio sobre el dato bueno. Perder un clic es infinitamente mejor
+ * que borrar la tarde de trabajo de otra persona.
+ *
+ * El número conocido se guarda acá (no en el objeto del proyecto) a propósito: el `setTimeout`
+ * captura una instantánea del proyecto, así que leerlo de ahí daría falsos conflictos al hacer
+ * dos cambios seguidos.
+ */
+const revisionConocida = new Map<string, number>();
+const revisionDe = (data: any): number => (typeof data?.revision === 'number' ? data.revision : 0);
+
 const pendingSync = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** ¿Hay escrituras locales sin confirmar? Se usa para no recargar encima de un cambio en vuelo. */
+export const haySincronizacionPendiente = () => pendingSync.size > 0;
+
+/** Recarga UNA campaña desde la base y la deja en el store (sin tocar las demás). */
+const recargarProyecto = async (id: string) => {
+  const { data } = await supabase.from('factory_projects').select('*').eq('id', id).maybeSingle();
+  if (!data) return;
+  revisionConocida.set(id, revisionDe(data.data));
+  const fresco = rowToProject(data);
+  useFactoryStore.setState((s) => ({
+    projects: s.projects.map((p) => (p.id === id ? fresco : p)),
+  }));
+};
+
 const syncProject = (project: FactoryProject) => {
   const existing = pendingSync.get(project.id);
   if (existing) clearTimeout(existing);
   const t = setTimeout(async () => {
     pendingSync.delete(project.id);
+
+    const conocida = revisionConocida.get(project.id) ?? 0;
+    const { data: remoto } = await supabase
+      .from('factory_projects')
+      .select('data')
+      .eq('id', project.id)
+      .maybeSingle();
+
+    // `remoto` nulo = la campaña todavía no existe en la base (recién creada): se inserta.
+    if (remoto && revisionDe(remoto.data) > conocida) {
+      console.warn('Escritura descartada: la campaña cambió en la base', project.id);
+      await recargarProyecto(project.id);
+      toast.error('Otra persona actualizó esta campaña', {
+        description: 'Se recargó con la versión más reciente. Vuelve a hacer tu cambio para no perder lo que hizo el otro.',
+      });
+      return;
+    }
+
+    const nueva = conocida + 1;
+    const row = projectToRow(project);
+    row.data.revision = nueva;
     const { error } = await supabase
       .from('factory_projects')
-      .upsert([projectToRow(project)] as any, { onConflict: 'id' });
-    if (error) console.error('Error syncing project:', error);
+      .upsert([row] as any, { onConflict: 'id' });
+    if (error) {
+      console.error('Error syncing project:', error);
+      return;
+    }
+    revisionConocida.set(project.id, nueva);
   }, 400);
   pendingSync.set(project.id, t);
 };
@@ -808,6 +890,7 @@ const deleteRow = async (id: string) => {
   const existing = pendingSync.get(id);
   if (existing) clearTimeout(existing);
   pendingSync.delete(id);
+  revisionConocida.delete(id);
   const { error } = await supabase.from('factory_projects').delete().eq('id', id);
   if (error) console.error('Error deleting project:', error);
 };
@@ -838,6 +921,10 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       set({ isLoaded: true });
       return;
     }
+    // Punto de partida de la guardia de escritura obsoleta: a partir de acá sabemos en qué
+    // revisión venía cada campaña, y no se pisa una que haya avanzado por otro lado.
+    for (const row of data ?? []) revisionConocida.set(row.id, revisionDe(row.data));
+
     // Las campañas anteriores a los números consecutivos reciben el suyo acá, una sola vez.
     // Se persisten solo las que cambiaron; a partir de la siguiente carga esto no hace nada.
     const { projects, cambiados } = asignarNumerosFaltantes((data ?? []).map(rowToProject));
@@ -875,6 +962,7 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       strategyNodes,
     };
     set((s) => ({ projects: [project, ...s.projects], activeProjectId: id }));
+    revisionConocida.set(id, 0); // fila nueva: la primera escritura la deja en 1
     syncProject(project);
     // La campaña nace con su lote de entregables ya sembrado por el wizard: avisarle a cada rol
     // acá es el único punto donde se enteran (esas tareas no pasan por addFabricaBriefs).

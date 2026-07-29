@@ -19,7 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-import { FactoryProject } from '@/store/factoryStore';
+import { FactoryProject, type ProjectState } from '@/store/factoryStore';
 import {
   INTERACCION_OPCIONES, opcionesDeCanal, interaccionesDe, interaccionesValidas,
 } from '@/lib/interacciones';
@@ -490,7 +490,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     name: editProject?.name ?? '',
     description: editProject?.description ?? '',
     client: editProject?.client ?? '',
-    state: (editProject?.state ?? 'planning') as const,
+    state: (editProject?.state ?? 'planning') as ProjectState,
     priority: (editProject?.priority ?? 'P1') as 'P0'|'P1'|'P2',
     startDate: editProject?.startDate ?? today(),
     dueDate: editProject?.dueDate ?? '',

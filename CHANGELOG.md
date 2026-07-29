@@ -25,6 +25,40 @@ en ningún otro archivo.
 
 ---
 
+## [1.9.0] — 2026-07-29
+
+Revisión de seguridad y de bugs de toda la app.
+
+### Seguridad
+
+- **Las campañas ya no son públicas.** La base estaba abierta a cualquiera sin cuenta: se podía
+  leer, modificar y **borrar** cualquier campaña desde fuera de la app. El inicio de sesión solo
+  escondía la pantalla, no protegía los datos. Ahora hace falta sesión.
+  *(Requiere aplicar la migración `20260729000000` en Supabase.)*
+- **Se sanea el contenido de los editores.** Lo que se escribe en descripciones, entregables y
+  comentarios se guardaba como HTML y se mostraba tal cual, así que era posible dejar código
+  escondido en una tarea que se ejecutaba en el computador de cualquiera que la abriera —y con eso
+  robarle la sesión. Ahora se limpia al mostrarlo, sin perder negritas, listas, enlaces, imágenes,
+  colores ni tamaños de letra.
+- Los correos de notificación limpian saltos de línea en el asunto y validan las direcciones, para
+  que nadie pueda colar destinatarios ocultos.
+
+### Corregido
+
+- **Las tareas que se crean al aprobar ya aparecen en "Mis tareas".** Al aprobar un copy se creaba
+  la pieza de diseño, se veía en el nodo… pero no le salía al diseñador en su lista. Igual con el
+  registro de Call Center para la estratega. Aplica también a las tareas ya creadas.
+- **Dos personas trabajando a la vez ya no se borran el trabajo.** Antes, quien tenía la pestaña
+  abierta desde hacía rato guardaba su copia vieja encima de lo que el otro acababa de aprobar, sin
+  ningún aviso. Ahora la campaña se recarga sola al volver a la pestaña y, si aun así alguien más
+  cambió algo, se avisa y **no se pisa** — se pide repetir el cambio sobre la versión buena.
+- **Números de campaña repetidos.** Dos campañas creadas al mismo tiempo podían salir con el mismo
+  `#`. Se corrige solo al abrir la app: el número se le queda a la más antigua.
+- Al aprobar varios entregables seguidos, el siguiente se abre con su estado actual y no con el de
+  antes.
+
+---
+
 ## [1.8.2] — 2026-07-29
 
 ### Quitado

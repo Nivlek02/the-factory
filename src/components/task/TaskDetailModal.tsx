@@ -38,6 +38,7 @@ import { toast } from 'sonner';
 import { sendTaskNotification } from '@/services/notificationService';
 import * as taskService from '@/services/supabaseTaskService';
 import { extractUrlFromPaste, getShortUrlLabel } from '@/lib/urlUtils';
+import { dangerousHtml } from '@/lib/sanitizeHtml';
 
 interface TaskDetailModalProps {
   task: Task | null;
@@ -352,7 +353,7 @@ const TaskDetailModal = ({ task, open, onClose, onTaskUpdated }: TaskDetailModal
                 ) : task.description ? (
                   <div 
                     className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_a]:text-primary [&_a]:underline [&_a]:hover:text-primary/80"
-                    dangerouslySetInnerHTML={{ __html: task.description }}
+                    dangerouslySetInnerHTML={dangerousHtml(task.description)}
                     onClick={(e) => {
                       // Open links in new tab when clicking
                       const target = e.target as HTMLElement;
@@ -765,7 +766,7 @@ const TaskDetailModal = ({ task, open, onClose, onTaskUpdated }: TaskDetailModal
                       ) : (
                         <div
                           className="text-sm text-foreground prose prose-sm max-w-none [&_h1]:text-base [&_h2]:text-sm [&_p]:my-0.5"
-                          dangerouslySetInnerHTML={{ __html: c.content }}
+                          dangerouslySetInnerHTML={dangerousHtml(c.content)}
                         />
                       )}
                     </div>

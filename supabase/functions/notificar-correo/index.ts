@@ -340,9 +340,24 @@ const b64 = (s: string): string => {
   return btoa(bin);
 };
 
+/** Quita saltos de línea y tabs de cualquier valor que vaya a una cabecera o a un comando SMTP.
+ *  Una cabecera se termina con CRLF, así que un `\n` metido en el asunto (que lo arma el cliente)
+ *  o en el correo del directorio permitiría inyectar cabeceras propias — un `Bcc:` convertiría
+ *  esto en un relay abierto. No basta con confiar en el filtro de `cabecera()`: su regex usa `$`,
+ *  que en JS también matchea ANTES de un `\n` final, así que un salto al final se le cuela. */
+const unaLinea = (s: string) => String(s ?? '').replace(/[\r\n\t]+/g, ' ').trim();
+
 /** Cabecera con acentos → palabra codificada RFC 2047. Sin esto un asunto con "ñ" o tildes llega
  *  como basura: las cabeceras SMTP son ASCII. */
-const cabecera = (s: string) => (/^[\x20-\x7E]*$/.test(s) ? s : `=?UTF-8?B?${b64(s)}?=`);
+const cabecera = (raw: string) => {
+  const s = unaLinea(raw);
+  return /^[\x20-\x7E]*$/.test(s) ? s : `=?UTF-8?B?${b64(s)}?=`;
+};
+
+/** ¿Es una dirección que se puede poner en un `RCPT TO:` sin romper el diálogo SMTP? Los correos
+ *  salen del directorio (los escriben Estratega/Soporte a mano), no del navegador, pero un
+ *  `\n` o un `<` ahí desincronizaría los comandos. Se descarta la dirección, no el envío entero. */
+const correoValido = (e: string) => /^[^\s<>@",;:\\]+@[^\s<>@",;:\\]+\.[^\s<>@",;:\\]{2,}$/.test(e);
 
 class SmtpError extends Error {}
 
@@ -439,7 +454,12 @@ const enviar = async (para: string[], asunto: string, html: string) => {
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
     return { ok: false as const, motivo: 'correo sin configurar (faltan GMAIL_USER / GMAIL_APP_PASSWORD)' };
   }
-  return await enviarPorGmail(para, asunto, html);
+  // Última barrera antes del socket: una dirección con un salto de línea rompería el diálogo SMTP.
+  const limpios = para.map((e) => unaLinea(e)).filter(correoValido);
+  if (limpios.length === 0) {
+    return { ok: false as const, motivo: 'ninguna dirección válida entre los destinatarios' };
+  }
+  return await enviarPorGmail(limpios, asunto, html);
 };
 
 const norm = (s: string) => s.trim().toLowerCase();

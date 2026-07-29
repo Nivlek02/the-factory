@@ -2,6 +2,7 @@ import { BriefWorkflowStatus, FabricaBriefItem } from '@/store/factoryStore';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { FileText, Link2, MessageSquare, History } from 'lucide-react';
+import { dangerousHtml } from '@/lib/sanitizeHtml';
 
 export const BRIEF_STATUS_META: Record<BriefWorkflowStatus, { label: string; cls: string }> = {
   pending: { label: 'Pendiente', cls: 'bg-muted text-muted-foreground' },
@@ -164,7 +165,7 @@ export const DeliverableSummary = ({ brief }: { brief: FabricaBriefItem }) => {
             {brief.deliverableContent ? (
               <div
                 className="prose prose-sm max-w-none rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-foreground/90"
-                dangerouslySetInnerHTML={{ __html: brief.deliverableContent }}
+                dangerouslySetInnerHTML={dangerousHtml(brief.deliverableContent)}
               />
             ) : (
               <p className="text-sm text-muted-foreground italic">Sin contenido todavía</p>

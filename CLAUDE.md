@@ -1,1790 +1,466 @@
-# The Factory — notas del proyecto
-
-App interna de mercadeo (Vite + React + shadcn/ui + Zustand + Supabase). Desplegada en Vercel
-en el team `nivlek02s-projects`, **dominio `https://tremubaq.vercel.app/`** (el proyecto se
-renombró a `tremu`; el viejo `the-factory-seven.vercel.app` ya da 404).
-Repo: `Nivlek02/the-factory`, rama de producción `master`.
-
-## Estado de infraestructura
-
-- **Supabase activo:** proyecto `yvzpfdwswmjcnipcgclg`. El anterior (`mjjhssqclqxrxpbbalft`) **ya
-  no existe** — no está en la cuenta, así que los datos que tuviera son irrecuperables. Solo se
-  migró el esquema (las 25 migraciones), nunca los datos.
-- **Desde 2026-07-16 la app SÍ usa Supabase Auth real** (login en `/login`, ver punto 29). Ya no
-  hay `DEMO_USER`. Matices importantes:
-  - Solo `ktrujillo` tiene cuenta en `auth.users`. Los otros 21 de `usuarios_roles` tienen
-    `user_id` nulo: aparecen en la lista de equipo y son asignables, pero no pueden entrar.
-  - **El resto de las tablas sigue con RLS `TO anon, authenticated`** y no se tocó. La sesión no
-    restringe nada fuera de `usuarios_roles`. Si esas policies se cierran a `authenticated`, hay que
-    verificar que todo el tráfico ya vaya autenticado.
-  - **`usuarios_roles` es la excepción**: SELECT para cualquier autenticado, pero escribir solo si
-    el rol es Estratega o Soporte (vía `puede_gestionar_usuarios()`, SECURITY DEFINER — ver punto
-    30). Es el único lugar donde el rol **decide permisos** y no es solo informativo.
-  - Regla de siempre: un insert rechazado por RLS **falla en silencio** (solo se loguea en la
-    consola del navegador, nunca se ve en la UI). Y ojo con el UPDATE: RLS **filtra filas en vez de
-    rechazar el comando**, así que sin permiso vuelve *sin error* y con 0 filas — hay que mirar el
-    conteo con `.select()`, no solo `error`.
-- **`vercel.json` necesita el bloque `rewrites`** para que las rutas profundas (`/login`,
-  `/settings`, `/board/:id`) no den 404 — `dist/` solo contiene `index.html`. No lo quites.
-  El rewrite excluye `assets/` y `version.json`: **cualquier archivo estático nuevo en la raíz hay
-  que excluirlo ahí o Vercel devolverá `index.html` en su lugar** (ya pasó con `version.json`).
-- Vercel env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) se gestionan por API con
-  un token personal (`vcp_...`, no guardado aquí). Ojo al pegar keys manualmente en el dashboard:
-  ya pasó una vez que un salto de línea se convirtió en espacios en medio del JWT y lo invalidó.
-  Los valores en `.env` van **entre comillas** — al parsearlos hay que quitarlas, y no partir por
-  `=` a secas porque los JWT llevan `=` de padding.
-- **Ojo con el typecheck:** `npx tsc --noEmit` a secas **no compila nada** (el `tsconfig.json` raíz
-  tiene `"files": []` + `references`) y da exit 0 falso. El real es
-  `npx tsc --noEmit -p tsconfig.app.json` → hoy salen **4 errores preexistentes** (3 en
-  `SettingsPage.tsx` por `addUser`/`updateUser`/`deleteUser`, 1 en `CreateProjectWizard.tsx:376`).
-
-## Bitácora
-
-### 2026-07-07 / 2026-07-08
-
-1. **Migración de Supabase a proyecto nuevo** (`yvzpfdwswmjcnipcgclg`)
-   - Se aplicaron las 25 migraciones existentes (`supabase db push --linked --include-all`).
-   - Se regeneraron los tipos (`src/integrations/supabase/types.ts`).
-   - `.env` y `supabase/config.toml` actualizados.
-
-2. **Fix: `factory_projects` no guardaba nada** (commit `a1af8ad`)
-   - Causa: esa tabla tenía RLS `TO authenticated` mientras el resto de la app (sin auth real)
-     necesita `TO anon, authenticated`. Migración nueva
-     `20260707120000_allow-anon-factory-projects.sql` corrige las policies.
-
-3. **Fix: env var corrupta en Vercel**
-   - `VITE_SUPABASE_PUBLISHABLE_KEY` tenía dos espacios insertados en medio del JWT (típico de
-     copy-paste desde un bloque de código con wrap). Causaba `401 Invalid API key` en el navegador.
-   - Se corrigió por la API de Vercel directamente (evitando otro copy-paste) y se forzó redeploy.
-
-4. **Fix: wizard de creación de proyecto** (commit `5cf5185`)
-   - Bug: si no se seleccionaba ningún requerimiento, `filterTareasByRequerimientos` devolvía
-     todas las tareas sin filtrar → se creaban las tareas de "Landing" y "Formulario de
-     inscripción" a la vez aunque el usuario no hubiera elegido ninguna.
-   - Ahora es obligatorio elegir **Landing** o **Formulario de inscripción** antes de avanzar o
-     crear el proyecto (`src/pages/factory/CreateProjectWizard.tsx`).
-
-5. **Feature: flujo por defecto en "Construir estrategia"** (commit `90d26c8`)
-   - Cada proyecto nuevo arranca con el esquema visual:
-     `Copys → Aprobación de copy (Estratega) → Diseño de piezas → Aprobación de diseño (Estratega)
-     → Envío de acciones (Gestor de canales)`.
-   - Implementado en `buildDefaultStrategyNodes()` dentro de `src/store/factoryStore.ts`
-     (usado por `addProject`). Se agregó el stage type `'aprobacion'` a la paleta en
-     `src/pages/factory/MapTab.tsx` (icono `CheckCircle2`) para poder seguir ramificando el flujo
-     a mano.
-   - Proyectos ya existentes no se tocan (solo aplica a los creados de ahora en adelante).
-   - **Pendiente de verificar visualmente:** el usuario iba a confirmarlo en producción — la
-     verificación con Playwright no se pudo completar en esta máquina (la descarga/extracción de
-     Chromium se quedó atascada ~241MB sin avanzar, probablemente Windows Defender escaneando
-     `chrome.dll`). Typecheck y build sí pasaron limpio.
-
-6. **Refactor: pestañas del proyecto — Flujo de trabajo / Dashboard de métricas / Loop / aprobación
-   dentro de la tarea** (commit `54923a6`)
-   - La vista de proyecto tenía una sola pestaña "Loop" que mezclaba el diagrama de ciclo, las
-     tarjetas de métricas y el tablero de "Construir estrategia". Se separó en tres pestañas:
-     **Flujo de trabajo** (`WorkflowTab`, solo el tablero de Construir estrategia), **Dashboard de
-     métricas** (`MetricsDashboardTab`) y **Loop** (`LoopTab`, solo el diagrama del ciclo). Overview
-     y Equipo quedan igual. Todo en `src/pages/factory/MapTab.tsx` / `FactoryPage.tsx`.
-   - Se eliminó el stage type `'aprobacion'` como nodo aparte del flujo (ya no está en la paleta ni
-     en `buildDefaultStrategyNodes`). Ahora **todo entregable pasa por revisión dentro de su propia
-     tarea**: `hasApprovalStage` en `ContentBriefPanel` (`StrategyBriefPanels.tsx`) quedó fijo en
-     `true`, así que el mismo `BriefDialog` de la tarea maneja pending → in_review → aprobar/corregir,
-     sin salir a un nodo de "Aprobación" separado. Se borraron `ApprovalQueuePanel`,
-     `findApprovalNodeFor` y `findContentNodeFor` por quedar sin uso.
-   - **Migración en lectura:** `stripApprovalNodes()` en `factoryStore.ts` (`rowToProject`) limpia
-     automáticamente los nodos `aprobacion` que ya estuvieran guardados en Supabase (de la feature
-     del punto 5) y reconecta el `dependsOn` de sus dependientes al nodo previo, para no dejar
-     huecos en proyectos ya creados.
-   - Typecheck y `npm run build` pasaron limpio (los 4 errores de `tsc` que aparecen en
-     `CreateProjectWizard.tsx` y `SettingsPage.tsx` son preexistentes, no relacionados). Pusheado
-     directo a `master` a pedido del usuario para verlo en el deploy de Vercel.
-
-7. **Ajustes de Flujo de trabajo, historial de aprobación y roles fijos** (commit `90f9848`)
-   - Tablero de "Flujo de trabajo" en una sola línea con scroll horizontal (antes envolvía en
-     columnas apiladas en mobile); nodo "Inicia el proyecto" más pequeño. Se quitó el texto "Sin
-     asignar" del preview de nodos (`NodeCard` en `MapTab.tsx`).
-   - Se quitó el panel/paleta para agregar etapas a mano ("Construir estrategia" con botones
-     Formulario/Landing/Copys/etc.) — las etapas ya se generan automáticamente desde
-     `buildDefaultStrategyNodes` y el auto-build por canales/loops, no hacía falta.
-   - **Historial de cambios:** `TaskComment` (`factoryStore.ts`) tiene ahora `isSystemEvent?:
-     boolean`. `BriefDialog` (`StrategyBriefPanels.tsx`) registra automáticamente entradas de
-     historial con fecha/hora al enviar a revisión y al aprobar (antes solo se guardaba el
-     comentario de corrección al rechazar). Se muestra fecha/hora en todos los comentarios, tanto
-     en el diálogo editable como en `DeliverableSummary` (solo lectura).
-   - **Activar siguiente tarea al aprobar:** `activateNextStage()` en `StrategyBriefPanels.tsx` —
-     al aprobar un entregable de Copys, crea automáticamente una tarea pendiente en el nodo de
-     Diseño (siguiente en la cadena `dependsOn`), sin mover el entregable original.
-   - **Roles fijos:** se reemplazó la creación libre de roles (nombre + responsabilidades a mano)
-     por un selector de los 5 roles asignables a un proyecto: Copywriter, Diseñador, Gestor de
-     canales, Estratega, Soporte (`ASSIGNABLE_ROLE_IDS` en `rolesStore.ts`). Los roles internos
-     `social`/`seo`/`produccion` se mantienen (sin exponer en el selector) porque
-     `CreateProjectWizard.tsx` todavía los usa para la generación automática de tareas por canal
-     (Meta Ads, RRSS, etc.) — **no tocar sus `id`s** o se rompe esa automatización.
-     `rolesStore` subió a `version: 2` para que el `migrate` renombre las etiquetas ya persistidas
-     en `localStorage` (Copy→Copywriter, Diseño→Diseñador) y agregue el rol Soporte.
-   - Se quitó la gestión de "Responsabilidades por rol" de Ajustes (`SettingsPage.tsx`) y el
-     conteo "X req." en Descripción general (antes Overview) — esas responsabilidades se van a
-     manejar desde el backend, a pedido del usuario.
-   - **No se pudo verificar visualmente con Playwright** — intento de instalar el paquete
-     (`npx playwright`) falló por `ECONNRESET` de npm en esta máquina; solo typecheck + build.
-
-8. **Rol de equipo unificado (Copywriter/Diseñador/Gestor de canales/Estratega/Soporte) + diagrama
-   ramificado de Flujo de trabajo + Pauta en redes sociales**
-   - **AppRole pasó a ser puramente informativo.** `authService.ts`: `AppRole` ahora es
-     `'copy' | 'diseno' | 'gestor_canales' | 'estratega' | 'soporte'` (antes
-     `mercadeo/disenador/copy/manager/seo`), con `ROLE_LABELS` = Copywriter/Diseñador/Gestor de
-     canales/Estratega/Soporte — igual al catálogo de `rolesStore.ts`. Se quitó TODA la lógica de
-     acceso a tableros por rol (Index.tsx, BoardPage.tsx, TaskDetailModal.tsx, TaskCard.tsx,
-     CreateTaskModal.tsx, ReportsPage.tsx, notificationService.ts, useSupabaseTasks.ts,
-     AppSidebar.tsx) — ahora todos los usuarios ven todos los tableros y pueden hacer cualquier
-     acción, a pedido explícito del usuario ("elimina eso de acceso a tableros... solo
-     informativo"). `DEMO_USER.role` pasó de `'mercadeo'` a `'estratega'`.
-   - **IMPORTANTE — no se tocó el schema de Supabase.** La columna `user_roles.role` en Postgres
-     sigue siendo el enum viejo (`mercadeo/disenador/copy/manager/seo`) — falta una migración para
-     ampliarlo. `authService.createUser`/`updateUserRole` llevan un `role as any` con nota explicando
-     esto. **Además, "Nuevo Usuario"/"Editar Usuario" en Ajustes ya estaban rotos antes de esta
-     sesión**: `SettingsPage.tsx` llama a `addUser`/`updateUser`/`deleteUser` desde `useAuthStore()`,
-     pero esos métodos no existen en `authStore.ts` (son los 3 errores de `tsc` que aparecen desde
-     el principio). El selector de rol ahora muestra las etiquetas correctas, pero crear/editar
-     usuarios de verdad sigue sin funcionar — es un bug preexistente, no se intentó arreglar (fuera
-     de alcance de este pedido).
-   - **Diagrama de Flujo de trabajo rediseñado como flowchart ramificado** (antes: columnas por
-     profundidad con wrap). Nuevo `computeLanes()` en `MapTab.tsx` agrupa los nodos en cadenas
-     lineales por rama (cada raíz sin `dependsOn` inicia una rama) y las ordena
-     Landing/Formulario (arriba) → Copys-Diseño-Envíos (centro) → Pauta (abajo) vía `LANE_RANK`.
-     El nodo "Inicia el proyecto" queda a la izquierda centrado verticalmente; un `<svg>` con
-     curvas Bézier (`viewBox` + `preserveAspectRatio="none"`, sin JS de medición) conecta el inicio
-     con la primera tarjeta de cada rama; dentro de cada rama, flechas rectas entre nodos
-     consecutivos. El ancho de cada tarjeta es un porcentaje fijo (`100/maxLaneLength`) del
-     contenedor — todo fluido, sin `overflow-x/y`, sin scrollbar. `NodeCard` no se tocó (mismo
-     estilo). **No se pudo verificar visualmente** (ver nota de Playwright abajo) — revisar con
-     cuidado en producción, especialmente con 1 sola rama vs. 3 ramas.
-   - **Pauta en redes sociales**: se renombró el requerimiento `pauta_digital` ("Pauta digital" →
-     "Pauta en redes sociales") en `CreateProjectWizard.tsx`. Antes este requerimiento NO generaba
-     ningún nodo en Flujo de trabajo (el efecto de auto-build por canales nunca corría porque
-     `buildDefaultStrategyNodes()` ya sembraba 3 nodos siempre, así que su guard `nodes.length > 0`
-     cortocircuitaba de inmediato — ese auto-build lleva tiempo siendo código muerto). Ahora
-     `buildDefaultStrategyNodes(requerimientos)` en `factoryStore.ts` recibe los requerimientos del
-     wizard y agrega nodos raíz condicionalmente: `landing`/`formulario` (rol Gestor de canales) y
-     `pauta` (rol **Social Media**, explícito a pedido del usuario — no es uno de los 5 roles de
-     equipo, se mantiene como etiqueta especializada igual que en `buildFabricaBriefs`).
-   - **No se pudo verificar visualmente con Playwright** — el intento anterior falló por
-     `ECONNRESET`; esta vez `npx playwright install chromium` sí conectó y empezó a descargar
-     (~183 MB) pero iba muy lento (~10% en 2 min) y no se esperó a que terminara. Vale la pena
-     reintentar en otra sesión si se quiere confirmar visualmente antes de tocar producción de
-     nuevo.
-
-### 2026-07-08
-
-9. **Playwright por fin instalado en esta máquina** — Chromium (`chromium-1228`, ~416 MB) quedó
-   completo en `%LOCALAPPDATA%\ms-playwright`. Importante para próximas sesiones: `chromium.launch()`
-   sin argumentos falla (`Executable doesn't exist ... chromium_headless_shell`) porque solo se
-   descargó el Chromium "headed" normal, no el paquete separado `chrome-headless-shell`; hay que
-   pasar `executablePath` apuntando a `chromium-1228/chrome-win64/chrome.exe` explícitamente.
-
-10. **Fix: nodo "Formulario de inscripción" huérfano en Flujo de trabajo** (resuelve el punto 1
-    del pendiente de arriba) — causa raíz: `updateProject` nunca tocaba `strategyNodes`, solo
-    `fabricaBriefs`, así que al editar un proyecto y desmarcar un requerimiento (`formulario`,
-    `landing` o `pauta_digital`) la tarea real desaparecía del Equipo pero el nodo visual seguía
-    en Flujo de trabajo para siempre. Se agregó `syncRequerimientoNodes()` en `factoryStore.ts`
-    (cerca de `patchProject`), que en cada `updateProject` con `requerimientos` reconcilia los
-    nodos raíz `landing`/`formulario`/`pauta` contra la lista actual — agrega los que falten, quita
-    los que ya no estén — sin tocar la cadena Copys → Diseño → Envíos ni nodos agregados a mano.
-    **Verificado end-to-end con Playwright:** crear proyecto con Landing + Formulario → el nodo
-    aparece; editar y desmarcar Formulario → el nodo desaparece y Landing queda intacto.
-
-11. **Plan de canales: nuevos canales + íconos + tabla responsive + hora** (`CreateProjectWizard.tsx`)
-    - Lista de canales reemplazada a pedido del usuario: se quitó `Meta Ads` (se separó en
-      `Facebook` e `Instagram`), se agregó `TikTok`, se quitó `RRSS` y se agregó `Google Ads`, y se
-      sumaron `BTL`, `KAM` y `Relacionamiento`. Lista final: Correo, WhatsApp, SMS, Facebook,
-      Instagram, TikTok, Google Ads, Call Center, BTL, KAM, Relacionamiento (`CHANNELS` en
-      `CreateProjectWizard.tsx`). Se actualizó `buildFabricaBriefs` (switch por canal) y
-      `canalInvolvesRole` para los canales nuevos — mapeo de roles es una decisión razonable pero
-      no confirmada con el usuario: Facebook/Instagram/TikTok/Google Ads → Social Media, BTL →
-      Estratega + Diseñador, KAM → Estratega, Relacionamiento → Gestor de canales.
-    - El selector de canal pasó de `<select>` nativo a `Select`/`SelectItem` de shadcn con ícono
-      lucide-react por canal (Mail, MessageCircle, Smartphone, Facebook, Instagram, Music, Search,
-      Phone, Store, Briefcase, Handshake).
-    - **Fix fecha cortada ("10 de ....")**: la columna "Día" estaba fija en `60px` en el grid,
-      insuficiente para el texto `formatDisplay()`. Ahora fecha y hora comparten un contenedor con
-      ancho suficiente.
-    - **Nuevo: selector de hora.** Se agregó `hora: string` a `CanalRow` (`factoryStore.ts`) y un
-      `<input type="time">` oculto igual al patrón ya usado para la fecha (click → `showPicker()`),
-      al lado del selector de fecha.
-    - **Responsive:** la fila de cada canal es `flex flex-col` (tarjeta apilada) en mobile y
-      cambia a `md:grid` con columnas fijas desde `768px`. El header de la tabla se oculta en mobile
-      (`hidden md:grid`) porque cada campo ya es autodescriptivo (placeholder/ícono).
-    - **Verificado con Playwright:** los 11 canales aparecen con su ícono en el dropdown, fecha
-      "10 de sep" y hora "14:30" se ven completos sin cortarse, y a 375px de ancho la fila se apila
-      en tarjeta sin overflow horizontal ni romper el diseño del diálogo.
-    - Typecheck (`tsc --noEmit`) y `npm run build` pasan limpio.
-
-12. **Herramientas: iframe de n8n reemplazado por formulario JSON-driven ("Acortar link con
-    Bitly")** — `HerramientasPage.tsx` ya no embebe el HTML crudo que devolvía el webhook de n8n
-    (`https://n8n.camarabaq.org.co/webhook/bitly+qr+links`), ni las opciones "Crear link de
-    descarga"/"Crear formulario" (a pedido del usuario, se quitaron del alcance por completo).
-    - Nuevo componente autocontenido `src/components/tools/BitlyLinkTool.tsx`: al montar hace
-      `GET https://n8n.camarabaq.org.co/webhook/formulariolink` (schema `{ title, fields[], 
-      submitLabel }`), pinta el formulario 100% desde ese JSON (ningún campo hardcodeado — orden,
-      labels, placeholders, requerido y tipo salen del schema) y al enviar hace
-      `POST https://n8n.camarabaq.org.co/webhook/crearlink` con los valores capturados, esperando
-      `{ url, titulo }`. Sin recargar la página.
-    - Estados cubiertos: loading del schema, error de schema con botón "Reintentar", formulario con
-      validación (requerido + URL válida vía `new URL()`), loading del submit, error de submit
-      (con los valores del usuario preservados, no se pierden), éxito con tarjeta de resultado +
-      botón "Copiar link" (muestra "¡Link copiado!" 2s vía `navigator.clipboard`) + "Generar otro
-      link" que resetea sin recargar.
-    - **Los design tokens del HTML de n8n (Open Sans, fondo radial `#eef3ff`, sombras
-      `rgba(80,112,255,.18)`, botón píldora con gradiente `#2563ff→#4c8dff`, etc.) se mantienen
-      LOCALES al componente** (objeto `T` + inline styles), no se tocó el theme global
-      (`index.css` `:root`/`.dark`) — son visualmente distintos del resto de la app (navy/Inter) y
-      mezclarlos en las CSS vars globales habría afectado otras pantallas. Solo se agregó `Open
-      Sans` al mismo `@import` de Google Fonts que ya cargaba Inter/Space Grotesk/Baloo 2.
-    - **Pendiente de confirmar con el usuario: CORS en n8n.** El iframe anterior no tenía problema
-      de CORS (carga un documento completo, no hace fetch); el nuevo componente sí hace
-      `fetch()` desde el navegador a ambos webhooks, así que ambos nodos de n8n necesitan responder
-      con headers `Access-Control-Allow-Origin` (o "Allow CORS" activado en el nodo Webhook) o el
-      fetch fallará con un error de CORS que ni siquiera llega al `catch` como un mensaje claro —
-      no se pudo probar contra el n8n real desde esta sesión.
-    - Verificado con Playwright mockeando ambos endpoints (`page.route`): loading, formulario
-      renderizado desde el JSON, validación de campo requerido, validación de URL inválida,
-      submitting, éxito, copiar, reset, error de schema con reintentar, error de submit con datos
-      preservados, y vista mobile (375px) — todos los estados se ven correctos. No se probó contra
-      los webhooks reales de n8n (`formulariolink`/`crearlink`), solo con respuestas simuladas que
-      siguen el contrato JSON acordado.
-    - Typecheck y `npm run build` pasan limpio.
-
-13. **Herramientas: descarga de código QR** — el contrato de `POST .../crearlink` cambió: ahora
-    devuelve `{ url, titulo, qrUrl }` (antes solo `url`/`titulo`). `BitlyResult` en
-    `BitlyLinkTool.tsx` suma `qrUrl?: string`. La tarjeta de éxito agrega un segundo botón
-    "Descargar código QR" (estilo pill outline, debajo del botón de "Copiar link") que hace
-    `fetch(result.qrUrl)` — la URL ya viene armada desde el backend
-    (`https://n8n.camarabaq.org.co/webhook/descargar-qr?link=<link codificado>`), el frontend no
-    arma query params — y fuerza la descarga automática del archivo vía blob +
-    `<a download>` (no un simple `<a href=... download>` directo, porque el atributo `download` no
-    se respeta de forma confiable en recursos cross-origin sin blob). El nombre del archivo sale
-    del header `Content-Disposition` si n8n lo manda; si no, se arma uno genérico
-    (`codigo-qr.<ext>`) a partir del `Content-Type` de la respuesta.
-    - También se cambió el subtítulo de la página de "Acortar link con Bitly" a "Crear código QR
-      con métricas de seguimiento" (`HerramientasPage.tsx`), reflejando que ahora es la única
-      herramienta y su propósito real es el QR con tracking, no solo el link corto.
-    - El schema de campos (`GET .../formulariolink`) puede seguir cambiando del lado de n8n (ej.
-      cambiar `utm_content` por `utm_term`, como pidió el usuario en esta ronda) **sin tocar el
-      frontend** — es exactamente el punto de que el formulario sea 100% JSON-driven. Se verificó
-      con un mock de schema que incluye `utm_term` en vez de `utm_content` y renderizó correcto sin
-      cambios de código.
-    - **CORS sigue pendiente de confirmar en n8n**, y ahora aplica también a
-      `webhook/descargar-qr` (tercer endpoint al que el frontend le hace `fetch()` directo). Nota
-      adicional: el header `Content-Disposition` requiere que n8n exponga
-      `Access-Control-Expose-Headers: Content-Disposition` para que el navegador se lo entregue al
-      JS entre orígenes distintos — si no, el nombre de archivo cae al fallback genérico (no rompe
-      la descarga, solo el nombre sugerido).
-    - Verificado con Playwright mockeando los 3 endpoints: formulario con `utm_term`, éxito con
-      ambos botones, descarga real capturada vía `page.waitForEvent('download')`, y estado de error
-      del QR (500) con mensaje inline sin romper "Copiar link" ni "Generar otro link". No probado
-      contra n8n real.
-    - Typecheck y `npm run build` pasan limpio.
-
-14. **Fix: rol "Producción" fantasma en Equipo + Landing/Formulario mal atribuidos** — el usuario
-    reportó que crear/editar una tarea generaba un rol "Producción" visible en la pestaña Equipo,
-    y que "Landing page" debía ser responsabilidad de Gestor de canales y verse en el nodo
-    correspondiente de Flujo de trabajo (igual para Formulario de inscripción).
-    - **Causa raíz:** `rolesStore.ts` tenía `produccion.tareas = ['Landing page']` (rol interno, no
-      asignable desde la UI pero igual "activo"), y `CreateProjectWizard.buildFabricaBriefs`
-      inyectaba esa tarea sin condición cuando el requerimiento "Landing" estaba seleccionado (loop
-      "Tareas configuradas desde Ajustes", `role.id === 'produccion' || 'diseno'`). El resultado
-      (`FabricaBriefItem.roleLabel = 'Producción'`) fluye directo a `project.fabricaBriefs`, y
-      `TeamTasksTab` (pestaña Equipo) agrupa la "Hoja de fábrica" por `roleLabel` sin filtrar contra
-      `ASSIGNABLE_ROLE_IDS` — así que cualquier rol interno que se cuele en un brief aparece como
-      tarjeta propia. Este efecto se dispara cada vez que se recalcula `fabricaBriefs`, lo cual pasa
-      en cada `useEffect` del wizard — o sea, tanto al crear como cada vez que se reabre "Editar
-      proyecto" y se toca algo (de ahí "creé una tarea nueva y me creó un rol").
-    - **Fix:** se quitó `'produccion'` del loop en `CreateProjectWizard.tsx` (solo `'diseno'` sigue
-      ahí) y de `REQ_ROLE_TAREAS.landing`; se agregó un bloque explícito, simétrico al de
-      "Formulario de inscripción", que crea la tarea "Landing page" con
-      `roleId: 'gestor_canales'` sin depender de que exista una fila de canal (antes el único
-      camino real hacia un `Landing`-tarea de Gestor de canales pasaba por el switch de
-      Correo/WhatsApp/SMS, así que elegir solo "Landing" sin ningún canal no generaba nada para ese
-      rol). `rolesStore.ts`: `DEFAULT_TAREAS.produccion` quedó en `[]` (cosmético — no afecta a
-      quien ya tenga el rol persistido en su `localStorage`, el fix real vive en el wizard). El rol
-      `produccion` en sí no se eliminó del catálogo (su `id` en teoría podría usarse en otro lado,
-      y `ASSIGNABLE_ROLE_IDS` ya lo excluía correctamente).
-    - **Nodos de Flujo de trabajo ahora muestran los entregables reales** — `BRIEF_DRIVEN_STAGES`
-      (`MapTab.tsx`) suma `'landing'` y `'formulario'` (antes solo `copys`/`diseno`/`envios`), y
-      ambos reusan `ContentBriefPanel` (ya genérico — RichText + adjuntos + aprobación — no hizo
-      falta un panel nuevo). El punto fino: `landing`/`formulario`/`envios` comparten
-      `roleLabel: 'Gestor de canales'` en sus `StrategyNode`, así que un simple
-      `b.roleLabel === node.roleLabel` (como ya usan copys/diseno, donde el rol es único) mezclaría
-      las tareas de los tres nodos. Se amplió `briefsForNode` (`StrategyBriefPanels.tsx`) para que,
-      además del match por `currentNodeId`/`roleLabel`, desambigüe por texto de la tarea cuando no
-      hay `currentNodeId` todavía: `envios` → `isCanalBrief` (ya existía como filtro manual en el
-      caller, ahora vive adentro de `briefsForNode`), `landing` → `tarea.includes('Landing')`,
-      `formulario` → `tarea.includes('Formulario de inscripción')`. Los entregables creados a mano
-      desde el propio nodo (`currentNodeId` seteado) siguen matcheando sin este filtro adicional,
-      así que una "Nueva tarea" con texto libre en el nodo Landing no desaparece por no contener la
-      palabra "Landing". Se simplificaron los dos call-sites en `MapTab.tsx`
-      (`tasksByNodeId`/`briefPendingCount`) y `DeliveryBriefPanel`, que ya no necesitan re-filtrar
-      manualmente por fuera.
-    - **Importante — no se limpió el dato ya persistido.** Si un proyecto ya tenía el brief
-      "Landing page" con `roleLabel: 'Producción'` guardado en Supabase antes de este fix, la
-      tarjeta "Producción" en Equipo sigue apareciendo hasta que alguien vuelva a abrir "Editar
-      proyecto" en ese proyecto y le dé "Guardar cambios" — `buildFabricaBriefs` recalcula
-      `fabricaBriefs` completo en cada guardado del wizard, así que ese siguiente guardado ya lo
-      corrige solo, sin necesidad de tocar la base de datos a mano.
-    - **Riesgo pre-existente detectado pero NO tocado en esta sesión** (fuera de alcance del
-      pedido): `buildFabricaBriefs` reconstruye `fabricaBriefs` **completo** desde cero cada vez que
-      se guarda el wizard de edición — genera IDs nuevos y no preserva `deliverableContent`,
-      `comments`, `workflowStatus`, `currentNodeId`, etc. de entregables que ya hubieran avanzado
-      por "Flujo de trabajo". Si el usuario edita un proyecto ya avanzado (con copys/diseños ya
-      aprobados, por ejemplo) y guarda desde el wizard, en teoría se perdería ese progreso. No se
-      confirmó si esto ya se manifestó en producción; requeriría un rediseño (diff/merge en vez de
-      reemplazo) que no estaba pedido — dejarlo anotado para revisar si se reporta.
-    - Verificado con Playwright: proyecto nuevo con Landing + Formulario → pestaña Equipo muestra
-      una sola tarjeta "Gestor de canales" con "Landing page" y "Formulario de inscripción básico"
-      (cero tarjetas "Producción"); nodo "Landing" en Flujo de trabajo muestra solo "Landing page"
-      (1 pendiente, Gestor de canales); nodo "Formulario de inscripción" muestra solo "Formulario
-      de inscripción básico" — sin mezclarse entre sí ni con Envíos.
-    - Typecheck y `npm run build` pasan limpio.
-
-15. **Herramientas: pantalla inicial con botón "Crear QR con métricas de seguimiento (Utms)"** —
-    a pedido del usuario, `BitlyLinkTool.tsx` ya no trae el schema del formulario automáticamente
-    al montar; ahora arranca en un estado `idle` con una tarjeta + botón, y el `GET
-    .../formulariolink` solo se dispara al hacer clic (nuevo estado inicial en el union `Status`,
-    se quitó el `useEffect` que llamaba `loadSchema()` en mount). Verificado con Playwright
-    interceptando la ruta: confirmado que el fetch del schema NO ocurre hasta el clic.
-    - **Placeholders de guía**: se agregó `DEFAULT_PLACEHOLDERS` (link/titulo/utm_source/
-      utm_medium/utm_campaign/utm_term) como *fallback* — solo se usa cuando el campo del schema no
-      trae su propio `placeholder` (`field.placeholder ?? DEFAULT_PLACEHOLDERS[field.name]`). Esto
-      no reintroduce hardcodeo de campos: si n8n cambia o quita un campo, simplemente no hay
-      fallback para ese `name` y no pasa nada; el schema remoto sigue siendo la única fuente de qué
-      campos existen.
-    - Typecheck y `npm run build` pasan limpio.
-
-16. **Reversión: el formulario de Bitly/QR ya NO es JSON-driven — los campos quedan hardcodeados
-    en el frontend** — el usuario confirmó que `https://n8n.camarabaq.org.co/webhook/formulariolink`
-    **no existe** (nunca se implementó del lado de n8n), así que toda la arquitectura de "schema
-    remoto" de los puntos 12/13/15 quedó reemplazada. `BitlyLinkTool.tsx`:
-    - Se borró `SCHEMA_URL`, la interfaz `FormSchema`, `loadSchema()` y todo el fetch GET. Los 6
-      campos (`link`, `titulo`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, con sus
-      labels/placeholders/requerido) ahora viven en una constante local `FIELDS: FormField[]` en el
-      propio componente — es la única fuente de verdad de qué campos tiene el formulario.
-      `DEFAULT_PLACEHOLDERS` (del punto 15) se fusionó directamente en `FIELDS` ya que no hace
-      falta el mecanismo de *fallback* sin un schema remoto que sobreescribir.
-    - Sigue igual: `POST .../crearlink` con los 6 campos, respuesta `{ url, titulo, qrUrl }`,
-      tarjeta de éxito con copiar + descargar QR (puntos 12/13, sin cambios en esa parte).
-    - El botón inicial "Crear QR con métricas de seguimiento (Utms)" del punto 15 ya no dispara un
-      fetch al hacer clic — simplemente cambia el estado local a `'form'` (ya no hay
-      `'loading-schema'`/`'error-schema'` en el union `Status`, se simplificó a
-      `'idle' | 'form' | 'submitting' | 'error-submit' | 'success'`).
-    - **Fix del botón "fuera del diseño"**: con `height` fijo (50px) y el texto largo
-      ("Crear QR con métricas de seguimiento (Utms)") envolviendo a dos líneas en viewports
-      angostos, el ícono quedaba descentrado/asomado fuera del pill. Se extrajo un componente
-      compartido `PillButton` (usado también por "Copiar link" y "Descargar código QR") que usa
-      `padding` en vez de `height` fijo — el botón crece con el contenido en vez de recortarlo — y
-      el ícono lleva `shrink-0` para no aplastarse cuando el texto envuelve.
-    - Verificado con Playwright: confirmado que `formulariolink` nunca se llama (se interceptó y
-      abortó la ruta a propósito, cero requests); formulario con los 6 campos correctos sin
-      depender de red; botón inicial ya no se ve roto en 900px ni en mobile (375px, mismo problema
-      de sidebar preexistente y ya documentado, no relacionado a este fix); flujo completo
-      (idle → form → submit → éxito con copiar/descargar) intacto.
-    - Typecheck y `npm run build` pasan limpio.
-
-17. **Fix: entregable de Landing/Formulario debe ser un campo URL, no rich text** — el usuario pidió
-    que el entregable de los nodos "Landing" y "Formulario de inscripción" en Flujo de trabajo sea
-    "un campo de texto con el URL" y quede guardado ahí. `BriefDialog` (`StrategyBriefPanels.tsx`)
-    usaba siempre el mismo `RichTextEditor` (WYSIWYG) para cualquier tipo de entregable — se agregó
-    `isUrl = isUrlBrief(brief.tarea)` (reusa el helper que ya existía en `DeliverableSummary.tsx`,
-    antes solo se usaba en la vista de solo-lectura) y, cuando es `true`, la vista editable ahora
-    muestra un `<Input type="url">` simple (sin adjuntos) en vez del editor enriquecido, con
-    validación (`isValidUrl`, mismo patrón que `BitlyLinkTool.tsx`) que deshabilita "Enviar a
-    aprobación" hasta que el valor sea una URL válida. Sigue guardando en el mismo campo
-    `deliverableContent` de siempre, así que la vista de solo-lectura (`DeliverableSummary`, que ya
-    tenía el branch `isUrlBrief` desde antes) no necesitó cambios — ya renderizaba el link
-    correctamente, solo faltaba que la vista *editable* capturara una URL en vez de HTML libre.
-    - **Bug relacionado encontrado y corregido de paso**: el `useEffect` que recalcula
-      `fabricaBriefs` en `CreateProjectWizard.tsx` tenía un gate `hasContent` que solo consideraba
-      `canalesRows.length > 0 || loopsRows... || hasFormulario` — si el usuario elegía **solo**
-      "Landing" (sin ninguna fila de canal ni Formulario), `buildFabricaBriefs` nunca se llamaba y
-      la tarea "Landing page" (agregada en el punto 14) jamás se generaba, a pesar de que el código
-      que la crea ya estaba ahí. Se agregó `hasLanding = requerimientos.includes('landing')` al
-      gate. Esto se detectó verificando este mismo fix con Playwright — un proyecto con únicamente
-      "Landing" seleccionado mostraba "0 pendientes" en el nodo.
-    - Verificado con Playwright: nodo Landing con campo URL (no editor de texto enriquecido),
-      submit deshabilitado con URL inválida/vacía, habilitado con URL válida, y al reabrir el
-      entregable ya aprobado/en revisión se ve como link clickeable con la URL guardada.
-    - Typecheck y `npm run build` pasan limpio.
-
-18. **Fix: formulario de Herramientas se recortaba en viewports bajos** — el contenedor en
-    `HerramientasPage.tsx` tenía `overflow-hidden` con altura fija (`calc(100vh - 160px)`); si el
-    contenido (formulario de 6 campos, o la tarjeta de éxito con sus 3 botones) superaba esa altura
-    — típico en laptops con poca altura de pantalla o zoom del navegador — el contenido sobrante
-    quedaba recortado e inaccesible, incluyendo a veces el botón "Copiar link". Cambiado a
-    `overflow-y-auto` para que aparezca una barra de scroll en vez de cortar contenido. El botón
-    "Copiar link" del resultado ya existía desde el punto 12 — no hizo falta agregarlo, solo dejó
-    de estar inalcanzable. Verificado con Playwright a 900×520px (viewport deliberadamente bajo):
-    el formulario y la tarjeta de éxito ahora se pueden scrollear dentro del contenedor y el botón
-    de copiar es alcanzable y funcional.
-    - Typecheck y `npm run build` pasan limpio.
-
-19. **Herramientas: se quita el contenedor con borde/sombra/altura fija, formulario compacto** —
-    el usuario pidió eliminar el "contenedor de herramientas" y achicar el formulario para que
-    quepa sin scroll. `HerramientasPage.tsx`: el `div` con `border shadow-sm overflow-y-auto` y
-    `height: calc(100vh - 160px)` (del punto 18) se reemplazó por un layout flex simple
-    (`flex flex-col`, el título con `shrink-0`, `BitlyLinkTool` dentro de un `min-h-0 flex-1`) sin
-    borde ni sombra — el fondo radial del propio `BitlyLinkTool` sigue ahí, solo se quitó la "caja"
-    alrededor. `BitlyLinkTool.tsx` ahora es dueño de su propio scroll (`h-full overflow-y-auto` en
-    vez de `min-h-full`, sin depender del padre) y se redujo el padding/spacing en general (tarjetas
-    de `p-8`→`p-5/p-7`, inputs de `11px 14px`→`9px 12px`, botón submit de `50px`→`46px`, `maxWidth`
-    de 430→400) para que quepa sin scroll en viewports normales.
-    - Verificado con Playwright a 900×800px: `document.documentElement.scrollHeight` quedó
-      exactamente igual a `window.innerHeight` (800 = 800) — cero scroll necesario para ver el
-      formulario completo. Sigue habiendo scroll interno como red de seguridad en viewports muy
-      bajos (ya no rompe/recorta, ver punto 18).
-
-20. **Fix: "Nueva tarea" en nodo Landing/Formulario debe usar el campo URL, sin importar el texto
-    escrito** — antes, el campo URL vs. editor de texto enriquecido se decidía por
-    `isUrlBrief(brief.tarea)` (busca "Landing"/"Formulario de inscripción" en el texto), así que
-    una tarea creada a mano con otro título (ej. "Publicar sitio v2") en el nodo Landing caía en el
-    editor WYSIWYG en vez del campo URL. `BriefDialog` (`StrategyBriefPanels.tsx`) ahora acepta un
-    prop `urlOnly?: boolean`; `ContentBriefPanel` se lo pasa explícitamente en base al
-    `node.stageType` (`'landing' || 'formulario'`) en vez de dejar que `BriefDialog` lo infiera del
-    texto — así CUALQUIER tarea dentro de esos dos nodos usa el campo URL, sin importar cómo se
-    haya titulado. `isUrlBrief` sigue como fallback si `urlOnly` no se pasa (compatibilidad con
-    otros llamadores futuros).
-    - Verificado con Playwright: tarea "Publicar sitio v2" creada a mano en el nodo Landing abre
-      con `<input type="url">` (cero elementos `.ProseMirror`), igual que la tarea auto-generada
-      "Landing page".
-
-21. **Feature: crear tareas en cualquier nodo, para cualquier rol** — el usuario pidió poder crear
-    tareas en todos los nodos del Flujo de trabajo, no solo Copys/Diseño/Envíos/Landing/Formulario.
-    Antes, cualquier nodo fuera de esa lista (ej. "Pauta en redes sociales", o nodos `custom`)
-    caía en una lista genérica basada en `project.tasks`/`ProjectTask` que, según quedó documentado
-    en sesiones anteriores, **estaba desconectada de todo lo demás** — no aparecía en la pestaña
-    Equipo ni en ningún otro lado, solo en ese mismo diálogo. Se eliminó esa rama muerta por
-    completo: `NodeTasksDialog` (`MapTab.tsx`) ahora despacha `DeliveryBriefPanel` solo para
-    `envios` y `ContentBriefPanel` (el mismo panel de siempre, con `FabricaBriefItem` real que sí
-    se ve en Equipo) para **cualquier otro stage** con rol asignado. Se borró todo el código muerto
-    asociado: `BRIEF_DRIVEN_STAGES`, el estado `title`/`memberId`/`handleAdd` basado en
-    `ProjectTask`, el componente `TaskRow`, los props `onAddTask`/`onUpdateTask`/`onDeleteTask` y
-    las acciones `addTask`/`updateTask`/`deleteTask` del store ya no se usan desde `MapTab.tsx`
-    (las acciones siguen existiendo en `factoryStore.ts` por si algo más las usa, no se tocó el
-    store). El badge "· Np" de tareas pendientes en la lista de proyectos del sidebar
-    (`FactoryPage.tsx` línea ~876, lee `project.tasks`) queda inactivo de forma permanente — ya
-    era efectivamente inactivo antes porque nada poblaba `project.tasks` en la práctica.
-    - Verificado con Playwright: nodo "Pauta en redes sociales" (antes con la lista muerta) ahora
-      tiene el mismo input "¿Qué hay que crear?" que Copys/Diseño, y la tarea creada
-      ("Configurar targeting de campaña") queda como pendiente real (`FabricaBriefItem`, rol
-      "Social Media") — el badge del nodo en el diagrama pasó a reflejar el conteo correcto.
-    - Typecheck y `npm run build` pasan limpio (para los puntos 19, 20 y 21 en conjunto).
-
-22. **Fix: tarea duplicada "Landing" + "Landing page" al crear proyecto con Landing** — el usuario
-    creó un proyecto nuevo con Landing + un toque de Correo/WhatsApp/SMS en Plan de canales y le
-    aparecieron DOS tareas para Gestor de canales: "Landing" y "Landing page". Causa: quedaban dos
-    caminos generando una tarea de landing en paralelo — (a) el bloque explícito e incondicional
-    agregado en el punto 14 (`if (reqs.includes('landing')) addItem(..., 'Landing page')`), y (b)
-    el mapa viejo `REQ_ROLE_TAREAS.landing.gestor_canales = ['Landing']`, que solo se activaba
-    cuando había una fila de canal Correo/WhatsApp/SMS (vía `addRoleTareasFiltered` dentro del
-    switch de canales) — se me había pasado por alto dejar ese camino viejo activo al agregar el
-    nuevo en su momento. Se vació `REQ_ROLE_TAREAS.landing` a `{}` (igual que `formulario`) para
-    que ese camino viejo nunca vuelva a generar la tarea "Landing" — la única fuente de verdad
-    ahora es el bloque explícito de "Landing page".
-    - **Bug relacionado, mismo reporte del usuario**: "no me deja crear tareas nuevas en los nodos
-      del flujo de trabajo" — al investigar (reproduciendo con Playwright en vez de asumir) se
-      confirmó que Copys/Diseño/Landing SÍ dejaban crear tareas, pero **el nodo "Envío de
-      acciones" (stageType `envios`) no tenía ningún input para agregar tareas** — usa
-      `DeliveryBriefPanel` en vez de `ContentBriefPanel`, y ese panel nunca tuvo el "Nueva tarea"
-      que sí se le agregó a `ContentBriefPanel`/`NodeTasksDialog` en el punto 21 (me quedé corto:
-      until ahora "cualquier nodo" en la práctica excluía a Envíos). Se agregó el mismo quick-add
-      (`Input` + botón `Plus`) a `DeliveryBriefPanel`, creando el `FabricaBriefItem` con
-      `currentNodeId` igual que en `ContentBriefPanel` — como `briefsForNode` no aplica el filtro
-      `isCanalBrief` cuando el brief ya tiene `currentNodeId`, la tarea nueva aparece en la lista
-      del nodo sin importar que su texto no empiece con "Configurar envío por…".
-    - Verificado con Playwright reproduciendo el reporte exacto del usuario (proyecto con Landing +
-      canal Correo): cero tareas "Landing" sueltas, solo "Landing page"; y task creation confirmado
-      en los 3 nodos (Landing, Copys, Envío de acciones) — antes del fix "Envío de acciones" tenía
-      0 inputs de "Nueva tarea", después tiene 1 y la tarea creada aparece.
-    - Typecheck y `npm run build` pasan limpio.
-
-### 2026-07-10
-
-23. **Fix: Copys aprobado no activaba Diseño + nuevos nodos KAM/BTL/Relacionamiento/Call
-    Center/Pauta impulsados por Plan de canales + rol Trafficker**
-    - **Causa raíz del bug reportado** ("marqué una tarea como completada en Copys y no se movió a
-      Diseño"): `activateNextStage` (`StrategyBriefPanels.tsx`) hacía `if (!brief.currentNodeId)
-      return;` — pero los entregables de Copys sembrados por el wizard (ej. "Redactar copy para
-      Correo…") nunca tenían `currentNodeId` seteado (solo lo tienen las tareas creadas a mano con
-      "Nueva tarea" dentro del nodo). `activateNextStage` ahora recibe el `nodeId` explícito del
-      panel que abrió el diálogo (`BriefDialog` suma un prop `nodeId`) en vez de leerlo del brief, y
-      además estampa `currentNodeId` en el brief en cada submit/aprobar/corregir — arregla el bug de
-      raíz y deja el dato consistente para el futuro, sin depender de heurísticas de texto.
-    - **Rol nuevo: Trafficker** (`rolesStore.ts`, `ASSIGNABLE_ROLE_IDS`, versión de persist subida a
-      3; también espejado en `authService.ts` `AppRole`/`ROLE_LABELS` por consistencia con el punto
-      8 de la bitácora, aunque ese enum sigue siendo puramente informativo).
-    - **Nodos de Flujo de trabajo ahora dependen del Plan de canales, no solo de Requerimientos** —
-      nuevo `syncCanalNodes()` en `factoryStore.ts` (paralelo a `syncRequerimientoNodes`, se corre
-      en `addProject` y en `updateProject` cuando cambian `canales`): Facebook/Instagram/TikTok/
-      Google Ads → nodo **"Pauta en redes sociales"** (rol Trafficker, reemplaza el viejo checkbox
-      "Pauta en redes sociales" de Requerimientos que se **eliminó** — el nodo ahora nace solo de
-      los canales elegidos); BTL/KAM/Relacionamiento → sus propios nodos de una sola etapa (rol
-      Estratega); Call Center → cadena de 2 nodos ("Guion de llamada", rol Copywriter → "Call
-      Center", rol Estratega, `dependsOn` el primero). Los nodos se agregan/quitan solos al
-      agregar/quitar canales, igual que ya pasaba con Landing/Formulario.
-    - **Dos entregables nuevos**, ambos con paneles y diálogos propios (no reusan `ContentBriefPanel`
-      ni `DeliveryBriefPanel`):
-      - `DoneDateBriefPanel` (KAM, BTL, Relacionamiento, y el nodo "Call Center") — sin contenido ni
-        adjuntos, solo "¿Se realizó? Sí/No" + fecha (`deliverableDone`, `deliverableDate` nuevos en
-        `FabricaBriefItem`).
-      - `PautaBriefPanel` (Pauta en redes sociales) — cuadro de texto (RichTextEditor) + adjuntos,
-        más "¿Publicada? Sí/No" (`deliverablePublicada`, nuevo). Al marcar "Sí" crea automáticamente
-        una tarea "Recolectar métricas de {campaña}" en el mismo nodo — mismo patrón que ya existía
-        para Envíos (`Recolectar métricas de {canal}`), esa parte no se tocó.
-    - **Cadena de aprobación de Call Center** reutiliza `activateNextStage`: al aprobar el guion
-      (Copywriter, vía `ContentBriefPanel`, con revisión como cualquier Copys/Diseño), se crea sola
-      una tarea "Registrar realización — Call Center" para Estratega en el nodo "Call Center" —
-      `AUTO_ADVANCE_STAGE_TYPES` (antes `CONTENT_STAGE_TYPES`) suma `callcenter_guion`/`callcenter`
-      a los `copys`/`diseno` que ya tenía.
-    - **Ambigüedad de `roleLabel` compartido** — KAM/BTL/Relacionamiento/Call Center comparten el
-      rol "Estratega" (igual que antes Landing/Formulario/Envíos comparten "Gestor de canales"): se
-      resolvió con el mismo patrón ya usado ahí — `briefsForNode` (`StrategyBriefPanels.tsx`) suma
-      un branch de texto por `stageType` para cada uno. Además, como los entregables sembrados por
-      el wizard tampoco tienen `currentNodeId`, se agregó `stampCanalNodeIds()` en `factoryStore.ts`
-      que, en cada `addProject`/`updateProject`, estampa el `currentNodeId` correcto en esos briefs
-      apenas se calculan los nodos — así `briefsForNode` casi no necesita ya las heurísticas de
-      texto (quedan solo como red de seguridad).
-    - **Canal "Relacionamiento" cambió de responsable**: antes generaba la tarea "Plan de
-      relacionamiento" para Gestor de canales; el usuario pidió explícitamente que fuera
-      responsabilidad de la Estratega (misma dinámica que BTL) — se corrigió tanto el `addItem`
-      como el mapa `canalInvolvesRole` en `CreateProjectWizard.tsx`.
-    - **Decisiones confirmadas con el usuario antes de implementar** (`AskUserQuestion`): TikTok
-      también pasa a Trafficker (junto con Facebook/Instagram/Google Ads); el checkbox viejo
-      "Pauta en redes sociales" en Requerimientos se elimina en vez de convivir con el nuevo camino
-      por canales.
-    - Verificado con Playwright en un solo proyecto con los 6 canales nuevos (Correo, Facebook,
-      BTL, KAM, Relacionamiento, Call Center) + Landing: se generaron exactamente los 10 nodos
-      esperados y 9 briefs sin duplicados (antes existía el riesgo del bug del punto 22). Se
-      probaron a mano los 4 flujos: Copys aprobado → tarea aparece sola en Diseño; nodo KAM abre el
-      editor "¿Se realizó?" (sin editor de texto enriquecido) y guarda fecha; guion de Call Center
-      aprobado → tarea "Registrar realización — Call Center" aparece sola en el nodo Call Center
-      para Estratega; nodo Pauta muestra rol Trafficker y, al marcar una campaña de Facebook como
-      publicada, aparece sola la tarea "Recolectar métricas de Facebook". Typecheck y
-      `npm run build` pasan limpio.
-    - **No verificado**: sincronización real contra Supabase (el proyecto de prueba se creó y
-      exploró en una sola sesión de navegador sin recargar, porque el `upsert` a
-      `factory_projects` devolvió `406` en esta máquina — no se investigó la causa, podría ser una
-      RLS/config local desactualizada; no se tocó nada de Supabase en esta sesión). Tampoco se
-      probó el caso de quitar un canal (ej. desmarcar BTL en "Editar proyecto") para confirmar que
-      `syncCanalNodes` borra el nodo correctamente — la lógica es simétrica a
-      `syncRequerimientoNodes` (ya probada en el punto 10) pero no se ejercitó en este flujo nuevo.
-
-24. **Flujo de trabajo: layout de grilla densa en vez de carriles apilados + se quita
-    "Piezas" de Requerimientos**
-    - El diagrama de Flujo de trabajo (`WorkflowTab` en `MapTab.tsx`) apilaba cada rama
-      (`computeLanes`) en su propia fila a **ancho completo** — una rama de 1 solo nodo (KAM, BTL,
-      Relacionamiento, Landing, Pauta) ocupaba una fila entera con 2/3 del ancho vacíos (cada
-      `NodeCard` medía `100/maxLaneLength%`, calculado sobre la rama más larga de *todo* el
-      diagrama). Con 10 nodos y hasta 7 ramas independientes esto se veía muy alargado
-      verticalmente con huecos horizontales grandes — exactamente lo que pidió corregir el usuario.
-    - Reemplazado por una **grilla CSS densa** (`display: grid`, `grid-template-columns:
-      repeat(auto-fill, minmax(160px, 1fr))`, `grid-auto-flow: dense`): cada rama es un ítem que
-      ocupa `grid-column: span N` (N = su longitud real — 3 para Copys→Diseño→Envíos, 2 para
-      Guion de llamada→Call Center, 1 para el resto), y el algoritmo de *dense packing* del
-      navegador intercala los nodos sueltos en los huecos que dejan las cadenas más largas, sin
-      que el código tenga que calcular filas/columnas a mano. `computeLanes` ordena las ramas por
-      longitud descendente (antes usaba `LANE_RANK` para fijar Landing/Formulario arriba, Copys
-      centro, Pauta abajo — se eliminó esa constante, ya no hay orden "por fase") para que las
-      cadenas largas se coloquen primero y las sueltas rellenen alrededor.
-    - El conector bezier multi-rama desde "Inicia el proyecto" (un `<svg>` con una curva por
-      carril, pensado para carriles apilados verticalmente) ya no tenía sentido geométrico con una
-      grilla 2D — se reemplazó por una sola flecha fija (`ArrowRight`), igual a como ya se veía
-      cuando solo había 1 rama.
-    - Las flechas **dentro** de una rama (que sí representan un `dependsOn` real) se mantienen
-      igual que antes.
-    - De paso, a pedido del usuario, se quitó el botón "Piezas" del paso "Requerimiento" del
-      wizard (`CreateProjectWizard.tsx`): se eliminó de `REQUERIMIENTOS` y su entrada en
-      `REQ_ROLE_TAREAS` (generaba la tarea "Diseño de piezas gráficas" para Diseñador — ya no se
-      genera por esa vía; `roles.diseno.tareas` en Ajustes sigue pudiendo tener esa tarea si el
-      usuario la define ahí, pero el requerimiento del wizard que la disparaba automáticamente
-      desapareció).
-    - Verificado con Playwright: con los mismos 6 canales + Landing del punto 23, el grid quedó en
-      3 filas × 3 columnas aproximadamente (662×424px, mucho más ancho que alto) en vez de 7 filas
-      a ancho completo; sin overflow horizontal en 1400/1200/1000/900px de ancho (medido con
-      `scrollWidth` vs `clientWidth`, no solo visual); botón "Piezas" confirmado ausente. Typecheck
-      y `npm run build` pasan limpio.
-
-25. **Flujo de trabajo: layout de árbol con ramas en filas paralelas + Copys se bifurca a Call
-    Center (se elimina el nodo "Guion de llamada")**
-    - El usuario pidió una estructura exacta tipo diagrama de flujo: "Inicia el proyecto" como
-      única entrada a la izquierda, y de ahí 6 ramas en filas paralelas — Landing, Copys, Pauta,
-      BTL, KAM, Relacionamiento. Copys **se bifurca** en dos caminos: Copys → Diseño de piezas →
-      Envío de acciones, y **Copys → Call Center directo**. Las ramas cortas no deben ocupar el
-      mismo ancho que la rama larga de Copys, sin cruces de líneas.
-    - **Cambio de modelo de datos (confirmado con el usuario vía `AskUserQuestion`):** se eliminó el
-      nodo intermedio `callcenter_guion` ("Guion de llamada"). Ahora el nodo `callcenter` (registro
-      de la Estratega, "¿se hizo? sí/no + fecha") **depende directamente del nodo Copys**. El
-      copywriter redacta el guion como una tarea más dentro de Copys ("Redactar guion para Call
-      Center", que ahora `briefsForNode` enruta a Copys por `roleLabel` Copywriter — se quitó el
-      branch que la excluía). Al aprobar esa tarea (o cualquier copy) en Copys, `activateNextStage`
-      crea el registro "Registrar realización — Call Center" en el nodo Call Center. El usuario
-      aceptó explícitamente el tradeoff de que *cualquier* copy aprobado dispare ese registro; para
-      que no se dupliquen, `activateNextStage` ahora **deduplica** el registro de Call Center (solo
-      crea uno por nodo) y usa un nombre fijo en vez de derivarlo del texto del copy.
-      `AUTO_ADVANCE_STAGE_TYPES` pasó de `['copys','diseno','callcenter_guion','callcenter']` a
-      `['diseno','callcenter']` (los dos hijos de Copys).
-    - `syncCanalNodes` (`factoryStore.ts`): el canal "Call Center" ya no crea la cadena de 2 nodos;
-      crea un solo nodo `callcenter` con `dependsOn: [copysNodeId]`. Además limpia en caliente
-      cualquier nodo `callcenter_guion` que estuviera en memoria. Nueva migración en lectura
-      `mergeGuionNodes()` (en `rowToProject`, junto a `stripApprovalNodes`) hace lo mismo para datos
-      ya persistidos en Supabase: quita el guion y re-cuelga el Call Center de Copys. El tipo
-      `callcenter_guion` se mantiene en el union `StrategyStageType` solo para poder parsear datos
-      viejos antes de migrarlos.
-    - **Layout rediseñado a un árbol real** (`computeTreeLayout` reemplaza a `computeLanes` en
-      `MapTab.tsx`): asigna a cada nodo `(columna = profundidad en la cadena, fila = hoja del
-      subárbol)` con un DFS que numera las hojas; un nodo con varios hijos (Copys) ocupa el rango de
-      filas de todas sus hojas y se centra entre ellas. Las raíces se ordenan por `ROOT_ORDER`
-      (Landing, [Formulario], Copys, Pauta, BTL, KAM, Relacionamiento). El render usa **CSS grid**
-      (`grid-template-columns/rows: repeat(n, 1fr)`, alto fijo `filas × 116px`) para colocar las
-      tarjetas, y **dos `<svg>` con `preserveAspectRatio="none"`** por detrás para las conexiones:
-      uno para el abanico Inicia→raíces, otro para las dependencias entre nodos (curvas Bézier
-      centro-a-centro, tapadas por las tarjetas opacas para que parezcan salir del borde). La
-      bifurcación de Copys se ve como **dos curvas saliendo del mismo nodo** (una a Diseño, otra a
-      Call Center), sin medición del DOM: las coordenadas salen directo de la grilla `(col, fila)`.
-      Las ramas cortas ocupan solo su columna (las demás columnas de esa fila quedan vacías), así
-      que no se estiran al ancho de la rama de Copys. Se eliminaron `computeLanes`, `LANE_RANK` (ya
-      estaba fuera), y los imports `ArrowRight`/`Phone` que quedaron sin uso.
-    - Verificado con Playwright: 9 nodos, sin "Guion de llamada"; el guion vive en Copys; aprobarlo
-      crea "Registrar realización — Call Center" en el nodo Call Center; la bifurcación de Copys se
-      ve con dos líneas; sin overflow horizontal en 1400/1200/1000px. Typecheck y `npm run build`
-      pasan limpio.
-
-26. **Fix: el guion de Call Center ya no dispara Diseño + exportar el Flujo de trabajo como imagen**
-    - El usuario confirmó (tras el punto 25) que aprobar el guion de la llamada **no debe** crear
-      tarea en Diseño, solo en Call Center — y viceversa, un copy normal no debe tocar Call Center.
-      `activateNextStage` (`StrategyBriefPanels.tsx`) antes creaba una tarea en **ambos** hijos de
-      Copys (Diseño y Call Center) sin distinguir cuál brief se aprobó. Se agregó
-      `isCallCenterGuion(tarea)` (detecta "guion" + "call center" en el texto, reusado también en
-      `briefsForNode`) y `activateNextStage` ahora filtra: si el brief aprobado es el guion → solo
-      activa `callcenter`; si no → solo activa `diseno`. La deduplicación del registro de Call
-      Center (un solo checkpoint por nodo, sin importar cuántos copys se aprueben) se mantiene.
-    - **Nuevo: botón "Exportar imagen" en Flujo de trabajo** (`MapTab.tsx`) — descarga un PNG del
-      diagrama completo (nodo de inicio, conexiones y todas las tarjetas) tal como se ve en pantalla
-      en ese momento. Usa la librería `html-to-image` (`toPng`, nueva dependencia — cero
-      dependencias propias, maneja bien el `<svg>` de las conexiones y las CSS vars del tema) sobre
-      un `ref` sujeto al contenedor del diagrama (`diagramRef`); `pixelRatio: 2` para nitidez,
-      `backgroundColor` tomado del `body` computado para que no salga transparente. El nombre del
-      archivo usa el nombre del proyecto saneado (`flujo-de-trabajo-<nombre>.png`). Botón solo
-      visible cuando hay nodos que exportar.
-    - Verificado con Playwright: aprobar el guion → Diseño NO recibe tarea, Call Center sí; aprobar
-      un copy normal después → Diseño sí recibe tarea, Call Center sigue con un solo registro (sin
-      duplicar); el botón dispara una descarga real de PNG (~270KB) y el archivo, inspeccionado
-      manualmente, muestra el diagrama completo y correcto (bifurcación de Copys incluida, fondo
-      del tema, sin recortes). Typecheck y `npm run build` pasan limpio.
-
-27. **Unifica Plan de canales + Loops de comportamiento en un ecosistema cíclico de 6 etapas
-    (ELMR + Motor del proceso)** — pedido grande, se pasó primero por Plan Mode (ver
-    `~/.claude/plans/graceful-sauteeing-hollerith.md`) antes de tocar código.
-    - **Decisión de arquitectura clave — plano + `etapaId`, no anidado.** El pedido proponía
-      anidar `toques`/`loops` DENTRO de cada etapa (`Etapa.toques[]`, `Etapa.loops[]`). Se
-      recomendó en cambio mantener `project.canales: CanalRow[]` y `project.loops: LoopRow[]`
-      exactamente como arrays planos (sin cambios), agregándoles un `etapaId` opcional (+
-      `siguienteEtapaId` en los loops) y guardando en `project.etapas: EtapaCiclo[]` solo la
-      metadata de cada etapa (id/tipo/nombre/orden/objetivo), no las filas. Motivo: `syncCanalNodes`
-      (que genera los nodos KAM/BTL/Relacionamiento/Call Center/Pauta del punto 23),
-      `buildFabricaBriefs`/`canalInvolvesRole` (wizard) y el resumen de "Descripción general"
-      (`FactoryPage.tsx`) **ya leen `canales`/`loops` como arrays planos** — anidar de verdad
-      habría obligado a aplanar en los 3 para terminar con el mismo array plano, con más riesgo de
-      romper el sistema de nodos que se construyó en esta misma sesión. El usuario aprobó este
-      approach en la revisión del plan.
-    - **Modelo nuevo** (`factoryStore.ts`): `EtapaTipo` (unión de las 6 claves: atraccion,
-      interaccion, captura, validacion, desenlace, reactivacion — determina ícono/color por
-      defecto en la UI, no se persiste como string suelto), `EtapaCiclo { id, tipo, nombre, orden,
-      objetivo }`, `MensajeBaseELMR { emocion, logica, motivacion, recompensa }`, `MotorProceso {
-      fuenteValidacion }` (requiereLanding/requiereFormulario NO se duplican ahí — se derivan de
-      `requerimientos`). `CanalRow`/`LoopRow` ganan `etapaId?`/`siguienteEtapaId?`.
-      `FactoryProject` gana `etapas`/`mensajeBase`/`motor`. **Sin migración de esquema DB** — todo
-      vive en el blob JSONB `factory_projects.data`, los campos nuevos se leen con `?? default` en
-      `rowToProject`/`projectToRow`, exactamente el mismo patrón que ya usa cada campo existente.
-    - **UI del wizard** (`CreateProjectWizard.tsx`, paso "Canales y Comportamiento"): las dos
-      tablas planas se reemplazaron por un `Accordion` (nuevo `src/components/ui/accordion.tsx` —
-      wrapper shadcn estándar sobre `@radix-ui/react-accordion`, que ya estaba en
-      `package.json` como dependencia sin wrapper generado; cero paquetes nuevos instalados), uno
-      por etapa (ordenadas, con ícono/color por `tipo`, nombre/objetivo editables, botones ▲▼ para
-      reordenar vía `moveEtapa`, contador de toques+loops). Dentro de cada etapa: la tabla de
-      Toques (mismo markup de siempre, extraído a un componente `ToqueRow` reutilizable para no
-      triplicarlo) y la de Loops (extraído a `LoopRowItem`, suma una columna nueva "Lleva a →" que
-      escribe `siguienteEtapaId` — la opción vacía es "— Cierra aquí —"). Botón "Inicializar las 6
-      etapas" (`initEtapas`) visible cuando `etapas.length === 0`, siembra `ETAPA_DEFAULTS` con el
-      texto exacto de las 6 etapas del pedido. Nueva sección "Base del mensaje (ELMR)" (4 campos)
-      agregada al paso "Audiencia y Narrativa", después de "Núcleo narrativo". El bloque
-      Requerimiento se mantuvo en su lugar, retitulado "Requerimiento (Motor del proceso)", con un
-      input nuevo "Fuente de validación (CRM)" ligado a `motor.fuenteValidacion`.
-      `buildFabricaBriefs`/`canalInvolvesRole` **no se tocaron**.
-    - **Bug encontrado y corregido durante la propia verificación** (no en el plan original): la
-      sección "Sin etapa asignada" (para toques/loops de proyectos que aún no tienen `etapas`)
-      estaba gateada por `etapas.length > 0 &&`, lo que significaba que un proyecto viejo con
-      `etapas: []` pero con toques/loops ya guardados los dejaba completamente invisibles detrás
-      del botón "Inicializar etapas" — ningún dato se perdía (seguían en `canalesRows`/
-      `loopsRows`), pero no había forma de verlos ni editarlos hasta inicializar. Se quitó ese
-      gate: con `etapas: []`, el `Set` de ids de etapas queda vacío y **todas** las filas
-      existentes caen a "Sin etapa asignada" automáticamente, visibles desde el primer render.
-    - **Visualización del ciclo** (`MapTab.tsx`, dentro de `LoopTab`, debajo del `LoopDiagram`
-      estático existente — no se tocó ni reemplazó): nuevo `EcosystemCycleDiagram`, sin hooks
-      (early return simple si `etapas.length === 0`), posiciona las N etapas en un hexágono vía
-      coordenadas polares (mismo cálculo que ya usaba `LoopDiagram` para sus 4 fases,
-      generalizado a N), dibuja con un `<svg>` la flecha principal etapa[i]→etapa[i+1]→…→etapa[0]
-      (el cierre N-1→0 ES la reactivación "de fábrica", ya queda representado sin datos extra), y
-      una curva punteada adicional por cada `LoopRow` cuyo `siguienteEtapaId` salta a una etapa
-      que NO es la siguiente natural (rama real capturada en los datos), con una leyenda de texto
-      debajo listando esas ramas. Cada tarjeta de etapa muestra su conteo real de toques/loops
-      (`project.canales`/`project.loops` filtrados por `etapaId`).
-    - Verificado con Playwright: ELMR se guarda, "Inicializar las 6 etapas" siembra las 6 con los
-      textos correctos, un toque + loop agregados dentro de "Atracción multicanal" con
-      `siguienteEtapaId = Reactivación y remarketing` (una rama real, no la secuencia natural) se
-      reflejan en la tarjeta ("1 toques · 1 loops") y en el diagrama del tab Loop — la curva
-      punteada y la leyenda "Atracción multicanal → Reactivación y remarketing: Enviar
-      remarketing" aparecen correctamente; `motor.fuenteValidacion` se guarda. Regresión:
-      Flujo de trabajo sigue generando el nodo Landing + la cadena Copys→Diseño→Envíos sin
-      cambios. Typecheck y `npm run build` pasan limpio en cada fase.
-    - **No verificado**: round-trip completo reabriendo "Editar proyecto" después de crear (el
-      script de verificación no llegó a ejercitar ese paso — se limitó a crear y ver el resultado
-      en la misma sesión de navegador). Dado que la persistencia usa exactamente el mismo mecanismo
-      `?? default` que todos los demás campos del proyecto (ya probado extensamente en sesiones
-      anteriores), el riesgo es bajo, pero vale la pena confirmarlo a mano.
-    - Pusheado a `master` (commit `babaff8`) a pedido explícito del usuario en el siguiente mensaje.
-    - **Follow-up en la misma sesión**: al usuario le gustó el nuevo diagrama pero pidió quitar el
-      "Ciclo Loop" estático de 4 fases (Estrategia/Ejecución/Resultados/Aprendizaje) que quedaba
-      arriba — nunca leía datos del proyecto, era puramente decorativo. Se eliminó por completo de
-      `LoopTab` junto con el código que quedó sin uso (`LoopDiagram`, `LOOP_PHASES`) — `LoopMetric`
-      se mantuvo porque lo sigue usando `MetricsDashboardTab`. `LoopTab` ahora renderiza
-      únicamente `EcosystemCycleDiagram`. Verificado con Playwright que el bloque viejo ya no
-      aparece y el nuevo diagrama sigue igual. Typecheck y `npm run build` limpios.
-    - **Otro follow-up en la misma sesión — 3 ajustes a Loops de comportamiento**:
-      1. **"Ángulo del toque" se veía roto** (`ToqueRow`) — la grilla de la fila usaba las mismas
-         6-7 columnas de ancho fijo de antes de anidar todo dentro del Accordion por etapa, pero
-         el contenedor ahora es más angosto (nesting del Accordion + padding del item). Medido con
-         Playwright: el input de Ángulo quedaba en **41px** de ancho real (`getComputedStyle` →
-         `gridTemplateColumns` resolvía el track a 41px), prácticamente invisible. Se rebalancearon
-         los anchos de columna (`canal 95px · día 75px · hora 58px · ángulo minmax(150px, 1fr) ·
-         segmento minmax(60px, 90px) [· etapa minmax(60px, 90px)] · borrar 20px`) — Ángulo es texto
-         libre sin truncado (a diferencia de Segmento/Etapa, que sí truncan con "…" + `title`), así
-         que se le dio el piso más generoso; quedó en ~192px verificado. No se tocó nada del resto
-         de la fila (mismo Select de canal, mismos date/time pickers).
-      2. **El disparador ahora sale del Plan de canales, de cualquier canal** — antes
-         `emailTriggers` solo tomaba toques de canal `Correo`. Se generalizó a `canalTriggers`:
-         cualquier fila de `canalesRows` con `copy` (ángulo) no vacío aparece como opción, con
-         label `"{canal} · {ángulo}"` y value `"Salida de {canal}: {ángulo}"` — así el loop siempre
-         queda atado a una salida real del plan en vez de a un evento inventado. Los "Disparadores
-         estándar" (abrió/clic/etc.) se mantienen como fallback genérico, ya no mencionan "correo"
-         específicamente en el texto (eran de email únicamente).
-      3. **Responsable filtrado a los roles que el Plan de canales involucra** — antes el
-         `<select>` listaba el catálogo completo de `useRolesStore()` (los 8 roles, incluidos los
-         3 internos no asignables). Ahora, en `CreateProjectWizard`, se calcula
-         `involvedRoleIds`/`involvedRoles` reusando `canalInvolvesRole()` (la misma función que ya
-         usaba `buildFabricaBriefs` para decidir qué roles participan según los canales elegidos) y
-         se pasa como prop `roles` a `LoopRowItem` en vez del catálogo completo. Si todavía no hay
-         canales que impliquen ningún rol (proyecto recién creado), cae de vuelta al catálogo
-         completo como fallback para no bloquear el selector con una lista vacía.
-      - Verificado con Playwright: ancho del input de Ángulo antes/después (41px → 192px, texto
-        largo visible completo sin recorte); disparador muestra "Correo · Convocatoria inicial del
-        evento" como opción real del plan; con solo un toque de Correo en el proyecto, Responsable
-        muestra únicamente "Copywriter" y "Gestor de canales" (los 2 roles que `canalInvolvesRole`
-        asocia a Correo), no los 8 del catálogo. Typecheck y `npm run build` limpios.
-
-### 2026-07-11
-
-28. **EJECUTADO: rediseño visual "Tremu ISO"** (el "PLAN PENDIENTE" de abajo ya se implementó)
-    — se aplicó el sistema de diseño completo con la estrategia de remapear los **valores** de las
-    CSS vars existentes en `src/index.css` (hex→HSL), sin renombrar vars ni tocar componente por
-    componente, tal como se planeó.
-    - `index.css`: paleta remapeada a Tremu ISO (`--background` #EEF1F7, `--primary`/`--factory`/
-      `--ring` #009CF5, `--accent` #E5F5FE + `--accent-foreground` #0079BD para hovers de menús,
-      ink `#12141B`/ink-2 `#3B4150`/muted `#8A90A0`, bordes `#ECEEF3`, surface blanca/soft `#F7F8FB`,
-      sidebar a claro); radios explícitos nuevos `--radius-lg/md/sm` = 22/14/10px; sombras suave
-      (ink .04/.05) + glow de botón (accent .18/.30). **Borrado el bloque `.dark` y todos los
-      `--gradient-*`.** `@import` cambiado a solo Plus Jakarta Sans (fuera Inter/Space Grotesk/
-      Baloo 2/Open Sans); `@import` movido arriba de `@tailwind` para matar el warning de build.
-      Body/h1-3/`.font-display`/`.font-logo` → Jakarta con tracking negativo. **Semáforo
-      conservado** (state/status/priority sin cambios); **team-*/board-* neutralizados a gris
-      `223 12% 55%`** (los nodos del flowchart y las columnas del kanban pierden color decorativo —
-      heads-up ya avisado al usuario, es reversible).
-    - `tailwind.config.ts`: `fontFamily` sans/display/logo → Jakarta; se quitó `backgroundImage`
-      (gradientes); `borderRadius` lg/md/sm → `var(--radius-lg/md/sm)`.
-    - `App.tsx`: se quitó el `ThemeProvider` de next-themes (app siempre clara). `ui/sonner.tsx`:
-      `theme="light"` fijo, sin `useTheme` (next-themes queda como dep sin uso, no se desinstaló).
-    - `BitlyLinkTool.tsx`: objeto `T` reescrito a tokens Tremu ISO — `bg` sólido `#EEF1F7` (sin
-      radial), `submitBg`/`submitBgHover` `#009CF5`/`#0087D6` sólidos (sin `linear-gradient`), nueva
-      `submitShadow` de acento reusada en `PillButton`/`SubmitButton`, Plus Jakarta Sans, radios
-      22/14. Se aplanaron los rgba/hex sueltos del JSX (círculos de ícono → accent-weak, caja de
-      resultado → surface-soft).
-    - `WebinarsPage.tsx`: las tarjetas "glass" oscuras (gradientes navy + rgba) se aplanaron a
-      superficie blanca con tokens (`hsl(var(--surface))`, `--border`, `--foreground`), botón
-      primario a `#009CF5` sólido pill, labels grises `#B8C6E6` → `--muted-foreground`.
-    - Reemplazos de `bg-gradient-factory`/`bg-gradient-surface` (utilidades ya eliminadas) por
-      `bg-primary`/`bg-surface-elevated` sólidos en `AppSidebar.tsx`, `FactoryPage.tsx`,
-      `CreateProjectWizard.tsx`, `MapTab.tsx` (+ `text-factory-foreground` → `text-primary-foreground`).
-    - **Verificación:** `tsc --noEmit` exit 0 y `npm run build` limpio (sin el warning de `@import`).
-      Sin Playwright (por decisión del usuario — revisa visual en el deploy). Como es background job,
-      **no se pusheó a master directo**: rama `worktree-bitacora-rediseno-tremu` (commit `821888d`)
-      + **PR #1** (`https://github.com/Nivlek02/the-factory/pull/1`), **mergeado el 2026-07-11** —
-      el rediseño está en producción (confirmado visualmente el 2026-07-16). La rama
-      `worktree-bitacora-rediseno-tremu` sigue existiendo en el remoto; se puede borrar.
-
-### 2026-07-16
-
-29. **Tabla `usuarios_roles` (perfiles + roles en una sola) + login real de Supabase Auth + fix de
-    rutas SPA en Vercel** — commits `6fb75db`, `85465d7`, `5bec390`, los tres en `master`.
-    - **Hallazgo que cambió el pedido:** el usuario pidió "consolidar" `profiles` + `user_roles`
-      mapeando los roles viejos (`mercadeo`→Estratega, etc.). Al revisar la base **las tres tablas
-      estaban vacías** (`auth.users`, `profiles`, `user_roles`: 0 filas) — los datos viejos se
-      quedaron en el proyecto Supabase reemplazado, que **ya no existe** (`projects list` devuelve
-      solo `yvzpfdwswmjcnipcgclg`). O sea, no había nada que mapear: la lista de 22 personas que
-      trajo el usuario es la única fuente de verdad. Se le avisó antes de tocar nada.
-    - **`usuarios_roles`** (migración `20260716000000`): `id`, `user_id` (uuid nullable → FK a
-      `auth.users`, `ON DELETE SET NULL`), `usuario`, `nombre_completo`, `email`, `rol` (text con
-      **check constraint** de los 6 roles), `debe_cambiar_password` (bool, default true),
-      `created_at`/`updated_at`. 22 registros; **nadie en Trafficker**. `profiles` y `user_roles`
-      **NO se borraron** (pedido explícito) — quedan vacías y con el enum `app_role` viejo.
-    - **Decisión: no se guarda ninguna contraseña en la tabla.** El pedido original mencionaba una
-      columna `password_temporal`, pero la lista de columnas del propio usuario no la incluía. Las
-      credenciales viven solo en `auth.users` (hasheadas por GoTrue). El usuario decidió a mitad de
-      camino asignar él las contraseñas desde el frontend, así que **no se generó ninguna
-      contraseña temporal ni existe archivo de contraseñas**.
-    - **RLS de `usuarios_roles`: solo `authenticated` (SELECT), a propósito** — es la única tabla
-      que NO abre a `anon`, a diferencia del resto (ver "Estado de infraestructura"). Motivo: es un
-      directorio con 22 nombres y correos (varios gmail personales) y la publishable key es pública
-      y va en el bundle. Verificado: logueado devuelve 22 filas, sin sesión devuelve **0**.
-    - **Login real** (`85465d7`): se eliminó `DEMO_USER`. `LoginPage.tsx` nueva en `/login`;
-      `App.tsx` redirige toda ruta a `/login` sin sesión y `/login`→`/` con sesión; `authStore`
-      restaura la sesión en `initialize()` y suma `login()`/`logout()`; `AppSidebar` tiene botón de
-      cerrar sesión y ya no dice "Demo ·". `authService.fetchUserProfile`/`fetchAllUsers` ahora
-      leen `usuarios_roles` (`rol` guarda la **etiqueta**, así que se mapea a `AppRole` con un mapa
-      inverso de `ROLE_LABELS`). Los usuarios sin `user_id` caen a su id de tabla como `userId`:
-      siguen siendo asignables, pero `loginUser` los rechaza.
-    - **`createUser`/`updateUserProfile`/`deleteUserProfile` quedaron marcadas OBSOLETAS** en
-      `authService.ts` — siguen escribiendo en `profiles`/`user_roles` (vacías, enum viejo) mientras
-      toda la lectura ya usa `usuarios_roles`. Nadie las llama (`SettingsPage` invoca
-      `addUser`/`updateUser`/`deleteUser` del store, que no existen). Si se conectan, hay que
-      reescribirlas primero contra `usuarios_roles`.
-    - **Fix: `vercel.json` no tenía `rewrites`** (`5bec390`) — **todas** las rutas menos `/` daban
-      404 en producción (`/settings`, `/reports`, `/board/:id`), porque `dist/` solo tiene
-      `index.html`. Estaba roto desde siempre y no se notaba porque se navegaba client-side desde la
-      raíz; el login lo volvió fatal (un refresh en `/login` = 404). El rewrite excluye `/assets/`
-      para no romper los archivos con hash (verificado: siguen sirviéndose como
-      `application/javascript`).
-    - **El `406` del pendiente viejo: al menos esta instancia NO es de `factory_projects`.** Es
-      `app_version?select=version&limit=1` con `.single()` sobre una tabla **vacía** → PostgREST
-      responde `PGRST116` / 406. Viene del `VersionUpdateBanner`. Es ruido de consola, no rompe
-      nada. Puede que el 406 del `upsert` de `factory_projects` sea algo distinto.
-    - **Se descubrió que `npx tsc --noEmit` no verificaba nada** (tsconfig raíz con `"files": []`).
-      Con `-p tsconfig.app.json` salen los 4 errores preexistentes ya documentados. Los cambios de
-      esta sesión no agregan ninguno. `npm run build` limpio.
-    - **Verificado con Playwright contra producción real** (`https://tremubaq.vercel.app`, no solo
-      local): sin sesión toda ruta cae a `/login` sin filtrar la app; contraseña incorrecta muestra
-      error y no entra; login entra; el sidebar muestra "Kelvin Trujillo / Soporte"; la sesión
-      sobrevive un reload; logout vuelve al login y no revive al recargar; Ajustes lista los 22
-      ("Página 1 de 5", `USERS_PER_PAGE = 5`) con los roles nuevos. Se confirmó que el hash del
-      bundle en prod coincide con el del build local.
-    - **Limpieza del repo**: `supabase/.temp/` agregado al `.gitignore` (contiene la URL del pooler
-      y era ruido untracked permanente).
-
-### 2026-07-17
-
-30. **Gestión de usuarios en Ajustes (arreglada + restringida por rol), fechas semaforizadas en
-    Flujo de trabajo, banner de versión funcional y fixes de UI** — commits `3dabecb`, `7301e81`.
-    - **Fix: "Guardar" en Ajustes se quedaba colgado en "Guardando…"** — `SettingsPage` llamaba
-      `addUser`/`updateUser`/`deleteUser` del `authStore`, que **nunca existieron** (los 3 errores
-      de `tsc` documentados hace meses): la llamada tiraba `TypeError`, el `setIsSaving(false)`
-      siguiente no corría y el botón quedaba muerto. Implementados los tres contra `usuarios_roles`.
-      **`tsc -p tsconfig.app.json` bajó de 4 errores a 1** (queda el de `CreateProjectWizard:376`).
-    - **Segunda capa del mismo bug, esta introducida por mí:** la migración `20260716000000` creó
-      `usuarios_roles` con RLS activa y **solo policy de SELECT**. El INSERT devolvía `42501`, pero
-      **el UPDATE devolvía éxito afectando 0 filas** (RLS *filtra* filas, no rechaza el comando).
-      Arreglar solo el JS habría dado "Usuario actualizado" sin guardar nada. Migración
-      `20260717000000` agrega las policies de escritura. **Lección: al escribir con RLS hay que
-      mirar el conteo de filas (`.select()`), no solo `error`** — `updateUser`/`deleteUser` lo hacen.
-    - **Gestión de usuarios restringida a Estratega y Soporte** (`20260717010000`): las policies de
-      escritura pasan por `public.puede_gestionar_usuarios(uuid)`, **SECURITY DEFINER** — obligatorio,
-      porque una policy sobre `usuarios_roles` que consulte `usuarios_roles` se evalúa recursivamente
-      contra sí misma (mismo patrón que el `has_role()` original). SELECT sigue abierto a cualquier
-      autenticado: la app necesita la lista del equipo para asignar tareas. `authStore.canManageUsers()`
-      espeja la regla en el front (solo decide qué se muestra; la base es la que manda) y `SettingsPage`
-      muestra un aviso de solo lectura + oculta los controles.
-      **Verificado con un usuario Diseñador real** (creado y borrado en la prueba): lee el equipo pero
-      no puede editar a otros, crear, borrar **ni ascenderse a sí mismo a Estratega**.
-      ⚠️ Esto es lo primero que hace que el rol **decida permisos** — hasta ahora era informativo
-      (ver punto 8). Si se agregan más reglas por rol, este es el patrón a seguir.
-    - **"Nuevo Usuario" ya no pide contraseña.** No puede crear cuentas de acceso: el Admin API exige
-      service_role (imposible en el navegador) y `signUp` tampoco sirve — **el proyecto tiene
-      `mailer_autoconfirm: false` y no tiene SMTP propio**, así que el usuario creado no podría
-      confirmar el correo ni entrar nunca. Ahora agrega la persona al directorio (asignable en tareas)
-      y el diálogo avisa que no podrá iniciar sesión hasta que le creen la cuenta.
-    - **Fecha por acción + semáforo** (pedido del usuario): `FabricaBriefItem.fechaAccion` (ISO),
-      sembrada desde `CanalRow.dia` y **editable desde la tarea** (decisión confirmada:
-      "del plan + editable"). Cortes confirmados: **rojo ≤2d (incl. vencidas), amarillo ≤7d, verde
-      >7d** — la regla vive en `src/lib/urgencia.ts` (probada en todos los bordes: 2→roja, 3→amarilla,
-      7→amarilla, 8→verde). Ojo: `parseISOLocal` parsea a mano porque `new Date('2026-07-20')` se
-      interpreta como UTC y en Colombia (UTC-5) mostraría el día anterior. En `buildFabricaBriefs` la
-      fecha se hereda vía una variable de bucle (`fechaCanalActual`) para no repetirla en los ~10
-      `addItem` del switch — **se resetea a null al salir del bucle** o Landing/Loops heredarían la
-      fecha del último canal. El `NodeCard` del diagrama muestra la más urgente de sus pendientes.
-    - **Fix: nodo "Inicia la campaña"** — el nombre tenía `truncate`, así que técnicamente no
-      desbordaba, pero se cortaba a un renglón (incluso "Campaña de renovación Julio" ya se cortaba).
-      Ahora envuelve hasta 2 líneas con `line-clamp-2 break-words` + `title`. Verificado con un
-      nombre de 90+ caracteres sin espacios: la tarjeta mantiene su ancho y no genera scroll.
-    - **Regresión propia detectada al verificar:** al meter el chip de urgencia en `NodeCard`, el
-      `justify-between` + `truncate` aplastaba el `roleLabel` hasta desaparecerlo ("Copywriter" se
-      esfumó). La fila ahora es `flex-wrap`; de paso "Gestor de canales" dejó de truncarse.
-    - **Iconos del Dashboard de métricas**: estaban cruzados — **Clics tenía un signo de dólar**,
-      Apertura una diana, Enviados una flecha de tendencia. Ahora `Send`/`MailOpen`/
-      `MousePointerClick`. `Target` y `DollarSign` quedaron sin uso y se quitaron del import.
-    - **VersionUpdateBanner: ahora sí funciona.** Leía `app_version` de Supabase, pero **esa fila
-      seguía en `1.0.0` desde su creación porque nadie la actualizaba nunca** — el banner no se
-      mostró jamás. Se reemplazó por un `BUILD_ID` (sha del commit, vía `VERCEL_GIT_COMMIT_SHA` o
-      `git rev-parse`) horneado por Vite con `define`, más un `version.json` emitido en cada build;
-      el hook lo consulta con `cache:'no-store'` al volver a la pestaña y cada 5 min. **Se actualiza
-      solo en cada deploy, sin tocar la base.** La tabla `app_version` quedó sin uso (no se borró).
-    - **Trampa encontrada al verificar:** el rewrite de SPA (`5bec390`) **se tragaba `/version.json`**
-      y devolvía HTML — el `fetch` moría en `res.json()` y el banner nunca habría aparecido. El
-      rewrite ahora excluye `version.json` además de `assets/`, y le fija `Cache-Control:
-      must-revalidate`. **Cuidado al agregar cualquier archivo estático nuevo en la raíz: hay que
-      excluirlo del rewrite o Vercel devolverá index.html.**
-    - **El `406` de `app_version` desapareció** (ya no se lee esa tabla): la consola de producción
-      quedó sin errores.
-    - Verificado con Playwright **contra producción** (`tremubaq.vercel.app`): login, `version.json`
-      legible, sin banner falso, aviso de rol correcto para Diseñador y controles para Soporte, los
-      4 iconos de métricas, y el nodo inicial con nombre largo. Los 3 colores del semáforo probados
-      en la UI. Las fechas de prueba que quedaron escritas en el proyecto real se limpiaron.
-
-31. **Edge function `admin-usuarios`: cambiar correo, contraseña y crear accesos** (commit
-    `da510ae`) — el usuario reportó que no podía cambiar el correo (chocaba con el guard del punto
-    30) ni la contraseña.
-    - **Por qué la contraseña no funcionaba:** el campo del diálogo de edición *sí* estaba
-      conectado, pero a `update-user-password`, que valida el rol contra **`user_roles`** — vacía
-      desde la migración. Daba 403 siempre.
-    - **`admin-usuarios` (desplegada, `verify_jwt: true`)** — único camino a `auth.users` desde el
-      navegador. **La autorización se hace a mano dentro de la función porque el service_role
-      bypassea toda RLS**: (1) exige JWT válido, (2) verifica contra `usuarios_roles` que quien
-      llama sea Estratega/Soporte, (3) relee la fila objetivo de la base por `id` — nunca confía en
-      el email del body. Acciones: `set-email` (cambia auth.users **y** el directorio, o quedarían
-      peleados), `set-password`, `create-access`.
-    - **⚠️ Se BORRÓ `supabase/functions/admin-set-password`**: no validaba **nada** — recibía
-      `{email, password}` y cambiaba la contraseña de cualquier usuario sin comprobar quién
-      llamaba. Nunca estuvo desplegada, pero era una puerta abierta esperando a que alguien la
-      desplegara. **Si aparece de nuevo en el repo, no desplegarla.** `update-user-password` y
-      `create-initial-user` siguen en el repo sin desplegar y con el chequeo viejo contra
-      `user_roles`: **están muertas, no conectarlas sin reescribirlas.**
-    - **Verificado contra la función desplegada** (no solo local): sin token → 401, token basura →
-      401, **usuario válido sin rol gestor → 403** (el ataque que importa), Soporte → 200 y la
-      contraseña nueva **realmente sirve para entrar**; tras cambiar el correo se entra con el
-      nuevo y **el viejo deja de funcionar**; validaciones de largo mínimo y de usuario sin cuenta.
-      Flujo completo probado también desde la UI.
-    - **Dos textos que quedaron mintiendo tras el punto 30 y se corrigieron:** *"Solo informativo —
-      todos los usuarios tienen los mismos permisos de acceso"* bajo el selector de Rol (en los dos
-      diálogos) — ya no es cierto; y el campo de contraseña del diálogo de edición, que no hacía
-      nada. Mínimo de contraseña unificado en **8** (la UI decía 6, la función exige 8).
-    - **Badge "Sin acceso"** en la lista de Ajustes: hasta ahora no había forma de distinguir a
-      quien puede entrar de quien solo figura en el directorio. Se deriva de `userId === id` (ver
-      `rowToUser`). Poner una contraseña a alguien "Sin acceso" **le crea la cuenta** (`create-access`).
-
-32. **Estratega ligada al rol + export de campaña a Markdown + filtro por estratega** (commit
-    `e3ef45d`)
-    - **`strategistName` pasó de texto libre a selector** (`CreateProjectWizard`), poblado con los
-      usuarios de rol Estratega de `usuarios_roles`. **Sigue guardando el nombre, no el id** — a
-      propósito: cambiar a id rompería las campañas existentes y obligaría a migrar el JSONB, y el
-      nombre ya venía siendo la fuente de verdad. Si la campaña trae una estratega que no está en
-      la lista (texto viejo, o alguien que cambió de rol) **se ofrece igual, marcada "fuera del
-      equipo"**: si no, el `Select` saldría vacío y al guardar borraría el dato en silencio.
-      `SIN_ESTRATEGA` es un centinela porque Radix Select no admite `value=""`.
-    - La estratega ahora se ve en la **tarjeta del sidebar** y en la **cabecera** de la campaña,
-      con avatar de iniciales (`iniciales()`, exportado desde `CreateProjectWizard`).
-    - **`src/lib/campaignMarkdown.ts`** — "Descargar Markdown" en el menú de 3 puntos de la
-      campaña. Vuelca todo: ficha, audiencia/narrativa, ELMR, motor, formulario, las 6 etapas,
-      plan de canales, loops, equipo, nodos del flujo, y **cada acción con estado, fecha +
-      urgencia, entregable, adjuntos, métricas e historial de aprobación con fechas**. Detalles
-      que costaron un bug o son fáciles de romper: la **descripción del proyecto y el contenido de
-      los entregables son HTML del editor** — se aplanan con `htmlAText` (se me pasó la descripción
-      en el primer intento y salía `<p>…</p>` crudo en el .md); los pipes se escapan o rompen las
-      tablas; lo vacío no se imprime. Se genera con un Blob en el navegador, sin servidor.
-    - **Filtro por estratega** en el sidebar, mismo estilo que "Todos los estados". Solo lista
-      estrategas **que tienen campañas** (sale de `projects`, no del equipo) — filtrar por alguien
-      sin campañas vaciaría la lista para nada. Si la estratega filtrada se queda sin campañas el
-      filtro **se resetea solo**, o la lista quedaría vacía sin explicación. La búsqueda por texto
-      también encuentra por estratega ahora.
-    - Verificado con Playwright: el selector del wizard ofrece **solo** Estrategas (no Diseñadores
-      ni Copywriters) con avatar y trae la actual precargada; el filtro lista solo a quienes tienen
-      campañas y filtra bien; el .md descargado se inspeccionó a mano contra la campaña real y
-      contiene el flujo completo (incluido el historial "enviado a revisión / aprobado" con
-      fecha). Los datos de prueba (campaña + usuarios `zzz*`) se crearon y borraron en cada corrida.
-
-### 2026-07-27
-
-33. **Se quita "Control de Versiones" de Ajustes + sistema de notificaciones por correo (Resend)**
-    - **Quitada la tarjeta "Control de Versiones"** de `SettingsPage.tsx` (input de versión +
-      "Publicar versión"). Escribía en la tabla `app_version`, que **quedó sin uso desde el punto
-      30**: el banner dejó de leerla y hoy compara `__BUILD_ID__` contra `/version.json`, que Vite
-      regenera en cada build. O sea, el botón no hacía absolutamente nada desde entonces — publicar
-      una "versión" ahí no mostraba banner a nadie. El control de versiones queda **solo en el
-      backend**: se actualiza solo en cada deploy.
-    - **El `VersionUpdateBanner` SE MANTIENE** — no es una "opción" que alguien opere, es el aviso
-      automático que dispara el deploy. Sacarlo dejaría a la gente con el bundle viejo en la pestaña
-      sin enterarse. Si se quiere quitar también, es borrar `VersionUpdateBanner.tsx`,
-      `useAppVersion.ts` y su render en `App.tsx`.
-    - `supabase` dejó de importarse en `SettingsPage` (era solo para `app_version`), igual que el
-      ícono `RefreshCw`. **La tabla `app_version` no se borró** — quedó huérfana, sin lectores ni
-      escritores.
-
-    - **Notificaciones por correo — nueva edge function `notificar-correo`** (`supabase/functions/`)
-      + `src/services/emailNotifications.ts`. Cuatro eventos: `tarea.asignada`,
-      `tarea.en_revision`, `tarea.aprobada`, `tarea.correccion`.
-    - **Decisión de seguridad, la que importa: el navegador NUNCA manda direcciones de correo.**
-      Solo dice qué pasó, en qué campaña, sobre qué tareas y qué **rol** es responsable; la función
-      resuelve los correos contra `usuarios_roles` con el service_role. Si el cliente mandara el
-      `to`, esto sería un **relay abierto**: cualquiera con sesión podría mandar correo a cualquier
-      dirección desde el remitente de la Cámara. Mismo patrón de autorización que `admin-usuarios`
-      (JWT válido + existir en `usuarios_roles`), pero **sin exigir rol de gestor**: cualquiera del
-      equipo dispara notificaciones al trabajar normal.
-    - **Destinatarios (decisión confirmada con el usuario):** miembros del grupo de rol en **esa**
-      campaña (pestaña Equipo) y, si ese grupo está vacío, todos los del directorio con ese rol.
-      Es la misma regla de `isTaskOwnedBy` (`campaignTasks.ts`), así que **el correo coincide con lo
-      que la persona ve en "Mis tareas"**. Excepción: `tarea.en_revision` va a la **estratega de la
-      campaña** por `strategistName` (nombre, no id — ver punto 32), con fallback a todas las
-      Estrategas si el nombre no resuelve. **Nadie se notifica a sí mismo** por lo que acaba de hacer.
-    - **Dónde se engancha, y por qué ahí:** `tarea.asignada` sale del **store**
-      (`addFabricaBriefs` + `addProject`), no de los paneles. `addFabricaBriefs` es el único camino
-      por el que entra una tarea a una campaña ya creada, así que cubre de una el quick-add de los
-      ~6 paneles de nodo **y** las tareas que siembra `activateNextStage` al aprobar. `addProject`
-      hace falta aparte porque el lote inicial del wizard se escribe directo en el objeto, sin pasar
-      por `addFabricaBriefs`. **`updateProject` NO notifica a propósito**: reconstruye
-      `fabricaBriefs` completo en cada guardado del wizard (ver el riesgo del punto 14) y mandaría
-      una avalancha de correos cada vez que alguien edita una campaña. Los otros 3 eventos salen de
-      `BriefDialog` (`handleSubmit`/`handleApprove`/`handleReject`).
-    - **Un correo por rol, no uno por tarea** — crear una campaña siembra ~10 entregables de golpe;
-      `notificarTareasAsignadas` los agrupa por rol y manda un solo correo con la lista. La fecha
-      solo se imprime si todas las tareas del correo comparten la misma.
-    - **Notificar nunca puede romper ni frenar la acción del usuario**: todo es fire-and-forget
-      (`void`), los errores solo van a `console.warn`. Y **sin `RESEND_API_KEY` la función responde
-      200 sin enviar** en vez de fallar, para que la app funcione mientras se termina de configurar.
-    - **Cartero elegido: Resend, explícitamente SIN verificar dominio** (decisión del usuario).
-      Consecuencia que hay que tener presente: sin dominio verificado Resend solo deja enviar
-      **desde `onboarding@resend.dev` y SOLO a la dirección dueña de la cuenta** — cualquier
-      notificación a un compañero rebota con **403**. O sea, así **el equipo no recibe nada**.
-    - **Por eso existe `RESEND_MODO_PRUEBA`**: si ese secret trae una dirección, *todo* se redirige
-      ahí, el asunto se prefija `[PRUEBA]` y el correo lleva un banner amarillo diciendo a quién le
-      habría llegado en producción. Permite ejercitar el sistema completo hoy sin tocar DNS. **Para
-      salir a producción: verificar el dominio, apuntar `RESEND_FROM` a él y BORRAR ese secret** —
-      no hay que tocar código. Sin el secret y sin dominio, el log del 403 lleva la pista escrita.
-    - Lo que se descartó y por qué (sondeado en esta sesión): el **n8n viejo sigue vivo** — un GET a
-      `webhook/notifiacionemail` responde *"not registered for GET… Did you mean POST?"*, así que
-      ese flujo existe y ya tiene SMTP resuelto; era el camino sin DNS. El dominio está en
-      **Microsoft 365** (MX → `mail.protection.outlook.com`), así que Graph API era la otra opción
-      "sin terceros". Nota para el pendiente de SMTP: **Resend también da credenciales SMTP**, así
-      que verificar el dominio destraparía de paso el "olvidé mi contraseña" de Supabase Auth;
-      Microsoft ya no sirve para eso porque retiró la autenticación SMTP básica.
-    - **FALTA CONFIGURAR (nada de esto se hizo — no tengo acceso a su cuenta):** desplegar la
-      función (`supabase functions deploy notificar-correo`) y crear los secrets `RESEND_API_KEY`,
-      `RESEND_FROM`, `APP_URL` y —mientras no haya dominio— `RESEND_MODO_PRUEBA`. Free tier: 100
-      correos/día. Para probar sin mover una tarea real hay un botón **"Enviar correo de prueba"**
-      en Ajustes → "Notificaciones por correo".
-    - **El sistema viejo sigue ahí, muerto y aparte:** `src/services/notificationService.ts` +
-      `supabase/functions/send-notification` (postea a `n8n.../webhook/notifiacionemail`) son del
-      **kanban viejo** (`Task`/`board` = Diseño/Copys, roles `copy`/`diseño`), no de las campañas.
-      No se tocó (fuera de alcance) y `send-notification` **nunca se desplegó**. Si se conecta algo
-      de correo, es a `notificar-correo`, no a esa.
-    - **Verificado:** `tsc -p tsconfig.app.json` sigue con **1 solo error preexistente**
-      (`CreateProjectWizard.tsx:482`, el `as const`) — cero errores nuevos; `npm run build` limpio.
-      La lógica de payload se ejercitó bundleando `emailNotifications.ts` con un stub del cliente de
-      Supabase: confirmado que 2 copys + 1 diseño salen como **2 correos** (uno por rol), que la
-      tarea vacía se descarta, que `miembros: []` (rol sin grupo) llega vacío para que el servidor
-      caiga al fallback, que fechas distintas **no** imprimen fecha, y que `en_revision` va con
-      `estratega` y sin `rolLabel`.
-    - **NO verificado:** nada contra la función real ni contra Resend (no está desplegada ni
-      configurada), y **no se pudo probar en la UI** — el login de producción rechazó las
-      credenciales documentadas (`ktrujillo` / `Colombia2026*` con el correo de la cuenta), así que
-      no se ejercitó ni la pantalla de Ajustes ni un flujo de aprobación real en el navegador.
-
-34. **Fix: el nombre de usuario se salía del sidebar colapsado + buscar/ordenar en Usuarios
-    Registrados**
-    - **Causa del desborde** (`AppSidebar.tsx`): colapsado el sidebar mide `w-16` (64px), pero el
-      bloque de nombre/rol del pie **se seguía renderizando**. No bastaba con `min-w-0` +
-      `truncate`: el pie en modo colapsado es `flex flex-col items-center`, y con `items-center` los
-      hijos toman ancho de contenido (`auto`) en vez de estirarse — así que la fila se dimensionaba
-      al nombre completo y se salía de la caja. Todos los demás elementos del sidebar ya ocultaban
-      su texto y lo pasaban a un `Tooltip`; el pie era el único sin ese tratamiento. Ahora hace lo
-      mismo: colapsado solo queda el avatar, y **el nombre + rol se leen en el tooltip**. De paso el
-      avatar lleva `shrink-0` (sin eso se aplastaba a óvalo cuando el espacio apretaba).
-    - **Buscar y ordenar en "Usuarios Registrados"** (`SettingsPage.tsx`), mismo patrón visual que
-      la toolbar de "Mis tareas": campo de búsqueda + `Select` de criterio + botón de dirección.
-      Busca por usuario, nombre, correo y **etiqueta de rol**; ordena por Usuario/Nombre/Correo/
-      Rol/**Acceso**. Detalles que importan: la búsqueda **ignora tildes** (`norm` con
-      `normalize('NFD')`, así "munoz" encuentra a "Muñoz"); se ordena y se busca por
-      `displayRole ?? ROLE_LABELS[role]` — la etiqueta que se VE, que puede ser un cargo por
-      persona (ver `CARGO_POR_USUARIO`), no la del rol; "Acceso" pone **"Sin acceso" primero**
-      porque es la lista sobre la que hay que actuar; y al filtrar **la página se resetea** si
-      quedó fuera de rango (estar en la página 4 y buscar algo con 1 resultado mostraba una tabla
-      vacía sin explicación).
-    - Verificado con Playwright contra la UI real, con 22 usuarios simulados (stub de la sesión en
-      `localStorage` + `page.route` sobre `usuarios_roles`, porque no tengo credenciales de
-      producción): búsqueda sin tildes, por rol, por correo, sin resultados con mensaje propio, el
-      caso de página-4-y-filtrar, orden por usuario, y "Acceso" con su inversión. Typecheck sigue
-      con **1 solo error preexistente**; `npm run build` limpio.
-
-35. **Landing pasa de un nodo suelto a una cadena de 3 pasos (Copys → Formulario → Cargue)**
-    - Antes, marcar "Landing" creaba **un solo nodo raíz** (`landing`, rol Gestor de canales) con
-      una tarea "Landing page" y entregable URL. Ahora crea una **cadena que cuelga de Copys**:
-      el copywriter redacta el copy de la landing como una tarea más dentro de **Copys** →
-      **"Formulario de landing"** (Gestor de canales) → **"Cargue de landing"** (Soporte,
-      entregable = link). Cada paso se activa solo al aprobarse el anterior.
-    - **Decisiones confirmadas con el usuario** (`AskUserQuestion`): (1) la cadena **reusa** el
-      nodo Copys existente en vez de tener un nodo de copy propio — el copy de la landing convive
-      con los copys de campaña; (2) el paso de formulario de la landing es **independiente** del
-      requerimiento "Formulario de inscripción", que sigue creando su propio nodo raíz suelto. Con
-      los dos marcados salen dos nodos de formulario distintos, y es a propósito.
-    - **Copys ahora se bifurca en TRES ramas** (Diseño, Call Center, landing) y no deben cruzarse:
-      aprobar el copy de la landing NO puede crear tarea en Diseño, igual que ya pasaba con el
-      guion de Call Center. `activateNextStage` se reescribió alrededor de una tabla
-      `AUTO_ADVANCE` (por stageType: nombre fijo de la tarea + si es checkpoint único) más un
-      predicado `avanzaDesde()` que decide qué rama dispara cada entregable. Reemplaza al viejo
-      `AUTO_ADVANCE_STAGE_TYPES` + los `if` sueltos, que ya no escalaban a tres ramas.
-    - **`isLandingCopy` vive en `DeliverableSummary.ts`, no en StrategyBriefPanels** — lo necesitan
-      los dos y StrategyBriefPanels ya importa de ahí (al revés sería import circular).
-      **`isUrlBrief` tuvo que excluirlo explícitamente**: pasó a `/landing/i` para cubrir "Cargue
-      de la landing" y "Formulario de la landing", y sin la exclusión el copy de la landing —que
-      lleva "landing" en el nombre y es texto enriquecido— se habría renderizado como un link.
-    - **`roleId` real en los nodos nuevos** (`gestor_canales`, `soporte`) en vez de `null`. El
-      resto de nodos lo tiene en `null`, así que las tareas que crea `activateNextStage` heredan
-      la **etiqueta** como roleId ('Diseñador' en vez de 'diseno') y `isTaskOwnedBy` no las
-      reconoce → no salen en "Mis tareas" de esa persona. Es un bug preexistente que **no se
-      arregló para los demás nodos** (fuera de alcance), pero la cadena de landing nace correcta.
-    - **Ruteo de entregables**: `stampCanalNodeIds` suma `copys: /^Copy de landing/i` para anclar
-      el copy a Copys — sin eso aparecería además en la cadena de landing, porque ambos matchean
-      "landing". Y ancla por texto exacto el "Landing page" de proyectos viejos al nodo de cargue,
-      porque ese nodo **cambió de rol** (Gestor de canales → Soporte) y el entregable viejo ya no
-      coincide por `roleLabel`. Por lo mismo, en `briefsForNode` la rama de `landing` se evalúa
-      **antes** del filtro por rol.
-    - **Proyectos ya existentes**: conservan su nodo `landing` viejo y siguen funcionando igual.
-      `syncRequerimientoNodes` los migra cuando alguien **edite y guarde** la campaña: le antepone
-      el nodo de formulario y convierte el cargue a Soporte. Ojo con el estado resultante: como
-      esos proyectos nunca tuvieron un "Copy de landing", el nodo de formulario queda **vacío**
-      hasta que alguien cree la tarea a mano — la cadena no se rellena retroactivamente.
-    - Verificado con Playwright end-to-end (sesión y `factory_projects` stubbeados, **cero
-      escrituras a la base real**): campaña nueva con Landing → los 5 nodos correctos y sin el
-      "Landing" suelto viejo; "Copy de landing" aparece en Copys con editor de texto (no URL);
-      aprobarlo activa "Formulario de la landing" (Gestor de canales, campo de link, sin editor) y
-      **NO** deja nada en Diseño; aprobar ese activa "Cargue de la landing" (Soporte, campo de
-      link). El diagrama muestra a Copys bifurcando en las dos ramas. Typecheck con el único error
-      preexistente; `npm run build` limpio.
-
-### 2026-07-28
-
-36. **Versión SemVer legible (`v1.0.0`) en vez del SHA del build + CHANGELOG**
-    - El sistema de aviso de actualización ya existía (punto 30) pero se identificaba con el SHA
-      del commit (`1ed3c5d`), que no le dice nada a nadie. **Ahora `package.json` es la única
-      fuente de verdad de la versión**: `vite.config.ts` la lee con `readFileSync` y la inyecta
-      como `__APP_VERSION__` (+ `__BUILD_TIME__`, junto al `__BUILD_ID__` que ya existía), y
-      `version.json` pasó a publicar `{ version, buildTime, buildId }`. `package.json` subió de
-      `0.0.0` a `1.0.0`. **No hay ningún número de versión escrito a mano en el código.**
-    - **`src/lib/version.ts` (nuevo)** concentra todo: `APP_VERSION`/`BUILD_TIME`/`BUILD_ID` con
-      fallback (las constantes se leen con `typeof __X__ !== 'undefined'` para que el módulo no
-      explote fuera de un bundle de Vite), `fetchRemoteVersion()` (devuelve `null` ante cualquier
-      problema — sin red, 404, HTML del rewrite de SPA, JSON inválido), `isNewerVersion()`,
-      `formatVersion()` → `v1.2.0`, `versionKey()` y `applyUpdate()`.
-    - **`applyUpdate()` limpia `caches` y actualiza los service workers antes de recargar.** Antes
-      era un `location.reload()` pelado: si el bundle viejo seguía en caché, el usuario recargaba,
-      volvía a ver lo mismo y el aviso reaparecía en loop.
-    - **`version.json` sigue llevando `builtAt` duplicado** (mismo valor que `buildTime`) solo por
-      las pestañas que quedaron abiertas con el bundle anterior, que leen ese nombre. Se puede
-      quitar en unos deploys.
-    - El aviso **sigue saltando también cuando cambia solo el build con el mismo número** (que es
-      el caso normal acá: se despliega sin subir versión). Cuando el número no cambió, el banner
-      **no lo imprime** — diría el mismo `v1.0.0` que ya se ve en el sidebar y confundiría.
-    - Otros ajustes del hook (`useAppVersion`): poll de 5 → **15 min**, chequeo también en `focus`
-      además de `visibilitychange`, `AbortController` para el fetch en vuelo, y **no hace nada en
-      dev** (`import.meta.env.DEV`) porque `/version.json` no existe hasta el build. El `dismiss`
-      ahora guarda `version@build` en vez del build suelto.
-    - **La versión se ve en el pie del sidebar** (`formatVersion()`, solo cuando no está colapsado
-      — a 64px no cabe). `vercel.json`: el `Cache-Control` de `version.json` pasó de `public` a
-      `no-cache` (ya tenía `must-revalidate`, pero si el CDN lo cachea el aviso **no aparece nunca
-      y no da ninguna señal de error**).
-    - **`CHANGELOG.md` (nuevo)**, formato Keep a Changelog, con el procedimiento de publicación
-      arriba: `npm version patch|minor|major --no-git-tag-version` → entrada en el changelog →
-      push a `master`.
-    - **NO se agregaron tests** — el proyecto no tiene runner (ni vitest ni jest) y montar uno
-      quedaba fuera del pedido. La lógica de `isNewerVersion` se ejercitó con un script suelto
-      (esbuild + import dinámico, borrado después): version mayor, downgrade, misma versión con
-      otro build, misma versión mismo build, solo `buildTime` distinto, versión vacía, `null`,
-      `undefined` y sin build alguno — los 9 casos dan lo esperado. Typecheck con el único error
-      preexistente (`CreateProjectWizard.tsx:482`); `npm run build` limpio y `dist/version.json`
-      inspeccionado a mano. **Sin verificación visual con Playwright** (el cambio de UI es una
-      línea de texto de 10px en el sidebar y el texto del banner).
-
-37. **Fix: "Enviar correo de prueba" se colgaba + barra con % en Seguimiento + conectores negros
-    en el diagrama de Flujo de trabajo** (versión `1.1.0`)
-    - **El botón de correo de prueba quedaba girando para siempre.** Causa exacta (reproducida
-      con Playwright: con el código viejo el botón no se recuperaba en 30s y no salía ningún
-      aviso; con el nuevo responde en ~170ms): `invocar()` en `emailNotifications.ts` hacía
-      `error.context?.json()`, pero **`context` es `any` y cambia según el tipo de fallo** — para
-      un no-2xx es un `Response`, pero para un fallo de red/CORS es el `TypeError` crudo del
-      fetch, que no tiene `.json()`. Esa excepción hacía **rechazar** la promesa que esperaba el
-      `onClick`, así que el `setIsSendingTest(false)` que venía después del `await` nunca corría.
-      Dos capas de arreglo: `motivoDelError()` comprueba `instanceof Response` antes de tocarlo,
-      `invocar()` **siempre resuelve** (try/catch + timeout de 20s) y el `onClick` pone
-      `setIsSendingTest(false)` en un `finally`.
-    - **La razón de fondo por la que falla el correo sigue ahí y es de configuración, no de
-      código: `notificar-correo` NO está desplegada.** Verificado contra Supabase real:
-      `POST .../functions/v1/notificar-correo` responde `404 NOT_FOUND` (`admin-usuarios`, la
-      única desplegada, responde 200 al preflight). Ahora el aviso lo dice con el comando exacto
-      a ejecutar en vez de "Edge Function returned a non-2xx status code". Ver el pendiente.
-    - **Seguimiento de eventos: barra con porcentaje** (`useProgresoCarga` nuevo en `src/hooks/`).
-      El progreso es **estimado sobre el tiempo**, no bytes: la espera real es que n8n responda
-      (TTFB), así que una barra por `Content-Length` se quedaría en 0% y saltaría a 100% de golpe.
-      Avanza con `1 - e^-t` hacia un techo de 92% — nunca dice 100% antes de tiempo — y al llegar
-      la respuesta salta a 100%. El hook expone `visible`, que se mantiene 350ms extra: si se usa
-      solo `isLoading`, el 100% no alcanza a verse nunca. El error se evalúa **antes** que la
-      barra, para no mostrar 100% y después un fallo.
-    - **Diagrama de Flujo de trabajo — conectores en píxeles.** Los SVG usaban
-      `preserveAspectRatio="none"` con un viewBox normalizado (1×filas), lo que **deformaba** las
-      curvas y hacía imposible una punta de flecha decente (los `marker` se estiran con el
-      escalado no uniforme). Ahora los dos SVG trabajan en píxeles: el abanico del inicio tiene
-      ancho fijo (48px) y el área de ramas se **mide con un `ResizeObserver`** (ref de callback,
-      porque el contenedor no existe cuando la campaña no tiene nodos). Los trazos van de **borde
-      derecho de la tarjeta origen a borde izquierdo de la destino** (antes de centro a centro,
-      tapados por las tarjetas), en `hsl(var(--foreground))` (#12141B) y con flecha; el recorrido
-      es ortogonal con esquinas redondeadas (`elbowPath`), que es como se lee un diagrama de
-      flujo. Cada SVG define su **propio** marker: los `id` son globales en el documento y los dos
-      se montan a la vez.
-    - **El nodo de inicio pasó de `w-28 sm:w-32` a un ancho fijo de 128px** — con dos anchos
-      posibles según el breakpoint, la geometría del abanico no se podía calcular sin medirlo
-      también.
-    - **Las columnas ya no se aplastan.** Eran `1fr` puro: a 1024px cada tarjeta quedaba en ~90px
-      y los títulos salían cortados ("Diseñ de piez"). Ahora hay un mínimo de **190px** por
-      columna y, si no cabe, el diagrama **scrollea en horizontal** dentro de su contenedor. El
-      `diagramRef` que exporta el PNG quedó en el contenido completo (no en el contenedor con
-      scroll) para que **la imagen siga saliendo entera** — verificado exportando a 1024px.
-    - Verificado con Playwright (sesión y `factory_projects` stubbeados, **cero escrituras a la
-      base real**) con una campaña de 10 nodos y Copys bifurcando en 3 ramas: 10 conectores con
-      flecha, un solo color de trazo `rgb(18,20,28)`, cero textos cortados a 1024px, contenedor
-      scrolleable (766px de contenido en 432px visibles), PNG exportado completo, y cero errores
-      de consola. Typecheck con el único error preexistente (`CreateProjectWizard.tsx:482`);
-      `npm run build` limpio.
-
-38. **Dashboard de métricas: desglose por canal + lista de salidas** (versión `1.2.0`)
-    - El tab solo tenía 4 tarjetas con los **totales** de toda la campaña. Se agregaron dos
-      bloques debajo: **Desglose por canal** (una tarjeta por canal con base/enviados/apertura/
-      clics + porcentaje) y **Salidas** (tabla con cada envío, su fecha y sus métricas).
-    - **De dónde salen los datos:** de los briefs `Recolectar métricas de {X}`, que se crean solos
-      al marcar un envío como realizado (nodo Envío de acciones) o al publicar una campaña de
-      pauta. **La granularidad es por canal, no por toque** — hay un solo brief por canal aunque
-      el Plan de canales tenga 3 toques de Correo — así que una "salida" en esta tabla es un
-      canal, no una fila del plan. Si algún día se quiere por toque, hay que cambiar la
-      deduplicación de `activateNextStage`, no el dashboard.
-    - **Correo/WhatsApp/SMS siempre se muestran**, con o sin datos (marcados "Sin datos"): el
-      objetivo es que se vea lo que falta cargar, no que el canal desaparezca. El resto de
-      canales solo aparece si tiene métricas.
-    - **Ojo con los campos según canal:** el formulario de métricas de `FactoryPage` pide 4
-      campos para Correo (base/enviados/apertura/clics) pero **solo base y clics para los demás**.
-      Por eso el porcentaje se calcula sobre `enviados || baseTotal` — si se usara solo
-      `enviados`, WhatsApp y SMS mostrarían "—" siempre. Donde no hay valor se imprime **un solo
-      guion**, no "— · —".
-    - **`canalDeMetricas()` corta por prefijo, no con `/…de (\w+)/`** como hace `FactoryPage`
-      (línea ~582): ese `\w+` parte los nombres con espacio o tilde — "Call Center" quedaría en
-      "Call" y una campaña de pauta perdería medio nombre. **Ese bug sigue vivo en FactoryPage**
-      (solo afecta a qué campos muestra el formulario), no se tocó por estar fuera del pedido.
-    - Verificado con Playwright (datos stubbeados, cero escrituras reales) con 5 salidas que
-      cubren los casos raros: Correo con los 4 campos, WhatsApp sin `enviados`, SMS vacío, una
-      campaña de pauta con espacios en el nombre y Call Center: totales correctos (73.500 / 12.180
-      / 4.380 / 5.365), los nombres largos completos, los porcentajes bien (36% apertura de
-      Correo, 15% clics de WhatsApp), badges de "Sin datos"/"Sin métricas", sin overflow
-      horizontal y sin errores de consola.
-    - **Ajuste pedido enseguida (`1.2.1`):** fuera "Base" de las tarjetas del desglose (el volumen
-      queda en la tabla de Salidas) y fuera "Apertura"/"Enviados" en los canales que no los
-      capturan — `capturaEnvioYApertura()` es hoy `canal === 'Correo'`, espejo del switch de
-      campos de `FactoryPage`. **Si algún día ese formulario empieza a pedir esos campos para
-      WhatsApp/SMS, hay que actualizar esa función o las tarjetas seguirán escondiéndolos.**
-      Como el denominador del porcentaje de clics dejó de estar a la vista, se dejó en el
-      `title` de la fila. La grilla lleva `items-start` para que las tarjetas de un solo dato no
-      se estiren al alto de la de Correo.
-    - **Recorte final (`1.3.0`), pedido por el usuario:** el dashboard mide **solo Correo,
-      WhatsApp y SMS** (`esCanalMedido`). Se confirmó leyendo el código que **Call Center nunca
-      generó métricas** (usa `DoneDateBriefPanel`; solo `DeliveryBriefPanel` y `PautaBriefPanel`
-      crean `Recolectar métricas de …`), así que ahí no se pierde nada. **Pauta sí las genera** y
-      esas tareas se siguen creando y llenando — únicamente **se ocultan** de este tab; si algún
-      día hay que verlas, es quitar el filtro, no recuperar datos. El filtro se aplica **en el
-      origen** para que los totales cuadren con la suma del desglose.
-    - Métricas por canal: **Enviados + Clics, y Apertura solo en Correo** (`mideApertura`). Se
-      quitó "Base" de todo el tab (tarjetas, tabla y la tarjeta "Base total" de los totales):
-      solo Correo la captura, así que el total salía cojo.
-    - **Se cambió el formulario de métricas** (`FactoryPage`): para los canales que no son Correo
-      ahora pide `enviados` en vez de `baseTotal`. Lo ya cargado no se pierde porque
-      `enviadosDe()` hace `enviados || baseTotal` — **si se quita ese fallback, las métricas
-      registradas antes del 2026-07-28 se ven en cero.**
-    - De paso se corrigió ahí el `/…de (\w+)/` documentado arriba (cortaba "Call Center" en
-      "Call" y mostraba los campos equivocados); ahora corta por prefijo igual que el dashboard.
-
-39. **Captura de interés como única fuente del requerimiento + interacciones por canal + pulido
-    del dashboard** (versión `1.4.0`)
-    - **Se eliminó el bloque "Requerimiento (Motor del proceso)"** del final del paso "Canales y
-      Comportamiento": preguntaba exactamente lo mismo que la etapa "Captura de interés" de más
-      arriba (ambos escribían en `requerimientos`). Ahora la elección vive **solo** en Captura,
-      que suma la opción `ninguno` ("No requiere formulario/landing"). La pregunta
-      **"¿Formulario básico?" se movió tal cual** (mismo texto, mismos botones, misma textarea de
-      campos adicionales) para quedar junto a la opción que la dispara; el gate `canNext` que
-      exige `basico !== null` no se tocó.
-    - **La selección pasó a ser excluyente** (`seleccionarCaptura`: `[reqId]`, y volver a tocar
-      desmarca). Antes Landing y Formulario podían convivir y generaban **dos** formularios — el
-      paso "Formulario de la landing" de la cadena del punto 35 y el nodo suelto del requerimiento
-      —, que es la duplicidad que se pidió evitar. **Ojo: esto cambia lo decidido en el punto 35**,
-      donde tener los dos a la vez era intencional.
-    - **Interacciones por canal** (`INTERACCIONES_POR_CANAL`): Correo mantiene los 5 chips;
-      WhatsApp y SMS pierden Abre/No abre (no tienen apertura); **el resto — Call Center, BTL,
-      KAM, Relacionamiento y los de pauta — se queda solo con el campo de texto libre**, que
-      además se ensancha y cambia de placeholder cuando es lo único que hay. `customChips` sigue
-      comparándose contra `INTERACCION_OPCIONES` **completa**, no contra las opciones del canal:
-      si no, lo ya guardado (ej. un "Abre" viejo en un SMS) reaparecería como chip personalizado.
-    - Dashboard: cada porcentaje es **columna propia** en la tabla y **ítem propio** en las
-      tarjetas (antes colgaba del número y no se podían comparar cifras entre columnas); Enviados
-      ocupa la fila completa para que cada métrica quede al lado de su `%`. Color por canal
-      (Correo `#2563EB`, WhatsApp `#16A34A`, SMS `#38BDF8`) **en el ícono y la franja izquierda,
-      no en el texto**: a 11-12px esos tonos no dan contraste suficiente.
-    - Verificado con Playwright sobre el wizard real: el bloque duplicado ya no existe; las 3
-      opciones aparecen en Captura; elegir Formulario deja **solo** Formulario activo;
-      "¿Formulario básico?" aparece y desaparece con la opción; y en Interacción la fila de Correo
-      trae los 5 chips mientras la de Call Center trae **cero** chips y el campo libre. Sin
-      errores de consola.
-    - **Fix inmediato (`1.4.1`): esconder los chips no bastaba.** El diagrama del ciclo
-      (`EcosystemCycleDiagram`) seguía pintando "Call Center: Clic, No clic" porque los toques ya
-      guardados conservan esas selecciones en `interacciones` — el cambio anterior solo dejó de
-      ofrecerlas. La regla se movió a **`src/lib/interacciones.ts`** (la necesitan el wizard y el
-      diagrama; tenerla solo en el wizard fue justamente la causa) y el diagrama ahora filtra con
-      `interaccionesValidas(canal, row)`: descarta las estándar que el canal no admite y conserva
-      las personalizadas. Un toque sin interacciones válidas **se sigue listando**, con el nombre
-      del canal a secas y sin los dos puntos colgando.
-    - `updateCanalRow` limpia las interacciones al **cambiar de canal**, para no dejar datos
-      invisibles (un toque que era Correo con "Abre" y pasa a Call Center). **No se migró la base**
-      — el filtro de lectura hace innecesario tocarla, igual que `stripApprovalNodes`.
-    - Verificado con Playwright sobre datos sucios a propósito: Call Center con `['Clic','No clic']`
-      sale como **"Call Center"** solo; con `['Clic','Agenda cita']` sale **"Call Center: Agenda
-      cita"**; Correo conserva sus dos; y un SMS con un "Abre" viejo queda en **"SMS: Clic"**.
-
-40. **Autoactivación de cuentas: `/activar` + edge function pública `activar-acceso`** (versión
-    `1.5.0`) — para no crear los 21 accesos uno por uno desde Ajustes.
-    - **El link es COMPARTIDO, no uno por persona.** Se le planteó al usuario el riesgo (con un
-      link único, quien lo tenga y sepa el correo de un compañero puede tomar esa cuenta — y
-      desde el punto 30 el rol **decide permisos**, así que tomar una de Estratega/Soporte da
-      gestión del equipo). **El usuario lo evaluó y eligió el link compartido**, agregando como
-      control una **ventana de tiempo**. Queda documentado por si alguien se lo pregunta después.
-    - **Tabla `activacion_config`** (migración `20260728000000`, ya aplicada): singleton con
-      `activo_hasta`. SELECT para cualquier autenticado; UPDATE solo gestores vía
-      `puede_gestionar_usuarios()`. Valor inicial: **2026-08-07 23:59:59-05**.
-    - **`activar-acceso` está DESPLEGADA y es pública (`verify_jwt = false`)** — tiene que serlo:
-      quien la usa todavía no tiene cuenta y no puede mandar un JWT. Lo que la contiene:
-      (1) la ventana, validada **en el servidor** (esconder el formulario no protege nada);
-      (2) solo activa filas que ya existen en `usuarios_roles` y **con `user_id` nulo**, así que
-      no sirve para secuestrar una cuenta activa ni para cambiarle la clave a nadie; (3) nunca
-      acepta un rol desde el body. Cambiar contraseñas de cuentas activas sigue siendo exclusivo
-      de `admin-usuarios`, que exige rol de gestor.
-    - Si el `update` que enlaza `user_id` falla, **borra el usuario recién creado**: si no,
-      quedaría una cuenta que existe en `auth.users` pero que `fetchUserProfile` no reconoce, y
-      la persona entraría a una app sin perfil.
-    - `email_confirm: true` al crear, por lo de siempre: sin SMTP propio el correo de
-      confirmación no llega nunca (ver punto 31).
-    - `/activar` va en la rama **no autenticada** de `App.tsx` (con sesión redirige a `/`). El
-      rewrite de `vercel.json` ya la cubre sin tocar nada.
-    - **Verificado contra la función desplegada** (no solo local): responde sin token,
-      `soloEstado` devuelve la ventana correcta (`2026-08-08T04:59:59Z` = 7 de agosto 23:59 en
-      Colombia), correo inexistente → 404, contraseña corta → 400. **La pantalla** se probó con
-      los 6 estados mockeados (formulario, contraseñas distintas, corta, correo no encontrado,
-      cuenta ya activa, éxito y ventana cerrada).
-    - **NO verificado: la creación real de una cuenta.** Ejercitar el camino feliz habría creado
-      un acceso de verdad en producción, y borrarlo después requiere credenciales que no tengo.
-      **La primera persona que active es la prueba real** — conviene acompañarla.
-    - **`1.5.1` — la ventana se administra SOLO desde el backend** (pedido del usuario): se quitó
-      de Ajustes la tarjeta que copiaba el link y movía la fecha, y la migración
-      `20260728010000` **borra las dos policies** de `activacion_config`. Con RLS activa y sin
-      policies la tabla es inalcanzable desde el navegador; la function la sigue leyendo porque
-      service_role bypassea RLS (verificado tras aplicar la migración). **Para abrir o cerrar la
-      activación, desde el SQL Editor de Supabase:**
-      `update public.activacion_config set activo_hasta = '2026-08-07 23:59:59-05', updated_at = now();`
-      — cerrar de inmediato es ponerle una fecha pasada.
-    - **Bug propio corregido en `1.5.1`: el foco saltaba al correo al escribir la contraseña.**
-      `Marco` (el marco de la tarjeta) estaba definido **dentro** de `ActivarPage`, así que cada
-      render creaba un tipo de componente nuevo y React desmontaba y volvía a montar todo el
-      formulario en cada tecla; el `autoFocus` del correo se llevaba el cursor. Se movió a nivel
-      de módulo. **Es un patrón fácil de repetir: nunca declarar un componente dentro de otro si
-      envuelve inputs.** Verificado tecleando letra por letra y comprobando `document.activeElement`.
-
-### 2026-07-29
-
-41. **Interacción: cada canal solo mide lo que puede medir + flujo de trabajo en el diagrama**
-    (versión `1.6.0`)
-    - **`INTERACCIONES_POR_CANAL` (`src/lib/interacciones.ts`) se recortó**: Correo queda en
-      `Abre / No abre / Clic / No clic` (fuera "Visita landing"), y **WhatsApp y SMS quedan solo en
-      `Clic`** (fuera "No clic" y "Visita landing"). `INTERACCION_OPCIONES` **conserva las 5** a
-      propósito — es la lista de "qué es estándar", y sacar una de ahí haría que lo ya guardado
-      reapareciera como chip personalizado en vez de simplemente dejar de ofrecerse (ese es el
-      comentario que ya vivía en `InteraccionRow`).
-    - Como la regla vive en el lib compartido (punto 39 / `1.4.1`), el recorte aplica a la vez al
-      **wizard** (deja de ofrecer esos chips) y al **diagrama** (`interaccionesValidas` filtra lo
-      ya guardado en lectura). **Sin migración de base**, mismo patrón que `stripApprovalNodes`.
-    - **Nuevo `accionDeInteraccion(canal, interaccion)`** en el mismo lib: tabla de qué tarea deja
-      cada interacción y sobre qué roles cae. Hoy solo el correo dispara algo, y solo por el lado
-      negativo: `No abre` y `No clic` → copy alterno + reenvío, a cargo de **Copywriter** (redacta)
-      y **Gestor de canales** (envía). Todo lo demás —incluido el clic de WhatsApp/SMS, que el
-      usuario dijo explícitamente que no dispara acciones— sale como "Se mide, no dispara acciones".
-      **El reparto Copywriter + Gestor de canales es interpretación mía** del pedido ("deben alojar
-      tareas a los copys y al gestor de canales"): el usuario nombró explícitamente la tarea de copy
-      y los dos roles, no la división entre ellos.
-    - **Es documentación dentro del diagrama, NO automatización**: no crea `FabricaBriefItem`s ni
-      nodos de Flujo de trabajo, y **no toca nada del Dashboard de métricas** (pedido explícito:
-      "estos cambios solo aplican al diagrama"). Si algún día se quiere que esas tareas se creen
-      solas, el lugar es `activateNextStage`/`addFabricaBriefs`, no esta tabla.
-    - Render: bloque "Flujo de trabajo de la interacción" **debajo del hexágono**, dentro del `ref`
-      que exporta el PNG (verificado: sale en la imagen). Se puso ahí y no como sub-cajas alrededor
-      del nodo (como sí hace Atracción con `atrSubBoxes`): el nodo de Interacción cae arriba a la
-      derecha del hexágono y el abanico se salía del lienzo de `size` px. Se agrupa **por canal, no
-      por toque** — dos correos con las mismas interacciones dejan la misma tarea.
-    - Verificado con Playwright (sesión y `factory_projects` stubbeados, **cero escrituras a la base
-      real**) con datos sucios a propósito (un Correo con "Visita landing", un WhatsApp con "No
-      clic", un SMS con "No clic", un Call Center con "Clic" + una personalizada): los chips del
-      nodo quedan `Correo: Abre, No abre, Clic, No clic` / `WhatsApp: Clic` / `SMS: Clic` /
-      `Call Center: Agenda cita`; el bloque de flujo muestra la tarea de copy solo en los dos
-      negativos del correo y con los dos roles; WhatsApp/SMS no mencionan ningún rol; sin scroll
-      horizontal y sin errores de consola. En el wizard se confirmó que las filas de Interacción
-      ofrecen exactamente esos chips y que "Visita landing" **no** reaparece como personalizado.
-      Typecheck con el único error preexistente (`CreateProjectWizard.tsx:492`); build limpio.
-
-42. **La cadena del flujo ahora arrastra fecha y entregable de origen** (versión `1.7.0`)
-    - **`activateNextStage` (`StrategyBriefPanels.tsx`) estampa dos campos nuevos** en la tarea que
-      crea al aprobar: `fechaAccion` (heredada del entregable aprobado) y `sourceBriefId` (id del
-      entregable que la originó). Antes esas tareas nacían pelonas.
-    - **Fecha:** el usuario pidió que en los nodos saliera la fecha en el título de la tarea "así
-      como en las tareas del gestor de canales". Causa: las del Gestor de canales la traen sembrada
-      desde `CanalRow.dia` (punto 30) y por eso `FechaAccionChip` las pinta; las creadas por
-      `activateNextStage` no tenían fecha y `FechaAccionChip` **devuelve `null` sin fecha**, así que
-      la fila salía sin nada. Heredar la del origen es la lectura razonable (la pieza se necesita
-      para la misma acción que su copy) y sigue siendo editable desde la tarea. **Efecto extra
-      buscado:** el semáforo del `NodeCard` sale de `fechaAccion` de sus pendientes
-      (`tasksByNodeId`, `MapTab.tsx`), así que los nodos aguas abajo pasaron de no mostrar urgencia
-      nunca a mostrarla.
-    - **`sourceBriefId` (nuevo en `FabricaBriefItem`, `factoryStore.ts`)** es **solo una referencia
-      por id**: `BriefDialog` resuelve el brief en vivo contra `project.fabricaBriefs`, así que si
-      el copy se corrige después, la pestaña muestra la versión corregida. Si el original se borra,
-      la referencia queda colgando y la pestaña simplemente no aparece.
-    - **UI:** cuando hay `sourceBrief`, el diálogo muestra dos pestañas — "Esta tarea" (lo de
-      siempre) y "Paso anterior", que reusa **`DeliverableSummary`** (ya era la vista de solo
-      lectura de Equipo y de las tareas completadas — no hizo falta un componente nuevo) con una
-      cabecera que dice de qué tarea y rol viene. El textarea de corrección se oculta en esa
-      pestaña; el footer se deja igual (el contenido del editor vive en `useState`, así que cambiar
-      de pestaña no lo pierde).
-    - **Persistencia sin migración**: `addFabricaBriefs` hace `{...b, id: uid()}` y `projectToRow`
-      serializa `fabricaBriefs` entero al JSONB, así que los dos campos viajan solos. Las tareas
-      creadas antes de esto no tienen `sourceBriefId` y no muestran la pestaña — no se rellena
-      retroactivamente.
-    - **Deliberadamente NO se tocó** la herencia de fecha en las tareas de métricas
-      (`Recolectar métricas de X`, creadas por `DeliveryEditDialog`/`PautaBriefPanel`): heredar la
-      fecha del envío las dejaría en rojo al día siguiente de enviar. Si se quiere, es agregar
-      `fechaAccion` en esos dos `addFabricaBriefs`.
-    - Verificado con Playwright (sesión y `factory_projects` stubbeados, **cero escrituras a la base
-      real**) con una cadena Copys → Diseño → Envíos: el copy en revisión **no** tiene pestaña
-      "Paso anterior" (no tiene origen); al aprobarlo, la tarea de Diseño aparece con `5 de ago` en
-      su fila, la cabecera del diálogo muestra la fecha y el semáforo, la pestaña "Paso anterior"
-      trae el contenido aprobado del copy sin editor, y el nodo Diseño del diagrama pasó de no
-      mostrar fecha a mostrar "En 7 días". Volver a "Esta tarea" recupera el editor. Cero errores de
-      consola. Typecheck con el único error preexistente (`CreateProjectWizard.tsx:492`); build
-      limpio.
-    - **Trampas del stub, para la próxima:** el nodo del flujo usa `label`, no `name`, y su `status`
-      es `ProjectTaskStatus` (`pending`…), no `todo` — con cualquiera de los dos mal, `NodeCard`
-      revienta con `Cannot read properties of undefined (reading 'cls')` y la pantalla queda en
-      blanco. Y las pestañas de la campaña **no son `role="tab"`** (hay que buscarlas por texto);
-      las del diálogo de la tarea sí lo son.
-
-43. **La tarea de Diseño se renombra al nacer** (versión `1.7.1`) — `AUTO_ADVANCE.diseno` pasó de
-    `{}` (heredar el nombre tal cual) a `{ renombrar: nombreDePieza }`. `nombreDePieza`
-    (`StrategyBriefPanels.tsx`) convierte `Redactar copy para Correo — Convocatoria` en
-    `Diseño de pieza para Correo — Convocatoria`; si el copy no matchea ese patrón (quick-add con
-    título libre en el nodo Copys) antepone `Diseño de pieza — ` sin tocar el texto, para no perder
-    lo que la persona escribió. El entregable original **no** se renombra y las tareas de diseño ya
-    creadas se quedan como están (no hay migración; el nombre solo se decide al crearlas).
-    - Verificado con Playwright (stub, cero escrituras reales) con los 3 casos —canal con ángulo,
-      canal sin ángulo y título libre— más que el copy original conserve su nombre en Copys y que
-      la tarea de diseño no aparezca dentro de ese nodo. Typecheck con el único error preexistente;
-      build limpio.
-    - **Detalle del stub, para la próxima:** `BriefDialog` avanza solo al siguiente entregable de la
-      cola al aprobar (`queue`/`onAdvance`), así que para aprobar varios no hay que volver a abrir
-      la fila — basta con clicar "Aprobar" seguido.
-
-44. **El correo pasó de Resend a Gmail por SMTP** — se abandonó Resend porque **sin dominio
-    verificado solo entrega a la dueña de la cuenta**. Comprobado por DNS el 2026-07-29:
-    `camarabaq.org.co` no tiene los registros de Resend (`resend._domainkey` no existe, tampoco el
-    subdominio `send.`; el SPF de la raíz apunta a Outlook/emsd1/amazonses), y conseguir ese DNS no
-    dependía de nosotros. Resend **no ofrece verificación de remitente individual** (*single sender
-    verification*), que es justo lo que hacía falta.
-    - **Por qué Gmail y no Brevo/SendGrid** (que sí tienen verificación de una sola dirección): con
-      esos, el remitente sería un gmail pero el envío lo haría un tercero, así que no alinea con
-      el DKIM/SPF de gmail.com y arriesga spam — sobre todo contra los buzones Microsoft 365 de la
-      Cámara. Con SMTP de Gmail **el que envía es Google**, así que sale alineado. El usuario lo
-      señaló y tenía razón; mi recomendación inicial de Brevo era por comodidad de implementación
-      (una llamada REST vs. SMTP), no por lo que le convenía.
-    - **Contraseña de aplicación, NO OAuth.** El token de OAuth de la Gmail API caduca cada 7 días
-      mientras la app esté en modo "Testing" en Google Cloud — un mantenimiento eterno. La
-      contraseña de aplicación es estática y **no caduca**; solo se revoca si se desactiva la
-      verificación en dos pasos o **si se cambia la contraseña de la cuenta de Google**. Si el
-      correo se cae de golpe algún día, eso es lo primero que hay que mirar.
-    - **Implementación** (`supabase/functions/notificar-correo/index.ts`): todo el envío ya pasaba
-      por una sola `enviar()`, así que solo se partió en `enviarPorGmail` (denomailer, SMTP
-      `smtp.gmail.com:465` con TLS implícito) y `enviarPorResend` (se **mantiene como respaldo**;
-      se usa solo si no hay `GMAIL_*`). **El redirect de modo prueba se aplica ANTES de elegir
-      transporte**, para que ninguno pueda saltárselo.
-    - **Se manda un correo por destinatario, no uno con todos en el `to`** (que es lo que hacía
-      Resend): el directorio tiene correos personales y no tienen por qué verse entre ellos. El
-      volumen lo permite de sobra — un correo por rol, no por tarea, contra un tope de ~500/día.
-    - `GMAIL_APP_PASSWORD` se limpia de espacios en el código: Google la muestra en bloques de 4 y
-      el servidor SMTP no los descarta.
-    - `MAIL_MODO_PRUEBA` es el nombre nuevo, pero **se sigue leyendo `RESEND_MODO_PRUEBA`** para no
-      dejar el sistema desprotegido justo en el cambio de transporte.
-45. **`denomailer` mata el worker — cliente SMTP escrito a mano, y Resend eliminado**
-    - **El síntoma:** con denomailer, la función devolvía **500 sin cuerpo y sin cabeceras CORS**.
-      Desde el navegador se ve como un error de CORS engañoso ("No 'Access-Control-Allow-Origin'"),
-      que manda a investigar el lado equivocado — el preflight OPTIONS respondía perfecto. Y **no
-      entraba al `catch`**: no era una excepción de JS, era el worker muriéndose, así que no había
-      nada que loguear. (Ojo: esta versión del CLI **no tiene `functions logs`**.)
-    - **Cómo se aisló:** en vez de adivinar, se desplegó un evento `diag` temporal que solo hacía
-      `Deno.connectTls('smtp.gmail.com', 465)` y devolvía el saludo. Respondió
-      `220 smtp.gmail.com ESMTP` → **el runtime SÍ permite sockets TLS salientes**; el problema era
-      la librería. Sin ese paso, la conclusión fácil y equivocada habría sido "Supabase no deja
-      hacer SMTP, hay que cambiar de proveedor".
-    - **Solución: cliente SMTP propio** (~90 líneas, clase `Smtp` en la misma función). El diálogo
-      son ocho comandos y así no hay dependencia externa que se pudra. Detalles que cuestan un bug:
-      las respuestas multilínea van `250-…` y **cierran con `250 ` (código + espacio)** — sin
-      esperar esa línea, el siguiente comando se desincroniza; el asunto lleva acentos y las
-      cabeceras SMTP son ASCII, así que va como **palabra codificada RFC 2047**; y el cuerpo se
-      manda en **base64**, lo que de paso elimina el *dot stuffing* (una línea que empiece con "."
-      corta el mensaje) y el problema de líneas largas. El `AUTH PLAIN` se loguea como
-      `<comando oculto>` para que la contraseña no acabe en un mensaje de error.
-    - **Resend eliminado por completo** (pedido del usuario), junto con el modo de prueba: se
-      borraron `enviarPorResend`, el banner, `MODO_PRUEBA` y los secrets `RESEND_API_KEY` y
-      `RESEND_MODO_PRUEBA`. `enviar()` es hoy Gmail y nada más.
-    - **Verificado con un envío REAL** contra producción (el usuario compartió credenciales):
-      `{"success":true,"destinatarios":1,"enviadoA":["kelvin.trujillo@netsat.co"]}`, y repetido
-      **después** de borrar los secrets de Resend para confirmar que no quedaba ninguna dependencia.
-
-46. **Plantilla del correo: responsive + logo** — la plantilla era una tabla plana sin identidad.
-    Lo que hay que saber para tocarla (las reglas del correo NO son las de una página web):
-    - **Tablas anidadas, no flex ni grid** (Outlook renderiza con el motor de Word); **estilos en
-      línea**, porque Gmail borra el `<style>` en varios clientes. El `<style>` del `<head>` se usa
-      **solo** para el `@media`: si se pierde, el correo se sigue viendo — la tabla es `width=100%`
-      con `max-width:600px`, así que se encoge sola aunque el media query no llegue.
-    - **El logo tuvo que pasarse a PNG**: los clientes de correo no renderizan SVG, y el que tenía
-      la app (`public/fabrica-logo.svg`) es SVG. Se generó `public/logo-email.png` rasterizando el
-      SVG con Playwright. **Trampa:** ese SVG trae `width`/`height` pero **no `viewBox`**, así que
-      cambiarle el tamaño lo *recorta* en vez de escalarlo — el primer intento salió en blanco (la
-      esquina del fondo). Hay que inyectarle el `viewBox="0 0 1254 1254"`.
-    - **`logo-email.png` está excluido del rewrite de `vercel.json`** — sin eso Vercel devuelve
-      `index.html` y el correo muestra un icono roto (la trampa ya documentada arriba).
-    - El diseño **no depende del logo**: casi todos los clientes bloquean imágenes remotas por
-      defecto, así que la identidad la da la banda de color y la imagen lleva `alt`.
-    - Se agregó **preheader** (el texto que el buzón muestra junto al asunto; sin él los clientes
-      agarran la primera frase, que era "Campaña") y **VML** para que el botón tenga fondo y bordes
-      redondeados en Outlook de escritorio.
-    - **Nuevo evento `preview`**: devuelve el HTML tal cual saldría, sin enviar nada. Es la forma de
-      revisar cambios de diseño sin llenarle la bandeja a nadie. `ejemplo()` es el correo de muestra
-      que comparten `prueba` y `preview`, con los tres bloques opcionales (fecha, comentario, autor)
-      puestos a propósito para que se vea todo.
-    - Verificado renderizando el `preview` real con Playwright a 800px y 375px: el logo carga
-      (240×240 natural), cero desborde horizontal en ambos, y el botón pasa a ancho completo en
-      móvil. Envío real confirmado.
-
-47. **Número de campaña, código de tarea y aviso de borrador** (versión `1.8.0`)
-    - **`FactoryProject.numero`** (consecutivo, se ve como `#7`). Se asigna con **máx + 1, no
-      `length + 1`**: borrar una campaña del medio no debe reciclar su número. Las campañas
-      anteriores reciben el suyo en `hydrate` vía `asignarNumerosFaltantes` — **backfill de una
-      sola vez**, por `createdAt` ascendente (la más vieja es la #1), y **persiste solo las que
-      cambiaron**; a partir de la siguiente carga no escribe nada.
-    - **`FabricaBriefItem.codigo`** (`C1`, `D2`, `E1`…). La letra sale del `stageType` del nodo
-      (`LETRA_POR_STAGE`), con respaldo por rol (`LETRA_POR_ROL`) para los entregables legados sin
-      `currentNodeId`. El consecutivo se calcula **leyendo los códigos ya usados**, no contando
-      tareas: así no se repite aunque entren por los tres caminos distintos (lote del wizard,
-      quick-add de un nodo, y `activateNextStage`). `landing_formulario` usa **LF** para no chocar
-      con la **F** del formulario de inscripción — son dos formularios distintos a propósito
-      (punto 35).
-    - **Trampa que obligó a `heredarCodigos`:** guardar el wizard de edición **reconstruye
-      `fabricaBriefs` desde cero** (el riesgo del punto 14), así que las tareas volvían sin código
-      y cada "Guardar cambios" les habría dado uno nuevo: C1 → C7 → C13. Ahora primero se recupera
-      el código por **texto + rol** (emparejando de a uno con `shift`, para que dos tareas del
-      mismo nombre no se lleven el mismo) y solo lo verdaderamente nuevo estrena consecutivo.
-    - **El borrador del wizard YA EXISTÍA** (autoguardado en `localStorage` cada 2 s y restaurado
-      al abrir). Lo que faltaba era que se notara: `hasDraft` estaba calculado y **nunca se usaba**.
-      Se extrajo el acceso a `src/lib/campaignDraft.ts` (antes la clave vivía dentro del wizard, así
-      que desde fuera no había forma de saberlo) y `FactoryPage` muestra una tarjeta "Campaña sin
-      terminar" con nombre, antigüedad y Continuar/Descartar. Se agregó `guardadoEn` al payload
-      para poder decir hace cuánto. **Sigue siendo local al navegador** — no viaja entre equipos;
-      moverlo al servidor implicaría decidir tabla y visibilidad.
-    - **Export del flujo de trabajo:** `pixelRatio` de 2 → **1.25** + margen de 28px. Un diagrama
-      de 1600px salía en 3200px y no cabía en pantalla al abrirlo. Medido con el diagrama de 8
-      nodos y 3 ramas: **1130×865 en vez de 1808×1384**, sin recortes.
-    - Verificado con Playwright (stub, cero escrituras reales): el aviso de borrador con nombre y
-      "hace 1 h"; el backfill asignando **#1 a la campaña más vieja y #2 a la nueva**, persistiendo
-      solo esas dos; los códigos `C1`/`C2` en la lista del nodo y en el título del diálogo; y el PNG
-      exportado medido byte a byte desde su cabecera IHDR. Cero errores de consola.
-
-48. **Fix: el borrador se borraba al cerrar el asistente + el clic fuera lo cerraba** (`1.8.1`)
-    - **Causa del aviso que nunca salía** (reportado tras el punto 47): `close()` en
-      `CreateProjectWizard` llamaba a `clearDraft()`. Ese `close()` corre en **cualquier** cierre —
-      Cancelar, la X, Escape y el clic fuera —, así que el borrador se autoguardaba y se destruía
-      un segundo después. El aviso de la lista estaba bien; nunca había nada que mostrar. Ahora el
-      borrador solo se descarta al **crear** la campaña (`handleCreate`) o desde "Descartar".
-      `reset()` se mantiene: limpia el formulario en memoria, no el `localStorage`.
-    - **El clic fuera ya no cierra el diálogo**: `onPointerDownOutside` + `onInteractOutside`
-      preventivos en el `DialogContent` del wizard. **Hay que frenar los dos** — Radix dispara el
-      cierre por vías distintas según sea puntero o foco/táctil. `DialogContent` (shadcn) reenvía
-      `...props` a `DialogPrimitive.Content`, así que no hizo falta tocar el componente base, y ya
-      trae una X, así que nadie queda encerrado. **Escape se dejó vivo a propósito**: es una acción
-      deliberada y con el fix de arriba ya no pierde nada.
-    - Verificado con Playwright el ciclo completo: escribir → clic fuera (dos veces, en zonas
-      distintas del velo) → sigue abierto y con el texto → Cancelar → **el aviso aparece en el
-      sidebar con el nombre y "hace un momento"** → Continuar → el formulario vuelve con lo escrito
-      → Descartar → el aviso se va y `localStorage` queda limpio. Cero errores de consola.
-
-### Estado del correo (2026-07-29) — FUNCIONANDO
-
-Transporte: **Gmail por SMTP, único**. Secrets: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `APP_URL`.
-Sin modo de prueba: **los correos van a sus destinatarios reales**. Envío real confirmado.
-
-Para probar sin tocar una campaña hay dos eventos, ambos con un token de sesión contra
-`POST https://yvzpfdwswmjcnipcgclg.supabase.co/functions/v1/notificar-correo`:
-
-- `{"evento":"preview"}` → devuelve el **HTML** del correo de muestra, sin enviar nada.
-- `{"evento":"prueba"}` → lo **envía**, y solo a quien llama.
-
-**El botón de Ajustes ya no existe** (se quitó en `1.1.1`); `enviarCorreoDePrueba()` sigue
-exportada en `src/services/emailNotifications.ts` sin que nadie la llame, así que devolverlo es
-solo UI.
-
-## Rediseño visual "Tremu ISO" — CERRADO
-
-El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
-así que el rediseño ya está en producción (acento `#009CF5`, Plus Jakarta Sans, sin modo oscuro,
-sin gradientes). Se quitó el plan de este archivo por ser ruido — el estado real es el código.
-El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
-
-## Pendientes / próximos pasos
-
-- [x] ~~**Desplegar y configurar las notificaciones por correo (punto 33)**~~ — hecho el
-  2026-07-28. `notificar-correo` **está desplegada** (antes daba `404 NOT_FOUND`; ahora un POST sin
-  token responde `401 Missing authorization header`). Secrets puestos: `RESEND_API_KEY`,
-  `RESEND_MODO_PRUEBA`, `APP_URL`. **`RESEND_FROM` NO se puso a propósito**: su default
-  (`Tremu <onboarding@resend.dev>`) es el único remitente válido mientras no haya dominio
-  verificado. La API key se validó enviando un correo real por `api.resend.com` (HTTP 200).
-  **Falta ejercitar el camino completo desde la UI** (Ajustes → "Enviar correo de prueba"), que
-  requiere sesión en Tremu.
-  - **Cuentas (que nadie recordaba):** Supabase es **`kazuhacoc01@gmail.com`**; Resend es
-    **`kelvinjrtrujillo@gmail.com`** — son distintas, y `RESEND_MODO_PRUEBA` tiene que ser la de
-    Resend o los envíos rebotan con 403.
-  - **Plan de Resend:** gratis = 3.000 correos/mes, **tope de 100/día**, 1 dominio. El siguiente
-    es $20/mes por 50.000. El sistema agrupa **un correo por rol**, no por tarea (crear una
-    campaña son ~5-6 correos), así que el tope diario queda muy holgado.
-- [x] ~~**Poner el correo en producción**~~ — hecho el 2026-07-29 (puntos 44 y 45). Transporte
-  Gmail SMTP, sin modo de prueba, **envío real confirmado**. El equipo recibe sus notificaciones.
-- [ ] **Cambiar la contraseña de `kelvin.trujillo@netsat.co`** — se compartió en el chat el
-  2026-07-29 para poder verificar el envío contra producción. Es una cuenta con rol Soporte, o sea
-  que **puede gestionar usuarios** (ver punto 30).
-- [ ] **Opcional, a mediano plazo: dominio propio para el remitente** — hoy los correos salen de una
-  cuenta de Gmail, no de una dirección de la Cámara. Verificar `camarabaq.org.co` en cualquier ESP
-  (o configurar el SMTP del dominio) permitiría un remitente institucional; es un registro DNS que
-  **no toca el correo actual de nadie**. Ya no es bloqueante — el equipo recibe igual. Bonus:
-  destrabaría el "olvidé mi contraseña" de más abajo.
-- [ ] **Recordatorios por fecha (semáforo) por correo** — quedó FUERA del punto 33. No puede salir
-  del navegador: necesita un cron en el servidor (pg_cron o Vercel Cron llamando a una edge
-  function) que recorra `factory_projects` y junte las tareas rojas (≤2 días o vencidas) por
-  persona. La regla de urgencia ya existe en `src/lib/urgencia.ts`.
-- [ ] **Decidir qué hacer con el sistema de correo viejo** — `src/services/notificationService.ts`
-  + `supabase/functions/send-notification` (webhook n8n `notifiacionemail`) son del kanban viejo y
-  nunca se desplegó la función. Convive muerto al lado de `notificar-correo`. O se borra, o se
-  reescribe contra la función nueva.
-- [ ] **Confirmar a mano el round-trip de "Editar proyecto"** para el punto 27 (ecosistema
-  cíclico) — crear un proyecto con etapas/ELMR/motor, cerrar el wizard, reabrir "Editar
-  proyecto" y confirmar que todo (etapas, toques/loops con `etapaId`/`siguienteEtapaId`,
-  mensajeBase, motor) se recarga igual. No se ejercitó ese paso específico con Playwright, solo
-  crear + ver el resultado en la misma sesión.
-- [ ] **Dar acceso a los otros 21 usuarios** — hoy solo `ktrujillo` tiene cuenta en `auth.users`;
-  el resto sale con el badge "Sin acceso". **Ya no hay que hacerlo uno por uno**: se les reparte
-  el link de `/activar` y cada quien crea su contraseña (punto 40). El camino manual
-  (Ajustes → editar → contraseña → "Crear cuenta de acceso") sigue existiendo para casos sueltos.
-- [ ] **CERRAR la ventana de activación cuando todos hayan entrado** — hoy vence el
-  **2026-08-07**. Mientras esté abierta, cualquiera con el link que sepa el correo de un
-  compañero puede tomar esa cuenta (decisión consciente del usuario, ver punto 40). **Se cierra
-  desde el SQL Editor de Supabase** (ya no hay control en la app):
-  `update public.activacion_config set activo_hasta = now() - interval '1 day', updated_at = now();`
-- [ ] **`debe_cambiar_password` no lo hace cumplir nadie** — es solo una columna (default `true`
-  en los 22). Falta el gate en el login que fuerce el cambio en el primer ingreso.
-- [x] ~~Desplegar una edge function con service_role para crear cuentas de acceso~~ — hecho:
-  `admin-usuarios` (punto 31). **Es la única desplegada.** `create-initial-user`,
-  `update-user-password` y `send-notification` siguen en el repo, sin desplegar y con el chequeo de
-  rol contra `user_roles` (vacía): están muertas, no conectarlas sin reescribirlas.
-- [ ] **"Nuevo Usuario" podría crear la cuenta de acceso de una** — hoy agrega al directorio y hay
-  que editar al usuario después para ponerle contraseña. `create-access` ya existe; solo falta
-  ofrecer el campo en el diálogo de creación.
-- [ ] **Considerar SMTP propio en Supabase Auth** — hoy `mailer_autoconfirm: false` (exige
-  confirmar el correo) y no hay SMTP configurado, así que el mailer por defecto está muy limitado.
-  Eso bloquea cualquier flujo de alta/recuperación por correo. `admin-usuarios` esquiva el problema
-  con `email_confirm: true`, pero no habrá "olvidé mi contraseña" hasta resolver esto.
-- [ ] **Cambiar la contraseña inicial de `ktrujillo`** — se fijó `Colombia2026*` a pedido del
-  usuario, en texto plano en un chat, como acceso temporal.
-- [ ] **Revocar el access token de Supabase (`sbp_...`)** usado el 2026-07-16 para aplicar la
-  migración — se pegó en el chat y da acceso a **toda la cuenta**, no solo a este proyecto:
-  https://supabase.com/dashboard/account/tokens
-- [ ] **Rotar la API key de Resend** — la actual (`re_LDKrS…`) se pegó en un chat el 2026-07-28.
-  Se rota en https://resend.com/api-keys y basta con volver a correr
-  `supabase secrets set RESEND_API_KEY=...`; no hay cambios de código.
-- [ ] **Borrar la rama `origin/worktree-bitacora-rediseno-tremu`** — su PR #1 ya se mergeó.
-- [ ] **Investigar el `406` del `upsert` a `factory_projects`** — apareció al verificar el punto 23.
-  Ojo: el 406 de la consola **no era ese** — era `app_version` + `.single()` sin sesión, y **ya no
-  ocurre** (el punto 30 dejó de leer esa tabla; la consola de producción quedó limpia). Si el de
-  `factory_projects` reaparece, es otra cosa. Sospecha razonable: el mismo patrón `.single()`
-  contra 0 filas.
-- [ ] Probar en producción quitar un canal ya guardado (ej. desmarcar BTL/KAM/Relacionamiento/Call
-  Center en "Editar proyecto") y confirmar que `syncCanalNodes` (`factoryStore.ts`, punto 23) borra
-  el nodo correspondiente en Flujo de trabajo — la lógica es simétrica a `syncRequerimientoNodes`
-  (ya probada) pero no se ejercitó ese caso específico con Playwright.
-- [ ] Confirmar CORS habilitado en los 2 webhooks n8n que sí existen y se usan (`crearlink`,
-  `descargar-qr` — **`formulariolink` ya no se usa, ver punto 16, no hace falta CORS en ese**) — si
-  no, la vista mostrará error apenas el usuario envíe el formulario. Para el nombre de archivo del
-  QR, además exponer `Access-Control-Expose-Headers: Content-Disposition`.
-- [ ] Probar `BitlyLinkTool.tsx` contra los webhooks reales de n8n (solo se verificó con mocks),
-  incluyendo la descarga real del QR.
-- [ ] **Riesgo detectado, no confirmado:** `CreateProjectWizard`'s `buildFabricaBriefs` reconstruye
-  `fabricaBriefs` completo (IDs nuevos) cada vez que se guarda "Editar proyecto" — podría perder
-  `deliverableContent`/`comments`/`workflowStatus` de entregables ya avanzados en Flujo de trabajo
-  si se edita un proyecto en curso. Ver punto 14 de la bitácora. Preguntarle al usuario si esto ya
-  le pasó antes de invertir en el rediseño (diff/merge) que arreglaría esto.
-- [ ] Si un proyecto YA tiene el brief "Landing page" persistido con `roleLabel: 'Producción'`
-  (creado antes del fix del punto 14), la tarjeta "Producción" sigue en su Equipo hasta que alguien
-  abra "Editar proyecto" en ese proyecto puntual y guarde de nuevo — no fue necesario tocar la BD.
-
-- [x] ~~Prioridad alta: revisar visualmente el nuevo diagrama de Flujo de trabajo en producción~~ —
-  verificado con Playwright el 2026-07-08 (rama única probada; falta ver un caso con las 3 ramas
-  a la vez — Landing + Formulario + Pauta simultáneos — en producción real).
-- [x] ~~Implementar `addUser`/`updateUser`/`deleteUser` en `authStore.ts`~~ — hecho en el punto 30;
-  editar y eliminar funcionan, y crear agrega al directorio (sin cuenta de acceso, ver pendiente de
-  la edge function). Sigue pendiente: **`createUser`/`updateUserProfile`/`deleteUserProfile` de
-  `authService.ts` quedaron marcadas OBSOLETAS** — escriben en `profiles`/`user_roles` (vacías, enum
-  viejo) y nadie las llama. Si se conectan, reescribirlas primero contra `usuarios_roles`.
-  **Ya no hace falta migrar el enum `user_roles.role`**: ese camino quedó muerto, los roles nuevos
-  viven en `usuarios_roles.rol` como texto con check constraint.
-- [ ] Confirmar con el usuario en producción: historial de aprobación con fecha/hora, activación
-  automática de la siguiente tarea al aprobar, y el selector de roles fijos en Equipo — no se
-  tocaron en esta sesión y siguen sin verificación visual.
-- [x] ~~Confirmar con el usuario el mapeo de rol por canal nuevo en "Plan de canales" (BTL, KAM,
-  Relacionamiento)~~ — confirmado explícitamente por el usuario en el punto 23: BTL/KAM/
-  Relacionamiento/Call Center → Estratega (con nodo propio de "hecho sí/no + fecha"),
-  Facebook/Instagram/TikTok/Google Ads → nuevo rol Trafficker.
-- [ ] RLS más estricta por rol — quedó pendiente a propósito ("las RLS las creamos después"). Todas
-  las tablas siguen `anon`-abiertas **menos `usuarios_roles`** (solo `authenticated`, ver punto 29).
-  Desde 2026-07-16 ya hay sesión real, así que cerrar las demás a `authenticated` es viable — pero
-  hay que confirmar antes que ningún camino escriba sin sesión, porque un rechazo de RLS **falla en
-  silencio**.
-- [x] ~~Revisar por qué se traba la descarga de Chromium para Playwright~~ — resuelto (punto 9).
-  Chromium `chromium-1228` está completo en `%LOCALAPPDATA%\ms-playwright`. Recordatorio:
-  `chromium.launch()` **necesita `executablePath`** apuntando a
-  `chromium-1228/chrome-win64/chrome.exe` (no se descargó `chrome-headless-shell`).
-- [ ] Edge functions (`create-initial-user`, `admin-set-password`, `send-notification`,
-  `update-user-password`) no se redespliegan con `supabase db push` — están en el proyecto nuevo
-  como código pero no se ha confirmado que estén desplegadas ahí.
+# The Factory (Tremu) — notas del proyecto
+
+App interna de mercadeo de la Cámara de Comercio de Barranquilla. Vite + React + shadcn/ui +
+Zustand + Supabase.
+
+- **Producción:** https://tremubaq.vercel.app (Vercel, team `nivlek02s-projects`, proyecto `tremu`).
+  El viejo `the-factory-seven.vercel.app` da 404.
+- **Repo:** `Nivlek02/the-factory`, rama de producción `master`.
+- **Supabase:** proyecto `yvzpfdwswmjcnipcgclg`. Cuenta `kazuhacoc01@gmail.com`.
+- **Versión:** vive **solo** en `package.json` (ver "Versión y aviso de actualización").
+
+> Este archivo es la memoria del proyecto: prioriza **trampas que cuestan un bug** y decisiones que
+> no se deducen del código. Si algo de acá se contradice con el código o con la base, manda el
+> código — y hay que corregir esta nota.
+
+---
+
+## Antes de tocar nada
+
+- **El typecheck real es `npx tsc --noEmit -p tsconfig.app.json`.** `npx tsc --noEmit` a secas **no
+  compila nada** (el `tsconfig.json` raíz tiene `"files": []` + `references`) y da un exit 0 falso.
+  Hoy el proyecto está en **cero errores**: cualquier error que salga es de tu cambio.
+- `npm run build` tiene que quedar limpio. No hay test runner (ni vitest ni jest) — la verificación
+  se hace con scripts sueltos y con Playwright (ver "Verificación").
+- **`vercel.json` necesita el bloque `rewrites`** o toda ruta profunda (`/login`, `/settings`,
+  `/board/:id`, `/activar`) da 404: `dist/` solo contiene `index.html`. El rewrite excluye
+  `assets/`, `version.json` y `logo-email.png`. **Cualquier archivo estático nuevo en la raíz hay
+  que excluirlo ahí o Vercel devolverá `index.html` en su lugar** (ya pasó dos veces: con
+  `version.json` el aviso de versión no habría aparecido nunca, y con el logo del correo salía un
+  icono roto).
+- Env vars de Vercel (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) se gestionan por API con
+  un token personal. Ojo al pegar keys a mano: ya pasó que un salto de línea se convirtió en
+  espacios en medio del JWT y lo invalidó (`401 Invalid API key`). En `.env` los valores van **entre
+  comillas**; al parsearlos hay que quitarlas y **no partir por `=` a secas** (los JWT llevan `=`
+  de padding).
+
+---
+
+## Seguridad y permisos
+
+### RLS
+- **`usuarios_roles`** (el directorio del equipo): SELECT para cualquier autenticado — la app
+  necesita la lista para asignar tareas. **Escribir solo si el rol es Estratega o Soporte**, vía
+  `public.puede_gestionar_usuarios()`, que es **SECURITY DEFINER a la fuerza**: una policy sobre
+  `usuarios_roles` que consulte `usuarios_roles` se evalúa recursivamente contra sí misma.
+  No abre a `anon` a propósito: son 22 nombres y correos personales, y la publishable key es
+  pública y va en el bundle.
+- **`factory_projects`, `tasks`, `task_comments`**: cerradas a `authenticated`
+  (migración `20260729000000`). Antes estaban `TO anon USING (true)` para SELECT/INSERT/UPDATE/
+  **DELETE**, o sea que cualquiera con la publishable key —que va en el JS— podía leer, modificar y
+  borrar todas las campañas sin cuenta. El gate de `App.tsx` solo esconde la UI, no protege datos.
+- **`activacion_config`**: RLS activa y **sin ninguna policy** → inalcanzable desde el navegador. La
+  edge function la lee porque el service_role bypassea RLS.
+- `profiles` y `user_roles` quedaron **vacías y muertas** (enum de roles viejo). No se borraron.
+
+**Dos reglas que ya costaron bugs:**
+1. Un INSERT rechazado por RLS **falla en silencio** — solo se ve en la consola del navegador.
+2. Un UPDATE sin permiso **no da error**: RLS *filtra filas*, así que vuelve `error: null` con **0
+   filas**. Hay que mirar el conteo con `.select()`, no solo `error` (lo hacen `updateUser` y
+   `deleteUser` en `authStore`).
+
+### Roles
+`usuarios_roles.rol` guarda la **etiqueta** ('Copywriter', 'Estratega'…) con un check constraint;
+`authService` la traduce al id interno (`copy`, `estratega`…) con un mapa inverso de `ROLE_LABELS`.
+El rol es **informativo en todas partes menos en la gestión de usuarios**, que es el único lugar
+donde decide permisos (`canManageUsers` en el front + la policy en la base; la base es la que
+manda). `CARGO_POR_USUARIO` permite mostrar un cargo distinto por persona sin cambiar su rol real.
+
+### Edge functions
+**Desplegadas (3):** `admin-usuarios`, `activar-acceso`, `notificar-correo`.
+**Muertas, en el repo, sin desplegar:** `create-initial-user`, `update-user-password`,
+`send-notification` — validan el rol contra `user_roles` (vacía), así que darían 403 siempre. **No
+conectarlas sin reescribirlas.** `admin-set-password` **se borró**: no validaba nada, recibía
+`{email, password}` y cambiaba la contraseña de cualquiera. **Si reaparece, no desplegarla.**
+
+Las tres desplegadas usan service_role, que **bypassea toda RLS**, así que la autorización se hace
+a mano dentro de la función:
+- **`admin-usuarios`** (`verify_jwt: true`) — único camino a `auth.users` desde el navegador.
+  Exige JWT válido → verifica contra `usuarios_roles` que quien llama sea Estratega/Soporte →
+  **relee la fila objetivo de la base por `id`**, nunca confía en el email del body. Acciones:
+  `set-email` (cambia auth.users **y** el directorio, o quedarían peleados), `set-password`,
+  `create-access`.
+- **`notificar-correo`** (`verify_jwt: true`) — exige JWT y que quien llama exista en el
+  directorio, **sin exigir rol de gestor** (cualquiera del equipo notifica al trabajar).
+- **`activar-acceso`** (`verify_jwt: false`, **pública a la fuerza**: quien la usa todavía no tiene
+  cuenta). Ver "Activación de cuentas".
+
+### XSS — `dangerouslySetInnerHTML`
+La descripción de la campaña, los entregables y los comentarios son **HTML del editor** y se
+pintan con `dangerouslySetInnerHTML`. **Siempre a través de `dangerousHtml()` de
+`src/lib/sanitizeHtml.ts`** (DOMPurify con lista blanca). Sin eso es un XSS almacenado: un
+`<img src=x onerror=…>` guardado en un entregable se ejecuta en el navegador de cualquiera que abra
+la campaña y puede robar la sesión de `localStorage` — y si la víctima es Estratega/Soporte, con
+ella se gestiona el equipo. Ojo: un `<script>` inyectado por innerHTML no corre, pero
+`onerror`/`onload` **sí**, así que "no hay `<script>`" no es defensa. La limpieza es **en lectura**,
+así que cubre lo que ya está guardado sin migrar nada. `htmlAText` (`campaignMarkdown.ts`) usa
+`DOMParser`, que es inerte — ahí no hace falta.
+
+---
+
+## Datos de las campañas
+
+Todo vive en el blob **`factory_projects.data` (JSONB)**: nodos del flujo, entregables, canales,
+loops, etapas, ELMR, adjuntos. **Agregar un campo no necesita migración de esquema** — se lee con
+`?? default` en `rowToProject` y se serializa en `projectToRow`.
+
+**Migraciones en LECTURA** (mismo patrón para todo lo que cambia de forma): `stripApprovalNodes`,
+`mergeGuionNodes`, `interaccionesValidas`, `asignarNumerosFaltantes`. Se arregla al leer y no se
+toca la base.
+
+### Guardia de escritura obsoleta (`revision`)
+Cada escritura reemplaza el proyecto **entero**. Con dos personas a la vez, quien guardaba de
+último **pisaba el trabajo del otro sin error ni aviso**: bastaba dejar la pestaña abierta un rato
+(nada volvía a leer de la base solo) y tocar cualquier cosa.
+
+Hoy `data.revision` es un contador por campaña. Antes de escribir, `syncProject` compara el de la
+base con el último conocido (`revisionConocida`, un `Map` a nivel de módulo — **no** en el objeto
+del proyecto: el `setTimeout` captura una instantánea y leerlo de ahí daba falsos conflictos al
+hacer dos cambios seguidos). Si el de la base es mayor: **no pisa**, recarga esa campaña y avisa con
+un toast. Además `FactoryPage` **relee al volver a la pestaña** (`visibilitychange`/`focus`), que es
+lo que evita llegar al conflicto; no relee si hay una escritura propia pendiente
+(`haySincronizacionPendiente()`).
+
+### Números y códigos
+- `FactoryProject.numero` (`#7`) = **máx + 1, no `length + 1`**: borrar la campaña del medio no
+  recicla su número. Se calcula en el cliente, así que dos campañas creadas a la vez podían
+  compartirlo; `asignarNumerosFaltantes` **repara duplicados al leer** dejándole el número a la más
+  vieja (regla determinista por `createdAt`, así todos los navegadores llegan al mismo resultado).
+- `FabricaBriefItem.codigo` (`C1`, `D2`, `E1`…): la letra sale del `stageType` del nodo
+  (`LETRA_POR_STAGE`), con respaldo por rol para lo legado. El consecutivo se calcula **leyendo los
+  códigos ya usados**, no contando tareas, porque las tareas entran por tres caminos distintos.
+  `landing_formulario` usa **LF** para no chocar con la **F** del formulario de inscripción.
+- **`heredarCodigos` es obligatorio** porque guardar el wizard de edición reconstruye
+  `fabricaBriefs` desde cero: sin él, cada "Guardar cambios" repartiría códigos nuevos
+  (C1 → C7 → C13). Se recupera por **texto + rol**, emparejando de a uno con `shift` para que dos
+  tareas del mismo nombre no se lleven el mismo.
+
+### ⚠️ Riesgo abierto: el wizard de edición reconstruye todo
+`buildFabricaBriefs` (`CreateProjectWizard`) rearma `fabricaBriefs` **completo, con ids nuevos**, en
+cada guardado. En teoría, editar una campaña ya avanzada puede perder `deliverableContent`,
+`comments`, `workflowStatus` y `currentNodeId` de entregables que ya pasaron por el flujo. **No está
+confirmado que haya pasado en producción.** Arreglarlo bien es pasar a diff/merge en vez de
+reemplazo. Preguntar antes de invertir en eso.
+
+---
+
+## Flujo de trabajo (los nodos)
+
+Cadena base: **Copys → Diseño de piezas → Envío de acciones**. Copys **se bifurca en tres ramas
+que no se cruzan**:
+- → **Diseño** (cualquier copy normal). La tarea se renombra al nacer con `nombreDePieza`
+  (`Redactar copy para Correo — X` → `Diseño de pieza para Correo — X`).
+- → **Call Center** (solo el guion de la llamada, `isCallCenterGuion`). Checkpoint **único** por
+  nodo.
+- → **Formulario de la landing → Cargue de la landing** (solo `Copy de landing`, `isLandingCopy`).
+
+Los demás nodos (Pauta, BTL, KAM, Relacionamiento, Call Center) **nacen del Plan de canales**, no de
+un checkbox: `syncCanalNodes` los agrega y los quita al agregar o quitar canales, igual que
+`syncRequerimientoNodes` con Landing/Formulario.
+
+Quién dispara qué vive en la tabla `AUTO_ADVANCE` + el predicado `avanzaDesde()`
+(`StrategyBriefPanels.tsx`). Al aprobar, la tarea nueva hereda `fechaAccion` y guarda
+`sourceBriefId` (referencia **por id**: el diálogo resuelve el original en vivo, así que si el copy
+se corrige después se ve corregido).
+
+**Trampas de los nodos:**
+- **`roleId` vs `roleLabel`.** El `roleLabel` es texto para mostrar; el `roleId` de una tarea tiene
+  que ser el **id** (`diseno`), porque es con lo que `isTaskOwnedBy` decide de quién es. Casi todos
+  los nodos tienen `roleId: null`, y antes se caía a la etiqueta ('Diseñador') → **las piezas de
+  diseño no le aparecían al diseñador en "Mis tareas"**. Hoy `activateNextStage` traduce con
+  `roleIdDeEtiqueta`, y `isTaskOwnedBy` tiene además un **respaldo por etiqueta** que cubre todo lo
+  ya guardado en Supabase sin migrar el JSONB. Si agregas un nodo, ponle `roleId` real.
+- **Varios nodos comparten `roleLabel`** (Landing/Formulario/Envíos son "Gestor de canales";
+  KAM/BTL/Relacionamiento/Call Center son "Estratega"). `briefsForNode` desambigua por
+  `currentNodeId` y, para lo legado sin él, por texto de la tarea. `stampCanalNodeIds` estampa el
+  `currentNodeId` correcto al crear/actualizar, así que las heurísticas de texto son solo red de
+  seguridad. La rama de `landing` se evalúa **antes** del filtro por rol, porque ese nodo cambió de
+  rol (Gestor de canales → Soporte) y lo viejo ya no coincide.
+- El nodo Envío de acciones usa `DeliveryBriefPanel`, no `ContentBriefPanel` — cuando agregues algo
+  a "cualquier nodo", verifica que Envíos también lo tenga (ya se olvidó una vez).
+
+---
+
+## Fechas, urgencia y métricas
+
+- **Semáforo** (`src/lib/urgencia.ts`): rojo ≤2 días (incluye vencidas), amarillo ≤7, verde >7.
+  `parseISOLocal` parsea a mano porque **`new Date('2026-07-20')` se interpreta como UTC** y en
+  Colombia (UTC-5) mostraría el día anterior. Mismo motivo en `formatFecha` de la edge function.
+- `fechaAccion` se siembra desde `CanalRow.dia` y es editable desde la tarea. En
+  `buildFabricaBriefs` viaja en una variable de bucle que **se resetea a null al salir**, o
+  Landing/Loops heredarían la fecha del último canal.
+- **Las tareas de métricas NO heredan fecha** a propósito: heredar la del envío las dejaría en rojo
+  al día siguiente de enviar.
+- **Dashboard de métricas: solo Correo, WhatsApp y SMS** (`esCanalMedido`). Muestra Enviados +
+  Clics, y Apertura **solo en Correo** (`mideApertura`), espejo de los campos que pide el formulario
+  de `FactoryPage`. Si ese formulario cambia, hay que actualizar esas funciones o el dashboard
+  seguirá escondiendo datos. `enviadosDe()` hace `enviados || baseTotal`: **si quitas ese fallback,
+  las métricas cargadas antes del 2026-07-28 se ven en cero.** Pauta sí genera métricas, solo se
+  ocultan de este tab. Call Center nunca las generó.
+- Cortar el nombre del canal **por prefijo**, nunca con `/…de (\w+)/`: ese `\w+` parte "Call
+  Center" en "Call".
+
+---
+
+## Correo (FUNCIONANDO)
+
+**Transporte: Gmail por SMTP, único.** Secrets: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `APP_URL`
+(+ `MAIL_FROM_NAME` opcional). **Sin modo de prueba: los correos van a sus destinatarios reales.**
+
+- **Se descartó Resend** porque sin dominio verificado solo entrega a la dueña de la cuenta, y el
+  DNS de `camarabaq.org.co` (Microsoft 365) no dependía de nosotros. Con SMTP de Gmail **el que
+  envía es Google**, así que sale alineado con SPF/DKIM y no cae en spam — con un tercero enviando
+  "desde" un gmail, sí.
+- **Contraseña de aplicación, NO OAuth** (el token de OAuth caduca cada 7 días en modo Testing). La
+  de aplicación no caduca, pero **se revoca sola si se cambia la contraseña de la cuenta de
+  Google**: si el correo se cae de golpe, eso es lo primero que hay que mirar.
+- **`denomailer` MATA el worker** de Supabase: 500 sin cuerpo, sin cabeceras CORS (se ve como un
+  error de CORS engañoso) y **sin entrar al `catch`** — no es una excepción, es el worker
+  muriéndose. Se aisló desplegando un evento que solo hacía `Deno.connectTls` a smtp.gmail.com:465:
+  respondió `220`, o sea que **el runtime sí permite sockets TLS** y el problema era la librería.
+  Por eso hay un **cliente SMTP propio** (~90 líneas). Ojo: esta versión del CLI **no tiene
+  `functions logs`**.
+- Trampas del cliente SMTP: las respuestas multilínea van `250-…` y **cierran con `250 ` (código +
+  espacio)** — sin esperar esa línea el siguiente comando se desincroniza; las cabeceras son ASCII,
+  así que el asunto va como **palabra codificada RFC 2047**; el cuerpo va en **base64**, lo que de
+  paso elimina el *dot stuffing* y las líneas largas; el `AUTH PLAIN` se loguea como
+  `<comando oculto>`. `GMAIL_APP_PASSWORD` se limpia de espacios (Google la muestra en bloques
+  de 4).
+- **Todo lo que va a una cabecera o a un comando SMTP pasa por `unaLinea()`**, y los destinatarios
+  por `correoValido()`. Un `\n` en el asunto (que lo arma el cliente) permitiría inyectar un `Bcc:`
+  y convertir esto en relay. No basta con confiar en el filtro de `cabecera()`: su regex usa `$`,
+  que en JS **también matchea antes de un `\n` final**.
+- **Se manda un correo por destinatario**, no uno con todos en el `to`: el directorio tiene correos
+  personales y no tienen por qué verse entre ellos. Tope de una cuenta Gmail gratuita: ~500/día, y
+  el sistema manda **un correo por rol, no por tarea**.
+
+**Regla de oro del lado del navegador:** el cliente **NUNCA manda direcciones de correo**. Solo dice
+qué pasó, en qué campaña, sobre qué tareas y qué **rol** es responsable; la función resuelve los
+correos contra `usuarios_roles`. Si el cliente mandara el `to`, esto sería un **relay abierto**.
+
+**Los 4 eventos y dónde se enganchan:**
+- `tarea.asignada` sale del **store** (`addFabricaBriefs` + `addProject`), no de los paneles:
+  `addFabricaBriefs` es el único camino por el que entra una tarea a una campaña existente, así que
+  cubre de una el quick-add de los ~6 paneles **y** lo que siembra `activateNextStage`. `addProject`
+  hace falta aparte porque el lote del wizard se escribe directo en el objeto.
+  **`updateProject` NO notifica a propósito**: reconstruye `fabricaBriefs` completo en cada guardado
+  y mandaría una avalancha.
+- `tarea.en_revision` → a la **estratega de la campaña** (por `strategistName`, que es el nombre, no
+  un id), con fallback a todas las Estrategas.
+- `tarea.aprobada` / `tarea.correccion` → al rol responsable del entregable.
+- Destinatarios = miembros del grupo de rol en **esa** campaña y, si está vacío, todos los del
+  directorio con ese rol. Es la misma regla de `isTaskOwnedBy`, así que **el correo coincide con lo
+  que la persona ve en "Mis tareas"**. Nadie se notifica a sí mismo.
+- **Notificar nunca puede romper ni frenar la acción del usuario**: todo es fire-and-forget y los
+  errores solo van a `console.warn`.
+
+**Para probar sin tocar una campaña** (POST con token de sesión a
+`…/functions/v1/notificar-correo`): `{"evento":"preview"}` devuelve el **HTML** sin enviar nada;
+`{"evento":"prueba"}` lo **envía**, y solo a quien llama. `enviarCorreoDePrueba()` sigue exportada
+en `emailNotifications.ts` sin que nadie la llame — devolver el botón de Ajustes es solo UI.
+
+**La plantilla no se toca con criterio de página web:** tablas anidadas (Outlook renderiza con el
+motor de Word), **estilos en línea** (Gmail borra el `<style>` en varios clientes; el `<style>` solo
+lleva el `@media`, que es un extra), logo en **PNG** (los clientes no renderizan SVG) y el diseño
+**no depende del logo** porque casi todos bloquean imágenes remotas. Al rasterizar
+`public/fabrica-logo.svg` hay que **inyectarle `viewBox="0 0 1254 1254"`**: no lo trae, así que
+cambiarle el tamaño lo *recorta* en vez de escalarlo (el primer intento salió en blanco).
+
+**Un fallo que ya costó tiempo:** `error.context` de `functions.invoke()` es `any` y cambia según el
+tipo de fallo — `Response` para un no-2xx, el `TypeError` crudo del fetch para un fallo de red/CORS.
+Llamarle `.json()` a lo segundo tiraba una excepción que **rechazaba la promesa** y dejaba el botón
+cargando para siempre. `motivoDelError()` comprueba `instanceof Response` antes de tocarlo, e
+`invocar()` **siempre resuelve** (try/catch + timeout de 20s).
+
+---
+
+## Login y activación de cuentas
+
+- Login real de Supabase Auth en `/login`. `App.tsx` manda toda ruta sin sesión a `/login` (salvo
+  `/activar`) y `/login` → `/` con sesión. `authStore.initialize()` restaura la sesión; si hay
+  sesión válida pero **sin fila enlazada en `usuarios_roles`, no se deja pasar**.
+- Los usuarios sin `user_id` caen a su id de tabla como `userId`: siguen siendo **asignables** en
+  tareas, pero `loginUser` los rechaza. En Ajustes se ven con el badge **"Sin acceso"** (se deriva
+  de `userId === id`). Poner una contraseña a alguien "Sin acceso" **le crea la cuenta**.
+- **"Nuevo Usuario" no crea acceso**, solo directorio: el Admin API exige service_role (imposible en
+  el navegador) y `signUp` tampoco sirve porque el proyecto tiene `mailer_autoconfirm: false` y **no
+  tiene SMTP propio**, así que nadie podría confirmar el correo. Por lo mismo, todo lo que crea
+  cuentas usa `email_confirm: true`.
+- **`/activar` — el link es COMPARTIDO, no uno por persona.** Se le planteó el riesgo al usuario
+  (quien lo tenga y sepa el correo de un compañero puede tomar esa cuenta, y desde que el rol decide
+  permisos, tomar una de Estratega/Soporte da gestión del equipo) y **eligió el link compartido**,
+  con una **ventana de tiempo** como control. Lo que contiene la función: la ventana validada **en
+  el servidor**, y que solo activa filas que ya existen **con `user_id` nulo** (no sirve para
+  secuestrar una cuenta activa ni cambiarle la clave a nadie), y nunca acepta un rol desde el body.
+  Si el `update` que enlaza falla, **borra el usuario recién creado** para no dejar una cuenta que
+  existe en auth pero que el directorio no reconoce.
+- **La ventana se administra SOLO desde el SQL Editor de Supabase** (la tabla no tiene policies):
+  ```sql
+  update public.activacion_config set activo_hasta = '2026-08-07 23:59:59-05', updated_at = now();
+  ```
+  Cerrar de inmediato = ponerle una fecha pasada.
+
+---
+
+## Versión y aviso de actualización
+
+`package.json` es la **única fuente de verdad**. `vite.config.ts` la lee con `readFileSync` y la
+inyecta como `__APP_VERSION__` (+ `__BUILD_TIME__`, `__BUILD_ID__`), y emite `version.json` en cada
+build. `src/lib/version.ts` concentra todo (las constantes se leen con `typeof __X__ !== 'undefined'`
+para que el módulo no explote fuera de un bundle de Vite). El hook consulta con `cache:'no-store'`
+al volver a la pestaña y cada 15 min, y **no hace nada en dev** (`/version.json` no existe hasta el
+build).
+
+- El aviso **también salta cuando cambia solo el build con el mismo número** (que es el caso normal
+  acá), y entonces **no imprime el número** para no confundir.
+- `applyUpdate()` limpia `caches` y actualiza los service workers antes de recargar: un
+  `location.reload()` pelado dejaba al usuario viendo lo mismo y el aviso en bucle.
+- `version.json` va con `Cache-Control: no-cache, must-revalidate`. Si el CDN lo cachea, **el aviso
+  no aparece nunca y no da ninguna señal de error**.
+- Publicar: `npm version patch|minor|major --no-git-tag-version` → entrada en `CHANGELOG.md` → push
+  a `master`.
+- La tabla `app_version` quedó **huérfana** (nadie la lee ni la escribe). El control de versiones es
+  solo del backend: se actualiza en cada deploy.
+
+---
+
+## Otros detalles que muerden
+
+- **El borrador del wizard** (`src/lib/campaignDraft.ts`) se autoguarda en `localStorage` cada 2 s y
+  se ofrece en la lista de campañas. **Solo se descarta al crear la campaña o al pulsar
+  "Descartar"** — antes `close()` lo borraba, así que el aviso nunca aparecía. `reset()` limpia el
+  formulario en memoria, no el `localStorage`. Sigue siendo local al navegador: no viaja entre
+  equipos.
+- **Un clic fuera no cierra el wizard** (`onPointerDownOutside` + `onInteractOutside`): hay que
+  frenar **los dos**, Radix dispara el cierre por vías distintas según sea puntero o foco/táctil.
+  Escape se dejó vivo a propósito.
+- **Nunca declarar un componente dentro de otro si envuelve inputs.** `Marco` estaba definido
+  dentro de `ActivarPage`, así que cada render creaba un tipo nuevo, React remontaba el formulario
+  en cada tecla y el `autoFocus` se llevaba el cursor.
+- **Diagramas.** El de Flujo de trabajo es un árbol (`computeTreeLayout`: columna = profundidad,
+  fila = hoja del subárbol) sobre CSS grid, con dos `<svg>` en **píxeles** por detrás (el área de
+  ramas se mide con un `ResizeObserver`; `preserveAspectRatio="none"` deformaba las curvas e impedía
+  puntas de flecha). Cada `<svg>` define **su propio** marker: los `id` son globales en el
+  documento. Columnas con mínimo de 190px y scroll horizontal si no caben; el `ref` que exporta el
+  PNG apunta al **contenido completo**, no al contenedor con scroll, para que la imagen salga
+  entera. `pixelRatio: 1.25` (con 2, un diagrama de 1600px salía en 3200 y no cabía en pantalla).
+- **`src/lib/interacciones.ts` es compartido** por el wizard (qué chips ofrece) y el diagrama (qué
+  filtra al leer). Tenerlo solo en el wizard fue la causa de que el diagrama siguiera pintando
+  interacciones que ya no se ofrecían. `INTERACCION_OPCIONES` conserva las 5 aunque un canal no las
+  admita: es la lista de "qué es estándar", y sacar una haría que lo ya guardado reapareciera como
+  chip personalizado.
+- **Herramientas** (`BitlyLinkTool.tsx`): los 6 campos están **hardcodeados** en el frontend — el
+  webhook `formulariolink` que iba a servir el schema **nunca existió**. Usa 2 webhooks de n8n:
+  `crearlink` (POST, devuelve `{url, titulo, qrUrl}`) y `descargar-qr` (la URL ya viene armada del
+  backend). La descarga del QR va por blob + `<a download>` porque el atributo `download` no se
+  respeta en recursos cross-origin. Sus design tokens son **locales al componente** a propósito.
+- **El sistema de correo viejo sigue ahí, muerto y aparte**:
+  `src/services/notificationService.ts` + `supabase/functions/send-notification` (webhook n8n) son
+  del kanban viejo, no de las campañas. Si se conecta algo de correo, es a `notificar-correo`.
+
+---
+
+## Verificación
+
+- **Playwright**: el navegador está en `%LOCALAPPDATA%\ms-playwright\chromium-1228`. **`chromium
+  .launch()` sin argumentos falla** — solo se descargó el Chromium "headed", no
+  `chrome-headless-shell`. Hay que pasar `executablePath` apuntando a
+  `chromium-1228/chrome-win64/chrome.exe`. El paquete `playwright` **no** está en el proyecto; se
+  instala `playwright-core` aparte (no tiene postinstall que descargue navegadores).
+- Lo normal es verificar **stubbeando la sesión y `factory_projects`** con `page.route`, para no
+  escribir en la base real.
+- **Trampas del stub que dejan la pantalla en blanco**: el nodo del flujo usa `label`, no `name`, y
+  su `status` es `ProjectTaskStatus` (`pending`…), no `todo` — con cualquiera mal, `NodeCard`
+  revienta con `Cannot read properties of undefined (reading 'cls')`. Las pestañas de la campaña
+  **no son `role="tab"`** (hay que buscarlas por texto); las del diálogo de la tarea sí.
+- `BriefDialog` **avanza solo al siguiente entregable de la cola** al aprobar, así que para aprobar
+  varios basta con clicar "Aprobar" seguido.
+- Para lógica pura (store, libs, helpers de las edge functions) sale más barato bundlear con esbuild
+  y stubbear el cliente de Supabase que abrir un navegador. **Los stubs tienen que quedar
+  `external`**: si esbuild los inlinea, la prueba y el código terminan con dos copias del módulo (y
+  de la base de mentira) y todo falla por la razón equivocada.
+
+---
+
+## Historial reciente
+
+Solo lo que sigue explicando el estado actual. Lo anterior está en el historial de git.
+
+- **2026-07-29 (v1.9.0) — revisión de seguridad.** Se cerró el acceso anónimo a
+  `factory_projects`/`tasks`/`task_comments`; se saneó el HTML con DOMPurify; guardia de escritura
+  obsoleta + relectura al volver a la pestaña; `roleId` correcto en las tareas que crea
+  `activateNextStage` + respaldo por etiqueta en `isTaskOwnedBy`; reparación de números duplicados;
+  limpieza de CR/LF en las cabeceras SMTP; typecheck a cero errores.
+- **2026-07-29 (v1.8.x)** — número de campaña (`#7`) y código de tarea (`C1`); aviso de "campaña sin
+  terminar" con Continuar/Descartar; el borrador ya no se borra al cerrar el wizard; el clic fuera
+  no cierra. Se quitó el bloque "Flujo de trabajo de la interacción" del diagrama del ciclo
+  (`accionDeInteraccion` quedó en `interacciones.ts` sin llamadores).
+- **2026-07-28/29 (v1.4–1.7)** — la captura de interés es la única fuente del requerimiento
+  (excluyente: Landing **o** Formulario, no los dos); interacciones recortadas por canal; correo a
+  Gmail SMTP con cliente propio; plantilla responsive con logo; la cadena del flujo arrastra fecha y
+  entregable de origen ("Paso anterior"); la tarea de Diseño se renombra al nacer.
+- **2026-07-16/17** — `usuarios_roles` (directorio + roles en una sola tabla, 22 personas), login
+  real, gestión de usuarios restringida a Estratega/Soporte, semáforo de fechas, `rewrites` en
+  `vercel.json`.
+- **Rediseño visual "Tremu ISO"** — en producción desde el 2026-07-11 (PR #1): acento `#009CF5`,
+  Plus Jakarta Sans, sin modo oscuro, sin gradientes. El semáforo (`state-*`) se conservó porque
+  comunica significado; `team-*`/`board-*` se neutralizaron a gris.
+
+---
+
+## Pendientes
+
+### Hay que hacerlo (requiere tus credenciales)
+- [ ] **Aplicar la migración `20260729000000_cerrar-acceso-anonimo.sql`** a producción
+      (`supabase db push --linked`). **Hasta que se aplique, las campañas siguen abiertas a
+      internet.** Justo después conviene confirmar en producción que crear/editar una campaña
+      guarda bien — un rechazo de RLS falla en silencio.
+- [ ] **Redesplegar `notificar-correo`** (`supabase functions deploy notificar-correo`) para que
+      entre la limpieza de CR/LF. El correo funciona igual sin esto.
+
+### Credenciales que quedaron expuestas en chats
+- [ ] Cambiar la contraseña de **`kelvin.trujillo@netsat.co`** (se compartió el 2026-07-29 para
+      verificar el envío; es rol **Soporte**, o sea que **puede gestionar usuarios**).
+- [ ] Cambiar la contraseña inicial de **`ktrujillo`** (`Colombia2026*`, en texto plano en un chat).
+- [ ] **Revocar el access token de Supabase (`sbp_…`)** usado el 2026-07-16 — da acceso a **toda la
+      cuenta**: https://supabase.com/dashboard/account/tokens
+- [ ] Borrar la API key de **Resend** (`re_LDKrS…`, pegada en un chat el 2026-07-28). Ya no se usa
+      para nada: https://resend.com/api-keys
+
+### Accesos del equipo
+- [ ] **Dar acceso a los otros 21** — hoy solo `ktrujillo` tiene cuenta; el resto sale con "Sin
+      acceso". Se reparte el link de `/activar` y cada quien crea su contraseña. **NO verificado: la
+      creación real de una cuenta por ahí** (probarlo habría creado un acceso de verdad en
+      producción) — la primera persona que active es la prueba real, conviene acompañarla.
+- [ ] **CERRAR la ventana de activación** cuando todos hayan entrado (hoy vence el **2026-08-07**).
+      Ver el SQL en "Login y activación".
+- [ ] **`debe_cambiar_password` no lo hace cumplir nadie** — es solo una columna (default `true` en
+      los 22). Falta el gate en el login.
+- [ ] "Nuevo Usuario" podría crear la cuenta de una: `create-access` ya existe, solo falta ofrecer
+      el campo de contraseña en el diálogo de creación.
+- [ ] Considerar **SMTP propio en Supabase Auth**: sin eso no habrá "olvidé mi contraseña".
+      Verificar un dominio destraparía esto y de paso permitiría un remitente institucional en vez
+      de un gmail (es un registro DNS que **no toca el correo de nadie**).
+
+### Deuda técnica y verificaciones
+- [ ] **`react-router` 6.30.x tiene un aviso moderado** que solo se cierra subiendo a **7.x**
+      (cambio mayor). Los reportes conocidos son de *framework mode*/SSR, que esta app no usa. Es
+      una decisión aparte, no se hizo para no arriesgar el ruteo.
+- [ ] `npm audit` deja avisos en **herramientas de build** (vite/esbuild/eslint). Cerrarlos pide
+      vite 8 (mayor). No llegan al bundle.
+- [ ] **Recordatorios por fecha por correo** — no puede salir del navegador: necesita un cron
+      (pg_cron o Vercel Cron) que recorra `factory_projects` y junte las tareas rojas por persona.
+      La regla ya existe en `src/lib/urgencia.ts`.
+- [ ] Decidir qué hacer con el correo viejo (`notificationService.ts` + `send-notification`): o se
+      borra, o se reescribe contra `notificar-correo`.
+- [ ] Confirmar a mano el **round-trip de "Editar proyecto"** del ecosistema cíclico (etapas, ELMR,
+      motor, `etapaId`/`siguienteEtapaId`): se creó y se vio en la misma sesión, no se reabrió.
+- [ ] Probar **quitar un canal ya guardado** (desmarcar BTL/KAM/Call Center en "Editar proyecto") y
+      confirmar que `syncCanalNodes` borra su nodo. La lógica es simétrica a
+      `syncRequerimientoNodes` (ya probada) pero no se ejercitó.
+- [ ] Confirmar **CORS** en los 2 webhooks n8n que se usan (`crearlink`, `descargar-qr`) y probar
+      `BitlyLinkTool` contra n8n real (solo se verificó con mocks). Para el nombre del archivo del
+      QR hace falta además `Access-Control-Expose-Headers: Content-Disposition`.
+- [ ] Borrar la rama `origin/worktree-bitacora-rediseno-tremu` (su PR ya se mergeó).
+- [ ] **RLS por rol** (más allá de la gestión de usuarios) sigue pendiente a propósito. Ya hay
+      sesión real, así que es viable; ojo con el fallo silencioso.

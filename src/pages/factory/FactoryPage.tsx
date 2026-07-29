@@ -49,7 +49,7 @@ import {
   PanelLeftOpen,
   FilePen,
 } from 'lucide-react';
-import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup, CanalRow, FabricaBriefItem } from '@/store/factoryStore';
+import { useFactoryStore, haySincronizacionPendiente, FactoryProject, ProjectTask, ProjectRoleGroup, CanalRow, FabricaBriefItem } from '@/store/factoryStore';
 import { campaignToMarkdown, markdownFileName } from '@/lib/campaignMarkdown';
 import { iniciales } from './CreateProjectWizard';
 import { leerBorrador, borrarBorrador, hace } from '@/lib/campaignDraft';
@@ -57,6 +57,7 @@ import { useRolesStore, ASSIGNABLE_ROLE_IDS } from '@/store/rolesStore';
 import CreateProjectWizard from './CreateProjectWizard';
 import { WorkflowTab, MetricsDashboardTab, LoopTab } from './MapTab';
 import { DeliverableSummary, BriefStatusBadge, isMetricsBrief, isUrlBrief } from '@/components/factory/DeliverableSummary';
+import { dangerousHtml } from '@/lib/sanitizeHtml';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -261,7 +262,7 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
         <Card className="shadow-sm">
           <CardContent className="p-4">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Descripción</p>
-            <div className="text-sm text-foreground/80 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: project.description }} />
+            <div className="text-sm text-foreground/80 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={dangerousHtml(project.description)} />
           </CardContent>
         </Card>
       )}
@@ -831,6 +832,23 @@ const FactoryPage = () => {
   useEffect(() => {
     if (!isLoaded) hydrate();
   }, [isLoaded, hydrate]);
+
+  // Las campañas se leían UNA sola vez: una pestaña abierta desde la mañana seguía mostrando el
+  // estado de la mañana, y al tocar cualquier cosa escribía esa copia vieja encima del trabajo de
+  // los demás (ver la guardia de escritura obsoleta en factoryStore). Volver a la pestaña ahora
+  // relee — es el momento natural para hacerlo y evita llegar al conflicto.
+  // No se recarga si hay un cambio propio todavía sin guardar: sería pisárselo a uno mismo.
+  useEffect(() => {
+    const refrescar = () => {
+      if (document.visibilityState === 'visible' && !haySincronizacionPendiente()) hydrate();
+    };
+    document.addEventListener('visibilitychange', refrescar);
+    window.addEventListener('focus', refrescar);
+    return () => {
+      document.removeEventListener('visibilitychange', refrescar);
+      window.removeEventListener('focus', refrescar);
+    };
+  }, [hydrate]);
 
   const [createOpen, setCreateOpen] = useState(false);
   // Se relee al montar y cada vez que se cierra el asistente: es cuando puede haber cambiado

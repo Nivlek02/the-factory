@@ -9,6 +9,7 @@
 import { FactoryProject, FabricaBriefItem, BriefWorkflowStatus } from '@/store/factoryStore';
 import { getBriefStatus } from '@/components/factory/DeliverableSummary';
 import { diasHasta } from '@/lib/urgencia';
+import { ROLE_LABELS, type AppRole } from '@/services/authService';
 
 export interface CampaignTask {
   id: string;
@@ -65,6 +66,12 @@ export const isTaskOwnedBy = (
 ): boolean => {
   if (!user) return false;
   if (task.roleId === user.role) return true;
+  // Respaldo por ETIQUETA: los nodos del flujo con `roleId: null` hacían que las tareas creadas
+  // al aprobar (`activateNextStage`) guardaran la etiqueta como roleId ('Diseñador' en vez de
+  // 'diseno'), así que el match de arriba fallaba y la pieza de diseño NO le aparecía al
+  // diseñador en "Mis tareas". El origen ya se corrigió, pero esto cubre todo lo ya guardado
+  // en Supabase sin tener que migrar el JSONB.
+  if (task.roleLabel && ROLE_LABELS[user.role as AppRole] === task.roleLabel) return true;
   return task.assignees.some((n) => norm(n) === norm(user.fullName));
 };
 
