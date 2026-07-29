@@ -1364,6 +1364,39 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       sale como **"Call Center"** solo; con `['Clic','Agenda cita']` sale **"Call Center: Agenda
       cita"**; Correo conserva sus dos; y un SMS con un "Abre" viejo queda en **"SMS: Clic"**.
 
+40. **Autoactivación de cuentas: `/activar` + edge function pública `activar-acceso`** (versión
+    `1.5.0`) — para no crear los 21 accesos uno por uno desde Ajustes.
+    - **El link es COMPARTIDO, no uno por persona.** Se le planteó al usuario el riesgo (con un
+      link único, quien lo tenga y sepa el correo de un compañero puede tomar esa cuenta — y
+      desde el punto 30 el rol **decide permisos**, así que tomar una de Estratega/Soporte da
+      gestión del equipo). **El usuario lo evaluó y eligió el link compartido**, agregando como
+      control una **ventana de tiempo**. Queda documentado por si alguien se lo pregunta después.
+    - **Tabla `activacion_config`** (migración `20260728000000`, ya aplicada): singleton con
+      `activo_hasta`. SELECT para cualquier autenticado; UPDATE solo gestores vía
+      `puede_gestionar_usuarios()`. Valor inicial: **2026-08-07 23:59:59-05**.
+    - **`activar-acceso` está DESPLEGADA y es pública (`verify_jwt = false`)** — tiene que serlo:
+      quien la usa todavía no tiene cuenta y no puede mandar un JWT. Lo que la contiene:
+      (1) la ventana, validada **en el servidor** (esconder el formulario no protege nada);
+      (2) solo activa filas que ya existen en `usuarios_roles` y **con `user_id` nulo**, así que
+      no sirve para secuestrar una cuenta activa ni para cambiarle la clave a nadie; (3) nunca
+      acepta un rol desde el body. Cambiar contraseñas de cuentas activas sigue siendo exclusivo
+      de `admin-usuarios`, que exige rol de gestor.
+    - Si el `update` que enlaza `user_id` falla, **borra el usuario recién creado**: si no,
+      quedaría una cuenta que existe en `auth.users` pero que `fetchUserProfile` no reconoce, y
+      la persona entraría a una app sin perfil.
+    - `email_confirm: true` al crear, por lo de siempre: sin SMTP propio el correo de
+      confirmación no llega nunca (ver punto 31).
+    - `/activar` va en la rama **no autenticada** de `App.tsx` (con sesión redirige a `/`). El
+      rewrite de `vercel.json` ya la cubre sin tocar nada.
+    - **Verificado contra la función desplegada** (no solo local): responde sin token,
+      `soloEstado` devuelve la ventana correcta (`2026-08-08T04:59:59Z` = 7 de agosto 23:59 en
+      Colombia), correo inexistente → 404, contraseña corta → 400. **La pantalla** se probó con
+      los 6 estados mockeados (formulario, contraseñas distintas, corta, correo no encontrado,
+      cuenta ya activa, éxito y ventana cerrada).
+    - **NO verificado: la creación real de una cuenta.** Ejercitar el camino feliz habría creado
+      un acceso de verdad en producción, y borrarlo después requiere credenciales que no tengo.
+      **La primera persona que active es la prueba real** — conviene acompañarla.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
@@ -1406,8 +1439,13 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
   mensajeBase, motor) se recarga igual. No se ejercitó ese paso específico con Playwright, solo
   crear + ver el resultado en la misma sesión.
 - [ ] **Dar acceso a los otros 21 usuarios** — hoy solo `ktrujillo` tiene cuenta en `auth.users`;
-  el resto sale con el badge "Sin acceso". **Ya se puede hacer desde la app**: Ajustes → editar →
-  poner contraseña → "Crear cuenta de acceso" (punto 31). Falta hacerlo uno por uno.
+  el resto sale con el badge "Sin acceso". **Ya no hay que hacerlo uno por uno**: se les reparte
+  el link de `/activar` y cada quien crea su contraseña (punto 40). El camino manual
+  (Ajustes → editar → contraseña → "Crear cuenta de acceso") sigue existiendo para casos sueltos.
+- [ ] **CERRAR la ventana de activación cuando todos hayan entrado** — hoy vence el
+  **2026-08-07**. Mientras esté abierta, cualquiera con el link que sepa el correo de un
+  compañero puede tomar esa cuenta (decisión consciente del usuario, ver punto 40). Se cierra
+  poniendo una fecha pasada en Ajustes → "Link de activación".
 - [ ] **`debe_cambiar_password` no lo hace cumplir nadie** — es solo una columna (default `true`
   en los 22). Falta el gate en el login que fuerce el cambio en el primer ingreso.
 - [x] ~~Desplegar una edge function con service_role para crear cuentas de acceso~~ — hecho:

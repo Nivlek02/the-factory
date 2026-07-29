@@ -1,1 +1,5 @@
 project_id = "yvzpfdwswmjcnipcgclg"
+[functions.activar-acceso]
+# Pública a propósito: quien la usa todavía no tiene cuenta, así que no puede mandar un JWT.
+# Lo que la acota es la ventana de tiempo de activacion_config, validada dentro de la función.
+verify_jwt = false

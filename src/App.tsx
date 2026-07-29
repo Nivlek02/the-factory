@@ -13,6 +13,7 @@ import WebinarsPage from "./pages/WebinarsPage";
 import HerramientasPage from "./pages/HerramientasPage";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
+import ActivarPage from "./pages/ActivarPage";
 import FactoryPage from "./pages/factory/FactoryPage";
 import MisTareasPage from "./pages/MisTareasPage";
 import VersionUpdateBanner from "./components/VersionUpdateBanner";
@@ -31,11 +32,13 @@ const AppRoutes = () => {
     return null;
   }
 
-  // Sin sesión, todo cae al login (incluido /board/:id y cualquier URL profunda).
+  // Sin sesión, todo cae al login (incluido /board/:id y cualquier URL profunda) — salvo
+  // /activar, que por definición la usa quien todavía no tiene cuenta.
   if (!isAuthenticated) {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/activar" element={<ActivarPage />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -44,6 +47,8 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/" replace />} />
+      {/* Con sesión abierta no tiene sentido activar nada. */}
+      <Route path="/activar" element={<Navigate to="/" replace />} />
       <Route path="/" element={<FactoryPage />} />
       <Route path="/factory" element={<Navigate to="/" replace />} />
       <Route path="/inicio" element={<Index />} />

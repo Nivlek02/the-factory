@@ -25,6 +25,19 @@ en ningún otro archivo.
 
 ---
 
+## [1.5.0] — 2026-07-28
+
+### Agregado
+
+- **Link de activación de cuenta.** Quien está en el equipo pero aparece como "Sin acceso" ya
+  puede crear su propia contraseña: entra a `/activar`, escribe el correo con el que lo
+  registraron y elige su clave. Antes había que crearle el acceso uno por uno desde Ajustes.
+- En Ajustes hay una tarjeta nueva para **copiar el link y controlar hasta cuándo funciona**.
+  Arranca abierto hasta el viernes 7 de agosto de 2026; pasada esa fecha el link deja de crear
+  cuentas aunque alguien lo tenga guardado.
+
+---
+
 ## [1.4.1] — 2026-07-28
 
 ### Corregido

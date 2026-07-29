@@ -39,6 +39,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      activacion_config: {
+        Row: {
+          activo_hasta: string
+          id: boolean
+          updated_at: string
+        }
+        Insert: {
+          activo_hasta: string
+          id?: boolean
+          updated_at?: string
+        }
+        Update: {
+          activo_hasta?: string
+          id?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       app_version: {
         Row: {
           id: string
@@ -299,6 +317,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      puede_gestionar_usuarios: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "mercadeo" | "disenador" | "copy" | "manager" | "seo"
