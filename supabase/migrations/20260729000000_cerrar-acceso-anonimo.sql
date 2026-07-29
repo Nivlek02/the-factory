@@ -20,15 +20,19 @@ DROP POLICY IF EXISTS "Public can create factory projects" ON public.factory_pro
 DROP POLICY IF EXISTS "Public can update factory projects" ON public.factory_projects;
 DROP POLICY IF EXISTS "Public can delete factory projects" ON public.factory_projects;
 
+DROP POLICY IF EXISTS "Authenticated can view factory projects" ON public.factory_projects;
 CREATE POLICY "Authenticated can view factory projects"
 ON public.factory_projects FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated can create factory projects" ON public.factory_projects;
 CREATE POLICY "Authenticated can create factory projects"
 ON public.factory_projects FOR INSERT TO authenticated WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Authenticated can update factory projects" ON public.factory_projects;
 CREATE POLICY "Authenticated can update factory projects"
 ON public.factory_projects FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Authenticated can delete factory projects" ON public.factory_projects;
 CREATE POLICY "Authenticated can delete factory projects"
 ON public.factory_projects FOR DELETE TO authenticated USING (true);
 
@@ -38,15 +42,19 @@ DROP POLICY IF EXISTS "Public can create tasks" ON public.tasks;
 DROP POLICY IF EXISTS "Public can update tasks" ON public.tasks;
 DROP POLICY IF EXISTS "Public can delete tasks" ON public.tasks;
 
+DROP POLICY IF EXISTS "Authenticated can view tasks" ON public.tasks;
 CREATE POLICY "Authenticated can view tasks"
 ON public.tasks FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated can create tasks" ON public.tasks;
 CREATE POLICY "Authenticated can create tasks"
 ON public.tasks FOR INSERT TO authenticated WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Authenticated can update tasks" ON public.tasks;
 CREATE POLICY "Authenticated can update tasks"
 ON public.tasks FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Authenticated can delete tasks" ON public.tasks;
 CREATE POLICY "Authenticated can delete tasks"
 ON public.tasks FOR DELETE TO authenticated USING (true);
 
@@ -56,14 +64,18 @@ DROP POLICY IF EXISTS "Public can create comments" ON public.task_comments;
 DROP POLICY IF EXISTS "Public can update comments" ON public.task_comments;
 DROP POLICY IF EXISTS "Public can delete comments" ON public.task_comments;
 
+DROP POLICY IF EXISTS "Authenticated can view comments" ON public.task_comments;
 CREATE POLICY "Authenticated can view comments"
 ON public.task_comments FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated can create comments" ON public.task_comments;
 CREATE POLICY "Authenticated can create comments"
 ON public.task_comments FOR INSERT TO authenticated WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Authenticated can update comments" ON public.task_comments;
 CREATE POLICY "Authenticated can update comments"
 ON public.task_comments FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Authenticated can delete comments" ON public.task_comments;
 CREATE POLICY "Authenticated can delete comments"
 ON public.task_comments FOR DELETE TO authenticated USING (true);
