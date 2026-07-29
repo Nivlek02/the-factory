@@ -1511,27 +1511,56 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       cola al aprobar (`queue`/`onAdvance`), así que para aprobar varios no hay que volver a abrir
       la fila — basta con clicar "Aprobar" seguido.
 
-### Estado del correo (revisado el 2026-07-29)
+44. **El correo pasó de Resend a Gmail por SMTP** — se abandonó Resend porque **sin dominio
+    verificado solo entrega a la dueña de la cuenta**. Comprobado por DNS el 2026-07-29:
+    `camarabaq.org.co` no tiene los registros de Resend (`resend._domainkey` no existe, tampoco el
+    subdominio `send.`; el SPF de la raíz apunta a Outlook/emsd1/amazonses), y conseguir ese DNS no
+    dependía de nosotros. Resend **no ofrece verificación de remitente individual** (*single sender
+    verification*), que es justo lo que hacía falta.
+    - **Por qué Gmail y no Brevo/SendGrid** (que sí tienen verificación de una sola dirección): con
+      esos, el remitente sería un gmail pero el envío lo haría un tercero, así que no alinea con
+      el DKIM/SPF de gmail.com y arriesga spam — sobre todo contra los buzones Microsoft 365 de la
+      Cámara. Con SMTP de Gmail **el que envía es Google**, así que sale alineado. El usuario lo
+      señaló y tenía razón; mi recomendación inicial de Brevo era por comodidad de implementación
+      (una llamada REST vs. SMTP), no por lo que le convenía.
+    - **Contraseña de aplicación, NO OAuth.** El token de OAuth de la Gmail API caduca cada 7 días
+      mientras la app esté en modo "Testing" en Google Cloud — un mantenimiento eterno. La
+      contraseña de aplicación es estática y **no caduca**; solo se revoca si se desactiva la
+      verificación en dos pasos o **si se cambia la contraseña de la cuenta de Google**. Si el
+      correo se cae de golpe algún día, eso es lo primero que hay que mirar.
+    - **Implementación** (`supabase/functions/notificar-correo/index.ts`): todo el envío ya pasaba
+      por una sola `enviar()`, así que solo se partió en `enviarPorGmail` (denomailer, SMTP
+      `smtp.gmail.com:465` con TLS implícito) y `enviarPorResend` (se **mantiene como respaldo**;
+      se usa solo si no hay `GMAIL_*`). **El redirect de modo prueba se aplica ANTES de elegir
+      transporte**, para que ninguno pueda saltárselo.
+    - **Se manda un correo por destinatario, no uno con todos en el `to`** (que es lo que hacía
+      Resend): el directorio tiene correos personales y no tienen por qué verse entre ellos. El
+      volumen lo permite de sobra — un correo por rol, no por tarea, contra un tope de ~500/día.
+    - `GMAIL_APP_PASSWORD` se limpia de espacios en el código: Google la muestra en bloques de 4 y
+      el servidor SMTP no los descarta.
+    - `MAIL_MODO_PRUEBA` es el nombre nuevo, pero **se sigue leyendo `RESEND_MODO_PRUEBA`** para no
+      dejar el sistema desprotegido justo en el cambio de transporte.
+    - **Verificado:** secrets puestos por el usuario en su propia terminal (la contraseña nunca pasó
+      por el chat); función desplegada; smoke test con la publishable key como Bearer → responde
+      `{"error":"Sesión inválida"}` **generado por el propio código**, lo que prueba que el módulo
+      carga (o sea, el import de denomailer resuelve). **NO verificado: un envío SMTP real** — hace
+      falta una sesión de usuario y no tengo credenciales de producción (ver el pendiente).
 
-**El sistema YA está en producción y funcionando.** Verificado contra la cuenta real:
-`notificar-correo` está `ACTIVE` (v3), y los secrets `RESEND_API_KEY`, `RESEND_MODO_PRUEBA` y
-`APP_URL` están puestos. Que lleguen "correos de prueba" es exactamente el sistema andando — solo
-que **`RESEND_MODO_PRUEBA` redirige TODO a una sola dirección**.
+### Estado del correo (2026-07-29)
 
-**Lo que falta NO es código ni despliegue: es verificar el dominio en Resend.** Comprobado por DNS
-el 2026-07-29: `camarabaq.org.co` **no tiene los registros de Resend** (`resend._domainkey` no
-existe, tampoco el subdominio `send.`; el SPF de la raíz apunta a Outlook/emsd1/amazonses).
-Sin dominio verificado Resend solo deja enviar desde `onboarding@resend.dev` **y solo a la
-dirección dueña de la cuenta** — así que **borrar `RESEND_MODO_PRUEBA` hoy dejaría a todo el equipo
-sin recibir nada** (403 por cada destinatario). Por eso no se tocó.
-
-Cuando el dominio esté verificado en https://resend.com/domains, son dos comandos y **cero cambios
-de código**:
+Transporte: **Gmail por SMTP**. `notificar-correo` desplegada con `GMAIL_USER` +
+`GMAIL_APP_PASSWORD`. **`RESEND_MODO_PRUEBA` sigue puesto a propósito**: hasta confirmar un envío
+real, todo se redirige a esa única dirección. Para soltarlo al equipo:
 
 ```
-npx supabase secrets set RESEND_FROM="Tremu <notificaciones@camarabaq.org.co>" --project-ref yvzpfdwswmjcnipcgclg
 npx supabase secrets unset RESEND_MODO_PRUEBA --project-ref yvzpfdwswmjcnipcgclg
 ```
+
+Resend queda como respaldo muerto (`RESEND_API_KEY` sigue puesta pero no se usa mientras haya
+`GMAIL_*`). **El botón "Enviar correo de prueba" de Ajustes ya no existe** — se quitó en `1.1.1`
+tras confirmar Resend, así que hoy la única forma de probar es hacer una acción real en una
+campaña. `enviarCorreoDePrueba()` sigue exportada en `src/services/emailNotifications.ts` sin que
+nadie la llame; el evento `prueba` sigue vivo en la función, así que devolver el botón es solo UI.
 
 ## Rediseño visual "Tremu ISO" — CERRADO
 
@@ -1556,14 +1585,19 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
   - **Plan de Resend:** gratis = 3.000 correos/mes, **tope de 100/día**, 1 dominio. El siguiente
     es $20/mes por 50.000. El sistema agrupa **un correo por rol**, no por tarea (crear una
     campaña son ~5-6 correos), así que el tope diario queda muy holgado.
-- [ ] **BLOQUEANTE del correo — verificar el dominio en Resend.** Es lo ÚNICO que falta: la función
-  ya está desplegada y andando (ver "Estado del correo" arriba). Confirmado por DNS el 2026-07-29
-  que `camarabaq.org.co` **no tiene los registros de Resend**, así que todo sigue redirigido a una
-  sola dirección vía `RESEND_MODO_PRUEBA` y **nadie del equipo recibe sus notificaciones**.
-  **No borrar ese secret antes de verificar el dominio** o los envíos rebotan con 403 y no llega
-  nada a nadie. Pasos: agregar los DNS que da https://resend.com/domains → `supabase secrets set
-  RESEND_FROM=...` → `supabase secrets unset RESEND_MODO_PRUEBA`. Sin cambios de código.
-  Bonus: Resend también da credenciales SMTP → destraba el "olvidé mi contraseña" de más abajo.
+- [ ] **Confirmar un envío real por Gmail y quitar `RESEND_MODO_PRUEBA`** — el transporte ya es
+  Gmail SMTP y está desplegado (punto 44), pero **no se ha probado un envío de verdad**: hace falta
+  una sesión de usuario en Tremu. La prueba es hacer una acción real en una campaña (crear una
+  tarea en un nodo, o aprobar un entregable): debe llegar un correo **desde la cuenta de Gmail**
+  —ese es el indicio de que ya no es Resend— con el banner `[PRUEBA]`. Confirmado eso, un comando y
+  el equipo empieza a recibir: `npx supabase secrets unset RESEND_MODO_PRUEBA --project-ref
+  yvzpfdwswmjcnipcgclg`. Si falla, el log de la función lleva la pista escrita (un `535` es
+  contraseña de aplicación mala o revocada).
+- [ ] **Opcional, a mediano plazo: dominio propio para el remitente** — hoy los correos salen de una
+  cuenta de Gmail personal, no de una dirección de la Cámara. Verificar `camarabaq.org.co` en
+  cualquier ESP (o configurar SMTP del dominio) permitiría un remitente institucional; es un
+  registro DNS que **no toca el correo actual de nadie**. Ya no es bloqueante — el equipo recibe
+  igual. Bonus: destrabaría el "olvidé mi contraseña" de más abajo.
 - [ ] **Recordatorios por fecha (semáforo) por correo** — quedó FUERA del punto 33. No puede salir
   del navegador: necesita un cron en el servidor (pg_cron o Vercel Cron llamando a una edge
   function) que recorra `factory_projects` y junte las tareas rojas (≤2 días o vencidas) por

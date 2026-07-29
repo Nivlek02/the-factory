@@ -25,6 +25,23 @@ en ningún otro archivo.
 
 ---
 
+## [1.7.2] — 2026-07-29
+
+### Cambiado
+
+- **Las notificaciones por correo ahora salen por Gmail, no por Resend.** Resend exigía verificar un
+  dominio propio y, sin eso, solo entregaba a una única dirección — por eso los correos del equipo
+  no llegaban a nadie más. Ahora se envían desde una cuenta de Gmail y **le llegan a cualquier
+  destinatario, sin necesidad de dominio**. No cambia nada de cómo funcionan: los mismos cuatro
+  avisos, los mismos destinatarios según el rol y un correo por rol, no por tarea.
+- Cada persona recibe **su propia copia**: antes iban todos los destinatarios en el mismo correo y
+  se veían las direcciones entre sí.
+
+> Este cambio vive en el servidor, no en la app. Mientras se confirma el primer envío real, los
+> correos siguen redirigidos a una sola bandeja y llegan marcados `[PRUEBA]`.
+
+---
+
 ## [1.7.1] — 2026-07-29
 
 ### Cambiado
