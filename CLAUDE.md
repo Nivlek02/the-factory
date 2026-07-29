@@ -442,17 +442,26 @@ Solo lo que sigue explicando el estado actual. Lo anterior está en el historial
 
 ## Pendientes
 
-### Hay que hacerlo (requiere tus credenciales)
-- [ ] **Aplicar la migración `20260729010000_quitar-policies-duplicadas.sql`**
-      (`supabase db push --linked`). Devuelve la ventana de 10 minutos para editar comentarios, que
-      la migración anterior anuló sin querer.
-- [ ] **Redesplegar `activar-acceso`** (`supabase functions deploy activar-acceso`) para que entre
-      el escape del `ilike`. **Hasta que se despliegue, el comodín sigue vivo en producción.**
-- [x] ~~Aplicar `20260729000000_cerrar-acceso-anonimo.sql`~~ — hecho el 2026-07-29 y **verificado**:
-      sin sesión, SELECT devuelve 0 filas e INSERT da `42501` en las 3 tablas, y `pg_policies` no
-      muestra ninguna policy con `anon`.
-- [x] ~~Redesplegar `notificar-correo`~~ — hecho y verificado (401 sin token, con token basura y con
-      la key anónima sin sesión).
+### Nada pendiente de desplegar
+
+Las 2 migraciones y las 2 functions de la revisión del 2026-07-29 **están aplicadas y verificadas
+contra producción**. Lo que sigue son decisiones y tareas de cuenta, no despliegues.
+
+<details><summary>Cómo se verificó (por si hay que repetirlo)</summary>
+
+- Sin sesión, con solo la publishable key: SELECT devuelve **0 filas** e INSERT da **42501** en
+  `factory_projects`, `tasks` y `task_comments`. El control es `usuarios_roles`: tiene 22 filas y
+  también devuelve 0, así que "HTTP 200 + 0 filas" es la huella de un SELECT bloqueado por RLS.
+- `pg_policies` sobre `public` y `storage`: **cero policies con `anon`**.
+- `notificar-correo`: 401 sin token, con token basura y con la key anónima sin sesión.
+  `update-user-password`, `create-initial-user`, `send-notification` y `admin-set-password`: **404**
+  (no desplegadas, como debe ser).
+- `activar-acceso`: `%netsat%`, `%` y `%@camarabaq.org.co` → **400**. La prueba decisiva del escape
+  del `_` es mandar **tantos guiones bajos como letras tenga un correo real** (15 para
+  `kelvin.trujillo@netsat.co`): da **404**, o sea que el `_` es literal. Con el correo exacto —y en
+  mayúsculas— da **409** ("ya está activa"), así que sigue encontrando la fila y no crea nada.
+
+</details>
 
 ### Credenciales que quedaron expuestas en chats
 - [ ] Cambiar la contraseña de **`kelvin.trujillo@netsat.co`** (se compartió el 2026-07-29 para
@@ -481,8 +490,14 @@ Solo lo que sigue explicando el estado actual. Lo anterior está en el historial
 ### Decidido, no hacer (para que nadie lo "arregle" de sorpresa)
 - **Los adjuntos siguen públicos de lectura** — decisión del usuario el 2026-07-29. Ver Storage
   arriba.
-- **Sin cabeceras de seguridad / CSP en `vercel.json`** todavía: se explicó la opción y quedó
-  pendiente de decisión, no descartada.
+- **Cabeceras de seguridad y CSP en `vercel.json`: POSTERGADO** por el usuario el 2026-07-29 (no
+  descartado). Cuando se retome: las cuatro baratas (`X-Frame-Options`, `Referrer-Policy`,
+  `X-Content-Type-Options`, `Permissions-Policy`) no tienen riesgo. El CSP sí — es la segunda capa
+  detrás de DOMPurify (con él, un XSS que se escape no puede ejecutar ni exfiltrar), pero hay que
+  declarar Supabase (base + functions + storage), los 2 webhooks de n8n, Google Fonts y los
+  **estilos en línea** de `BitlyLinkTool` y los diagramas (`'unsafe-inline'` en `style-src`).
+  Hacerlo primero en `Content-Security-Policy-Report-Only`, que no bloquea nada y solo reporta en
+  consola, y recién después pasarlo a bloquear.
 
 ### Deuda técnica y verificaciones
 - [ ] **`react-router` 6.30.x tiene un aviso moderado** que solo se cierra subiendo a **7.x**
