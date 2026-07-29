@@ -1566,18 +1566,42 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       `{"success":true,"destinatarios":1,"enviadoA":["kelvin.trujillo@netsat.co"]}`, y repetido
       **después** de borrar los secrets de Resend para confirmar que no quedaba ninguna dependencia.
 
+46. **Plantilla del correo: responsive + logo** — la plantilla era una tabla plana sin identidad.
+    Lo que hay que saber para tocarla (las reglas del correo NO son las de una página web):
+    - **Tablas anidadas, no flex ni grid** (Outlook renderiza con el motor de Word); **estilos en
+      línea**, porque Gmail borra el `<style>` en varios clientes. El `<style>` del `<head>` se usa
+      **solo** para el `@media`: si se pierde, el correo se sigue viendo — la tabla es `width=100%`
+      con `max-width:600px`, así que se encoge sola aunque el media query no llegue.
+    - **El logo tuvo que pasarse a PNG**: los clientes de correo no renderizan SVG, y el que tenía
+      la app (`public/fabrica-logo.svg`) es SVG. Se generó `public/logo-email.png` rasterizando el
+      SVG con Playwright. **Trampa:** ese SVG trae `width`/`height` pero **no `viewBox`**, así que
+      cambiarle el tamaño lo *recorta* en vez de escalarlo — el primer intento salió en blanco (la
+      esquina del fondo). Hay que inyectarle el `viewBox="0 0 1254 1254"`.
+    - **`logo-email.png` está excluido del rewrite de `vercel.json`** — sin eso Vercel devuelve
+      `index.html` y el correo muestra un icono roto (la trampa ya documentada arriba).
+    - El diseño **no depende del logo**: casi todos los clientes bloquean imágenes remotas por
+      defecto, así que la identidad la da la banda de color y la imagen lleva `alt`.
+    - Se agregó **preheader** (el texto que el buzón muestra junto al asunto; sin él los clientes
+      agarran la primera frase, que era "Campaña") y **VML** para que el botón tenga fondo y bordes
+      redondeados en Outlook de escritorio.
+    - **Nuevo evento `preview`**: devuelve el HTML tal cual saldría, sin enviar nada. Es la forma de
+      revisar cambios de diseño sin llenarle la bandeja a nadie. `ejemplo()` es el correo de muestra
+      que comparten `prueba` y `preview`, con los tres bloques opcionales (fecha, comentario, autor)
+      puestos a propósito para que se vea todo.
+    - Verificado renderizando el `preview` real con Playwright a 800px y 375px: el logo carga
+      (240×240 natural), cero desborde horizontal en ambos, y el botón pasa a ancho completo en
+      móvil. Envío real confirmado.
+
 ### Estado del correo (2026-07-29) — FUNCIONANDO
 
 Transporte: **Gmail por SMTP, único**. Secrets: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `APP_URL`.
 Sin modo de prueba: **los correos van a sus destinatarios reales**. Envío real confirmado.
 
-Para probar sin tocar una campaña, el evento `prueba` sigue vivo y **solo le manda a quien lo
-llama**. Con un token de sesión:
+Para probar sin tocar una campaña hay dos eventos, ambos con un token de sesión contra
+`POST https://yvzpfdwswmjcnipcgclg.supabase.co/functions/v1/notificar-correo`:
 
-```
-POST https://yvzpfdwswmjcnipcgclg.supabase.co/functions/v1/notificar-correo
-Authorization: Bearer <access_token>   ·   body: {"evento":"prueba"}
-```
+- `{"evento":"preview"}` → devuelve el **HTML** del correo de muestra, sin enviar nada.
+- `{"evento":"prueba"}` → lo **envía**, y solo a quien llama.
 
 **El botón de Ajustes ya no existe** (se quitó en `1.1.1`); `enviarCorreoDePrueba()` sigue
 exportada en `src/services/emailNotifications.ts` sin que nadie la llame, así que devolverlo es
