@@ -43,8 +43,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Settings, UserPlus, Trash2, Users, Eye, EyeOff, Pencil, Mail, Loader2, ChevronLeft, ChevronRight, ShieldAlert, Search, ArrowDownUp, ArrowUp, ArrowDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { Link2 as LinkIcon } from 'lucide-react';
 
 /** Mismo mínimo que valida la edge function admin-usuarios; si cambia, cambiar en ambos. */
 const MIN_PASSWORD = 8;
@@ -63,109 +61,6 @@ const USER_SORT_OPTIONS: { value: UserSortKey; label: string }[] = [
 const norm = (s: string) =>
   (s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-/**
- * Ventana de autoactivación: el link de /activar es el mismo para todo el equipo y se reparte a
- * mano. Lo que lo acota es la fecha — mientras esté abierta, cualquiera con el link que conozca
- * el correo de un compañero puede tomar esa cuenta, así que conviene cerrarla apenas todos hayan
- * entrado. La fecha se guarda en `activacion_config` y **la valida la edge function**, no esta
- * pantalla: acá solo se administra.
- */
-const ActivacionCard = () => {
-  const { toast } = useToast();
-  const [hasta, setHasta] = useState('');
-  const [guardando, setGuardando] = useState(false);
-  const [copiado, setCopiado] = useState(false);
-  const link = `${window.location.origin}/activar`;
-
-  useEffect(() => {
-    supabase
-      .from('activacion_config')
-      .select('activo_hasta')
-      .maybeSingle()
-      .then(({ data }) => {
-        // <input type="date"> quiere YYYY-MM-DD en hora local; toISOString daría UTC y en
-        // Colombia (UTC-5) mostraría el día anterior.
-        if (!data?.activo_hasta) return;
-        const d = new Date(data.activo_hasta);
-        const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
-        setHasta(local.toISOString().slice(0, 10));
-      });
-  }, []);
-
-  const guardar = async () => {
-    if (!hasta) return;
-    setGuardando(true);
-    // Fin del día elegido: si se guardara la medianoche, el último día no contaría.
-    const { error, count } = await supabase
-      .from('activacion_config')
-      .update({ activo_hasta: `${hasta}T23:59:59`, updated_at: new Date().toISOString() }, { count: 'exact' })
-      .eq('id', true)
-      .select();
-    setGuardando(false);
-    // RLS filtra filas en vez de rechazar el UPDATE: sin permiso vuelve sin error y con 0 filas.
-    if (error || !count) {
-      toast({ title: 'No se pudo guardar', description: error?.message ?? 'Sin permisos para cambiar la fecha.', variant: 'destructive' });
-      return;
-    }
-    toast({ title: 'Fecha actualizada', description: `La activación queda abierta hasta el ${hasta}.` });
-  };
-
-  const abierta = hasta ? new Date(`${hasta}T23:59:59`).getTime() >= Date.now() : false;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <LinkIcon className="h-5 w-5" />
-          Link de activación
-        </CardTitle>
-        <CardDescription>
-          Compártelo con quien aparezca como "Sin acceso". Al abrirlo escribe su correo —el mismo
-          que está en esta lista— y crea su contraseña.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Input readOnly value={link} className="text-xs" onFocus={(e) => e.currentTarget.select()} />
-          <Button
-            variant="outline"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(link);
-                setCopiado(true);
-                setTimeout(() => setCopiado(false), 2000);
-              } catch {
-                toast({ title: 'No se pudo copiar', description: 'Copia el link a mano.', variant: 'destructive' });
-              }
-            }}
-          >
-            {copiado ? '¡Copiado!' : 'Copiar'}
-          </Button>
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-xs">Activo hasta (fin del día)</Label>
-          <div className="flex items-center gap-2">
-            <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="w-auto" />
-            <Button onClick={guardar} disabled={guardando || !hasta}>
-              {guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar'}
-            </Button>
-          </div>
-          <p className={`text-xs ${abierta ? 'text-muted-foreground' : 'text-destructive'}`}>
-            {abierta
-              ? 'El link funciona hasta esa fecha. Después deja de crear cuentas, aunque alguien lo tenga guardado.'
-              : 'El link está cerrado: nadie puede activarse hasta que muevas la fecha.'}
-          </p>
-        </div>
-
-        <p className="text-xs text-muted-foreground border-t pt-3">
-          Mientras esté abierto, cualquiera que tenga el link y sepa el correo de un compañero
-          puede tomar esa cuenta. Ciérralo apenas todos hayan entrado.
-        </p>
-      </CardContent>
-    </Card>
-  );
-};
 
 const SettingsPage = () => {
   const {
@@ -621,7 +516,8 @@ const SettingsPage = () => {
             </CardContent>
           </Card>
 
-          {puedeGestionar && <ActivacionCard />}
+          {/* La ventana de activación (/activar) se administra solo desde el backend: la fecha
+              vive en `activacion_config` y la valida la edge function. No se expone acá. */}
 
         </div>
       </div>

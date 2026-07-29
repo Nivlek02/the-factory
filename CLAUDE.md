@@ -1396,6 +1396,20 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
     - **NO verificado: la creación real de una cuenta.** Ejercitar el camino feliz habría creado
       un acceso de verdad en producción, y borrarlo después requiere credenciales que no tengo.
       **La primera persona que active es la prueba real** — conviene acompañarla.
+    - **`1.5.1` — la ventana se administra SOLO desde el backend** (pedido del usuario): se quitó
+      de Ajustes la tarjeta que copiaba el link y movía la fecha, y la migración
+      `20260728010000` **borra las dos policies** de `activacion_config`. Con RLS activa y sin
+      policies la tabla es inalcanzable desde el navegador; la function la sigue leyendo porque
+      service_role bypassea RLS (verificado tras aplicar la migración). **Para abrir o cerrar la
+      activación, desde el SQL Editor de Supabase:**
+      `update public.activacion_config set activo_hasta = '2026-08-07 23:59:59-05', updated_at = now();`
+      — cerrar de inmediato es ponerle una fecha pasada.
+    - **Bug propio corregido en `1.5.1`: el foco saltaba al correo al escribir la contraseña.**
+      `Marco` (el marco de la tarjeta) estaba definido **dentro** de `ActivarPage`, así que cada
+      render creaba un tipo de componente nuevo y React desmontaba y volvía a montar todo el
+      formulario en cada tecla; el `autoFocus` del correo se llevaba el cursor. Se movió a nivel
+      de módulo. **Es un patrón fácil de repetir: nunca declarar un componente dentro de otro si
+      envuelve inputs.** Verificado tecleando letra por letra y comprobando `document.activeElement`.
 
 ## Rediseño visual "Tremu ISO" — CERRADO
 
@@ -1444,8 +1458,9 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
   (Ajustes → editar → contraseña → "Crear cuenta de acceso") sigue existiendo para casos sueltos.
 - [ ] **CERRAR la ventana de activación cuando todos hayan entrado** — hoy vence el
   **2026-08-07**. Mientras esté abierta, cualquiera con el link que sepa el correo de un
-  compañero puede tomar esa cuenta (decisión consciente del usuario, ver punto 40). Se cierra
-  poniendo una fecha pasada en Ajustes → "Link de activación".
+  compañero puede tomar esa cuenta (decisión consciente del usuario, ver punto 40). **Se cierra
+  desde el SQL Editor de Supabase** (ya no hay control en la app):
+  `update public.activacion_config set activo_hasta = now() - interval '1 day', updated_at = now();`
 - [ ] **`debe_cambiar_password` no lo hace cumplir nadie** — es solo una columna (default `true`
   en los 22). Falta el gate en el login que fuerce el cambio en el primer ingreso.
 - [x] ~~Desplegar una edge function con service_role para crear cuentas de acceso~~ — hecho:

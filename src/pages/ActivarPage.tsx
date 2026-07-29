@@ -17,6 +17,26 @@ const MIN_PASSWORD = 8;
 
 type Estado = 'cargando' | 'abierta' | 'cerrada' | 'listo';
 
+/**
+ * Marco de la tarjeta. **Tiene que vivir fuera de ActivarPage**: definido adentro, cada render
+ * creaba un tipo de componente nuevo, así que React desmontaba y volvía a montar todo el
+ * formulario en cada tecla — se perdía el foco y el `autoFocus` del correo se lo llevaba de
+ * vuelta, haciendo imposible escribir la contraseña.
+ */
+const Marco = ({ children }: { children: React.ReactNode }) => (
+  <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="w-full max-w-sm">
+      <div className="flex items-center justify-center gap-2 mb-8">
+        <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
+          <Factory className="h-5 w-5 text-primary-foreground" />
+        </div>
+        <h1 className="font-logo text-2xl leading-none">Tremu</h1>
+      </div>
+      <div className="bg-card border border-border rounded-lg shadow-sm p-6">{children}</div>
+    </div>
+  </div>
+);
+
 const ActivarPage = () => {
   const [estado, setEstado] = useState<Estado>('cargando');
   const [email, setEmail] = useState('');
@@ -82,20 +102,6 @@ const ActivarPage = () => {
       setSubmitting(false);
     }
   };
-
-  const Marco = ({ children }: { children: React.ReactNode }) => (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm">
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
-            <Factory className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <h1 className="font-logo text-2xl leading-none">Tremu</h1>
-        </div>
-        <div className="bg-card border border-border rounded-lg shadow-sm p-6">{children}</div>
-      </div>
-    </div>
-  );
 
   if (estado === 'cargando') {
     return (

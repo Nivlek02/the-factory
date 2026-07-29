@@ -25,6 +25,20 @@ en ningún otro archivo.
 
 ---
 
+## [1.5.1] — 2026-07-28
+
+### Corregido
+
+- **En la pantalla de activación el cursor saltaba al correo al escribir la contraseña**, lo que
+  hacía casi imposible completarla. Ya se queda en el campo donde estás escribiendo.
+
+### Eliminado
+
+- Se quitó de Ajustes la tarjeta del link de activación. La fecha hasta la que el link funciona
+  se administra solo desde el backend.
+
+---
+
 ## [1.5.0] — 2026-07-28
 
 ### Agregado
