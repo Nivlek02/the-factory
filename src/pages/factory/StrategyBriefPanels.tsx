@@ -105,6 +105,13 @@ const activateNextStage = (project: FactoryProject, currentNodeId: string, brief
       tarea: cfg.tarea ?? brief.tarea,
       currentNodeId: n.id,
       workflowStatus: 'pending',
+      // La fecha viaja por la cadena: la pieza de diseño se necesita para la misma acción que su
+      // copy. Sin esto las tareas creadas acá nacían sin fecha y no mostraban el semáforo (ni en
+      // la lista del nodo ni en la tarjeta del diagrama), a diferencia de las del Plan de canales.
+      // Sigue siendo editable desde la propia tarea.
+      fechaAccion: brief.fechaAccion ?? null,
+      // Referencia al entregable aprobado, para poder consultarlo desde la tarea nueva.
+      sourceBriefId: brief.id,
     });
   }
   if (toAdd.length > 0) useFactoryStore.getState().addFabricaBriefs(project.id, toAdd);
@@ -318,6 +325,15 @@ const BriefDialog = ({
   const [newComment, setNewComment] = useState('');
   const [correctionComment, setCorrectionComment] = useState('');
 
+  // Entregable que dio origen a esta tarea (el copy aprobado, para la pieza de diseño). Se busca
+  // en vivo por id: si el copy se corrige después, acá se ve la versión corregida. Si el original
+  // se borró, `sourceBriefId` queda colgando y simplemente no se muestra la pestaña.
+  const sourceBrief = brief.sourceBriefId
+    ? (project.fabricaBriefs ?? []).find((b) => b.id === brief.sourceBriefId) ?? null
+    : null;
+  const [tab, setTab] = useState<'tarea' | 'origen'>('tarea');
+  const showSource = !!sourceBrief && tab === 'origen';
+
   const priorComments = brief.comments ?? [];
   const lastCorrection = [...priorComments].reverse().find((c) => c.isAdjustmentRequest);
 
@@ -409,7 +425,27 @@ const BriefDialog = ({
           </div>
         </DialogHeader>
 
-        {isEditable ? (
+        {sourceBrief && (
+          <Tabs value={tab} onValueChange={(v) => setTab(v as 'tarea' | 'origen')}>
+            <TabsList className="h-9">
+              <TabsTrigger value="tarea" className="text-sm h-7">Esta tarea</TabsTrigger>
+              <TabsTrigger value="origen" className="text-sm h-7">Paso anterior</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+
+        {showSource ? (
+          <div className="space-y-3 py-2">
+            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Entregable del paso anterior — solo consulta
+              </p>
+              <p className="text-sm font-medium mt-0.5">{sourceBrief.tarea}</p>
+              <p className="text-[11px] text-muted-foreground">Rol: {sourceBrief.roleLabel}</p>
+            </div>
+            <DeliverableSummary brief={sourceBrief} />
+          </div>
+        ) : isEditable ? (
           <div className="space-y-4 py-2">
             {lastCorrection && (
               <div className="rounded-md bg-state-blocked-bg/60 px-3 py-2 text-sm">
@@ -504,7 +540,7 @@ const BriefDialog = ({
           </div>
         )}
 
-        {isReviewable && (
+        {isReviewable && !showSource && (
           <div className="space-y-1.5 border-t border-border/40 pt-3">
             <Label className="text-xs">Comentario (obligatorio para enviar a corrección)</Label>
             <Textarea

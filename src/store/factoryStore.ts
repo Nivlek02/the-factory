@@ -171,6 +171,12 @@ export interface FabricaBriefItem {
   fechaAccion?: string | null;
   /** Nodo de "Construir estrategia" donde vive hoy este entregable (gestión de flujo por-nodo) */
   currentNodeId?: string | null;
+  /** Entregable del paso anterior de la cadena que dio origen a esta tarea (lo estampa
+   *  `activateNextStage` al aprobar). Sirve para consultarlo desde acá sin salir de la tarea:
+   *  quien diseña la pieza necesita leer el copy aprobado. Es solo una referencia por id — el
+   *  contenido se lee en vivo del entregable original, así que si el copy se corrige después,
+   *  acá se ve la versión corregida. Las tareas creadas antes de esto simplemente no lo tienen. */
+  sourceBriefId?: string | null;
   /** Estado de flujo dentro de Construir estrategia, independiente de `checked`/`deliverableSubmittedAt` */
   workflowStatus?: BriefWorkflowStatus;
   /** Hilo de comentarios (notas y correcciones de aprobación) */

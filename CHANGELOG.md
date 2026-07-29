@@ -25,6 +25,25 @@ en ningún otro archivo.
 
 ---
 
+## [1.7.0] — 2026-07-29
+
+### Agregado
+
+- **Las tareas ahora llevan consigo el entregable del paso anterior.** Cuando se aprueba un copy y
+  eso crea sola la tarea de diseño, dentro de esa tarea aparece una pestaña **"Paso anterior"** con
+  el copy aprobado —contenido, adjuntos e historial— para consultarlo sin salir de ahí ni buscarlo
+  en otro nodo. Es solo lectura, y siempre muestra la versión vigente: si el copy se corrige
+  después, acá se ve corregido. Aplica a toda la cadena (copy → diseño, copy → landing, etc.).
+
+### Cambiado
+
+- **La fecha viaja por el flujo.** Las tareas que se crean solas al aprobar un paso heredan la fecha
+  de la tarea que las originó, así que ya muestran su fecha y su semáforo en la lista del nodo y en
+  la tarjeta del diagrama — igual que las tareas del Gestor de canales, que la traían del Plan de
+  canales. Antes nacían sin fecha. Se puede cambiar desde la propia tarea como siempre.
+
+---
+
 ## [1.6.0] — 2026-07-29
 
 ### Agregado

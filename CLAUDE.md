@@ -1451,6 +1451,51 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       ofrecen exactamente esos chips y que "Visita landing" **no** reaparece como personalizado.
       Typecheck con el único error preexistente (`CreateProjectWizard.tsx:492`); build limpio.
 
+42. **La cadena del flujo ahora arrastra fecha y entregable de origen** (versión `1.7.0`)
+    - **`activateNextStage` (`StrategyBriefPanels.tsx`) estampa dos campos nuevos** en la tarea que
+      crea al aprobar: `fechaAccion` (heredada del entregable aprobado) y `sourceBriefId` (id del
+      entregable que la originó). Antes esas tareas nacían pelonas.
+    - **Fecha:** el usuario pidió que en los nodos saliera la fecha en el título de la tarea "así
+      como en las tareas del gestor de canales". Causa: las del Gestor de canales la traen sembrada
+      desde `CanalRow.dia` (punto 30) y por eso `FechaAccionChip` las pinta; las creadas por
+      `activateNextStage` no tenían fecha y `FechaAccionChip` **devuelve `null` sin fecha**, así que
+      la fila salía sin nada. Heredar la del origen es la lectura razonable (la pieza se necesita
+      para la misma acción que su copy) y sigue siendo editable desde la tarea. **Efecto extra
+      buscado:** el semáforo del `NodeCard` sale de `fechaAccion` de sus pendientes
+      (`tasksByNodeId`, `MapTab.tsx`), así que los nodos aguas abajo pasaron de no mostrar urgencia
+      nunca a mostrarla.
+    - **`sourceBriefId` (nuevo en `FabricaBriefItem`, `factoryStore.ts`)** es **solo una referencia
+      por id**: `BriefDialog` resuelve el brief en vivo contra `project.fabricaBriefs`, así que si
+      el copy se corrige después, la pestaña muestra la versión corregida. Si el original se borra,
+      la referencia queda colgando y la pestaña simplemente no aparece.
+    - **UI:** cuando hay `sourceBrief`, el diálogo muestra dos pestañas — "Esta tarea" (lo de
+      siempre) y "Paso anterior", que reusa **`DeliverableSummary`** (ya era la vista de solo
+      lectura de Equipo y de las tareas completadas — no hizo falta un componente nuevo) con una
+      cabecera que dice de qué tarea y rol viene. El textarea de corrección se oculta en esa
+      pestaña; el footer se deja igual (el contenido del editor vive en `useState`, así que cambiar
+      de pestaña no lo pierde).
+    - **Persistencia sin migración**: `addFabricaBriefs` hace `{...b, id: uid()}` y `projectToRow`
+      serializa `fabricaBriefs` entero al JSONB, así que los dos campos viajan solos. Las tareas
+      creadas antes de esto no tienen `sourceBriefId` y no muestran la pestaña — no se rellena
+      retroactivamente.
+    - **Deliberadamente NO se tocó** la herencia de fecha en las tareas de métricas
+      (`Recolectar métricas de X`, creadas por `DeliveryEditDialog`/`PautaBriefPanel`): heredar la
+      fecha del envío las dejaría en rojo al día siguiente de enviar. Si se quiere, es agregar
+      `fechaAccion` en esos dos `addFabricaBriefs`.
+    - Verificado con Playwright (sesión y `factory_projects` stubbeados, **cero escrituras a la base
+      real**) con una cadena Copys → Diseño → Envíos: el copy en revisión **no** tiene pestaña
+      "Paso anterior" (no tiene origen); al aprobarlo, la tarea de Diseño aparece con `5 de ago` en
+      su fila, la cabecera del diálogo muestra la fecha y el semáforo, la pestaña "Paso anterior"
+      trae el contenido aprobado del copy sin editor, y el nodo Diseño del diagrama pasó de no
+      mostrar fecha a mostrar "En 7 días". Volver a "Esta tarea" recupera el editor. Cero errores de
+      consola. Typecheck con el único error preexistente (`CreateProjectWizard.tsx:492`); build
+      limpio.
+    - **Trampas del stub, para la próxima:** el nodo del flujo usa `label`, no `name`, y su `status`
+      es `ProjectTaskStatus` (`pending`…), no `todo` — con cualquiera de los dos mal, `NodeCard`
+      revienta con `Cannot read properties of undefined (reading 'cls')` y la pantalla queda en
+      blanco. Y las pestañas de la campaña **no son `role="tab"`** (hay que buscarlas por texto);
+      las del diálogo de la tarea sí lo son.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
