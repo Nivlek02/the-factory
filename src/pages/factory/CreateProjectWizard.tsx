@@ -27,9 +27,18 @@ import {
 } from '@/lib/interacciones';
 import { DRAFT_KEY, borrarBorrador } from '@/lib/campaignDraft';
 
-/** Tope por archivo de referencia. Antes no había ninguno y el archivo se guardaba en base64
- *  dentro de la campaña, así que un PDF de 20 MB bloqueaba cada guardado. */
-const MAX_ADJUNTO_MB = 15;
+/**
+ * Tope por archivo de referencia. 50 MB para que quepan piezas de diseño (PSD, AI, videos cortos).
+ *
+ * Solo es viable porque los adjuntos ya van a **storage**: cuando se guardaban en base64 dentro del
+ * blob de la campaña, un archivo así habría hecho imposible cada guardado (y habría reventado la
+ * cuota del borrador en `localStorage`).
+ *
+ * OJO: **50 MB es también el tope por archivo del plan gratuito de Supabase Storage.** Si un
+ * archivo justo en el borde es rechazado por el servidor, el aviso lo dice y el límite real está en
+ * el dashboard (Storage → Settings), no acá.
+ */
+const MAX_ADJUNTO_MB = 50;
 const MAX_ADJUNTO_BYTES = MAX_ADJUNTO_MB * 1024 * 1024;
 interface Props {
   open: boolean;
@@ -589,7 +598,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   const [attachments, setAttachments] = useState<ProjectAttachment[]>(
     editProject?.attachments ?? []
   );
-  const [subiendoAdjuntos, setSubiendoAdjuntos] = useState(false);
+  /** Qué se está subiendo, para poder decirlo: con archivos de hasta 50 MB un "Subiendo…" pelado
+   *  deja a la persona sin saber si la app se colgó. `supabase-js` no reporta progreso en la subida
+   *  estándar, así que se informa el archivo y el avance por cantidad. */
+  const [subiendo, setSubiendo] = useState<{ nombre: string; i: number; total: number } | null>(null);
+  const subiendoAdjuntos = subiendo !== null;
   /** Para no repetir el aviso de "no se pudo guardar el borrador" cada 2 segundos. */
   const avisoBorradorDado = useRef(false);
   const [fabricaBriefs, setFabricaBriefs] = useState<FabricaBriefItem[]>(
@@ -1340,7 +1353,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                 </div>
                 <label className={`inline-flex items-center gap-1.5 text-xs mt-1 transition-colors ${subiendoAdjuntos ? 'text-muted-foreground/60 cursor-wait' : 'text-muted-foreground hover:text-foreground cursor-pointer'}`}>
                   {subiendoAdjuntos ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                  <span>{subiendoAdjuntos ? 'Subiendo…' : 'Adjuntar archivo'}</span>
+                  <span>
+                    {subiendo
+                      ? `Subiendo ${subiendo.total > 1 ? `${subiendo.i} de ${subiendo.total} · ` : ''}${subiendo.nombre}…`
+                      : `Adjuntar archivo (hasta ${MAX_ADJUNTO_MB} MB)`}
+                  </span>
                   <input
                     type="file"
                     multiple
@@ -1364,21 +1381,26 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                       const aceptados = files.filter((f) => f.size <= MAX_ADJUNTO_BYTES);
                       if (aceptados.length === 0) return;
 
-                      setSubiendoAdjuntos(true);
                       // En serie y tolerante a fallos: si uno falla, los demás igual se suben y se
                       // dice cuál no entró (antes un error dejaba el adjunto perdido sin aviso).
-                      const fallidos: string[] = [];
-                      for (const f of aceptados) {
+                      const fallidos: { nombre: string; motivo: string }[] = [];
+                      for (let i = 0; i < aceptados.length; i++) {
+                        const f = aceptados[i];
+                        setSubiendo({ nombre: f.name, i: i + 1, total: aceptados.length });
                         try {
                           const { url } = await uploadFile(f);
                           setAttachments((prev) => [...prev, { name: f.name, type: f.type, size: f.size, url }]);
-                        } catch {
-                          fallidos.push(f.name);
+                        } catch (err) {
+                          fallidos.push({ nombre: f.name, motivo: err instanceof Error ? err.message : 'error desconocido' });
                         }
                       }
-                      setSubiendoAdjuntos(false);
+                      setSubiendo(null);
                       if (fallidos.length > 0) {
-                        toast.error('No se pudieron subir algunos archivos', { description: fallidos.join(', ') });
+                        // Se muestra el motivo del servidor: si el tope real de storage es menor que
+                        // el nuestro, es lo único que lo explica (ver MAX_ADJUNTO_MB).
+                        toast.error('No se pudieron subir algunos archivos', {
+                          description: fallidos.map((x) => `${x.nombre}: ${x.motivo}`).join(' · '),
+                        });
                       }
                     }}
                   />

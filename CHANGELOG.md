@@ -25,6 +25,20 @@ en ningún otro archivo.
 
 ---
 
+## [1.9.3] — 2026-07-29
+
+### Cambiado
+
+- **Los archivos de referencia ahora aceptan hasta 50 MB** (antes 15), para que quepan piezas de
+  diseño. Mientras sube se ve qué archivo va y cuántos faltan, que con archivos grandes puede tardar
+  un rato.
+
+### Corregido
+
+- En Seguimiento de eventos, enviar un ID decía "Enviado" aunque el servidor hubiera fallado.
+
+---
+
 ## [1.9.2] — 2026-07-29
 
 ### Corregido

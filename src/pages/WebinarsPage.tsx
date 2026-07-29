@@ -131,15 +131,18 @@ const WebinarsPage = () => {
     const w = webinarsData?.webinars?.find((x) => String(x.id) === id);
     const topic = w?.titulo || '';
     try {
-      await fetch(REGISTROS_WEBHOOK, {
+      const res = await fetch(REGISTROS_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, topic }),
       });
+      // Sin comprobar `res.ok` decía "Enviado" aunque el webhook respondiera 500: solo un fallo de
+      // red entraba al catch. La persona se iba creyendo que el registro salió.
+      if (!res.ok) throw new Error(`el servidor respondió ${res.status}`);
       toast.success('Enviado: ' + (topic || '(sin evento)'));
       setManualId('');
-    } catch {
-      toast.error('Error enviando');
+    } catch (e) {
+      toast.error('Error enviando', { description: e instanceof Error ? e.message : undefined });
     }
   };
 
