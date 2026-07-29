@@ -125,6 +125,24 @@ loops, etapas, ELMR, adjuntos. **Agregar un campo no necesita migración de esqu
 `mergeGuionNodes`, `interaccionesValidas`, `asignarNumerosFaltantes`. Se arregla al leer y no se
 toca la base.
 
+### Sesión perdida
+`authStore` se suscribe a `onAuthStateChange` y, al quedarse sin sesión, limpia el store (y
+`App.tsx` redirige al login) con un aviso de "tu sesión expiró". **Esto no es cosmético desde que la
+RLS exige sesión**: sin el listener, el store se queda con `isAuthenticated: true`, `hydrate`
+devuelve 0 filas y **la lista de campañas se ve vacía como si las hubieran borrado**, mientras cada
+guardado falla en silencio. Pasa al caducar el refresh token o al cambiarle la contraseña a la
+cuenta. `cerrandoAdrede` distingue el cierre voluntario para no decirle "expiró" a quien pulsó
+"Cerrar sesión". No se llama a supabase dentro del callback (la doc advierte que puede trabarse).
+
+### Adjuntos: todo va a storage
+Los archivos de referencia de la campaña, los adjuntos de entregable (`file-upload.tsx`) y las
+imágenes del editor **suben a storage y solo se guarda la URL**. Hasta el 2026-07-29 los del
+asistente se guardaban en base64 **dentro del blob JSONB**, lo que hacía que cada guardado reenviara
+todos los adjuntos y que el borrador reventara la cuota de `localStorage`… y encima ese base64 no se
+usaba nunca (solo se mostraba el nombre, sin enlace). `ProjectAttachment.data` quedó **opcional y
+solo de lectura** para las campañas que ya lo tienen; `attachmentHref()` decide de dónde bajar el
+archivo. Tope de **15 MB** por archivo (`MAX_ADJUNTO_MB`).
+
 ### Guardia de escritura obsoleta (`revision`)
 Cada escritura reemplaza el proyecto **entero**. Con dos personas a la vez, quien guardaba de
 último **pisaba el trabajo del otro sin error ni aviso**: bastaba dejar la pestaña abierta un rato
@@ -134,9 +152,16 @@ Hoy `data.revision` es un contador por campaña. Antes de escribir, `syncProject
 base con el último conocido (`revisionConocida`, un `Map` a nivel de módulo — **no** en el objeto
 del proyecto: el `setTimeout` captura una instantánea y leerlo de ahí daba falsos conflictos al
 hacer dos cambios seguidos). Si el de la base es mayor: **no pisa**, recarga esa campaña y avisa con
-un toast. Además `FactoryPage` **relee al volver a la pestaña** (`visibilitychange`/`focus`), que es
-lo que evita llegar al conflicto; no relee si hay una escritura propia pendiente
-(`haySincronizacionPendiente()`).
+un toast. Si la lectura de la revisión **falla**, se guarda igual (perder el cambio por un error
+transitorio sería peor) pero queda un `console.warn`: si no, el chequeo se desactivaría en silencio.
+
+Esa lectura pide **solo `data->revision`**, no `data`: el blob puede pesar megas y esto corre antes
+de cada guardado. El `select` tipado no digiere una ruta JSON y revienta con `TS2589`, así que lleva
+el tipo del resultado a mano.
+
+El hook **`useCampanasFrescas`** (las 3 vistas que leen campañas: La Fábrica, Mis tareas, Reportes)
+hace la carga inicial y **relee al volver a la pestaña** — es lo que evita llegar al conflicto. No
+relee si hay una escritura propia pendiente (`haySincronizacionPendiente()`).
 
 ### Números y códigos
 - `FactoryProject.numero` (`#7`) = **máx + 1, no `length + 1`**: borrar la campaña del medio no
@@ -358,7 +383,8 @@ build).
   se ofrece en la lista de campañas. **Solo se descarta al crear la campaña o al pulsar
   "Descartar"** — antes `close()` lo borraba, así que el aviso nunca aparecía. `reset()` limpia el
   formulario en memoria, no el `localStorage`. Sigue siendo local al navegador: no viaja entre
-  equipos.
+  equipos. Si `setItem` falla (cuota llena) **se avisa una sola vez por sesión del asistente**:
+  antes se tragaba el error y la persona creía que su avance estaba a salvo sin estarlo.
 - **Un clic fuera no cierra el wizard** (`onPointerDownOutside` + `onInteractOutside`): hay que
   frenar **los dos**, Radix dispara el cierre por vías distintas según sea puntero o foco/táctil.
   Escape se dejó vivo a propósito.
@@ -413,6 +439,13 @@ build).
 ## Historial reciente
 
 Solo lo que sigue explicando el estado actual. Lo anterior está en el historial de git.
+
+- **2026-07-29 (v1.9.2) — segunda pasada de revisión.** Se reacciona a la sesión perdida (antes la
+  app se veía vacía en vez de mandarte al login); los adjuntos del asistente pasaron de base64 en el
+  JSONB a storage, con tope de 15 MB y ahora sí se pueden abrir; el borrador avisa si no puede
+  guardarse; `useCampanasFrescas` lleva la relectura a Mis tareas y Reportes; validación de correo en
+  Ajustes. Y se corrigió una regresión propia: la guardia de escritura bajaba el proyecto entero
+  para leer un entero.
 
 - **2026-07-29 (v1.9.1)** — se cerró el comodín del `ilike` en `activar-acceso` (permitía activar la
   cuenta de un compañero sin saber su correo) y se quitaron las policies duplicadas que anularon la

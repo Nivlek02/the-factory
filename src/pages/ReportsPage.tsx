@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useFactoryStore } from '@/store/factoryStore';
 import { useAuthStore } from '@/store/authStore';
 import { flattenCampaignTasks, isTaskOwnedBy, compareByUrgencia, CampaignTask } from '@/lib/campaignTasks';
@@ -35,6 +35,7 @@ import { format, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { CalendarIcon, Download, BarChart3, ListTodo, Users, Layers, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useCampanasFrescas } from '@/hooks/useCampanasFrescas';
 
 const PAGE_SIZE_OPTIONS = [5, 20, 50] as const;
 
@@ -48,12 +49,11 @@ const parseFecha = (iso: string): Date | null => {
 };
 
 const ReportsPage = () => {
-  const { projects, hydrate, isLoaded } = useFactoryStore();
+  const { projects } = useFactoryStore();
   const { users } = useAuthStore();
 
-  useEffect(() => {
-    if (!isLoaded) hydrate();
-  }, [isLoaded, hydrate]);
+  // Un reporte sacado de datos viejos es peor que no tenerlo: se relee al volver a la pestaña.
+  useCampanasFrescas();
 
   // Filters
   const [dateFrom, setDateFrom] = useState<Date>();

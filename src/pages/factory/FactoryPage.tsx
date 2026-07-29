@@ -49,7 +49,7 @@ import {
   PanelLeftOpen,
   FilePen,
 } from 'lucide-react';
-import { useFactoryStore, haySincronizacionPendiente, FactoryProject, ProjectTask, ProjectRoleGroup, CanalRow, FabricaBriefItem } from '@/store/factoryStore';
+import { useFactoryStore, FactoryProject, ProjectTask, ProjectRoleGroup, CanalRow, FabricaBriefItem } from '@/store/factoryStore';
 import { campaignToMarkdown, markdownFileName } from '@/lib/campaignMarkdown';
 import { iniciales } from './CreateProjectWizard';
 import { leerBorrador, borrarBorrador, hace } from '@/lib/campaignDraft';
@@ -58,6 +58,7 @@ import CreateProjectWizard from './CreateProjectWizard';
 import { WorkflowTab, MetricsDashboardTab, LoopTab } from './MapTab';
 import { DeliverableSummary, BriefStatusBadge, isMetricsBrief, isUrlBrief } from '@/components/factory/DeliverableSummary';
 import { dangerousHtml } from '@/lib/sanitizeHtml';
+import { useCampanasFrescas } from '@/hooks/useCampanasFrescas';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -829,26 +830,8 @@ const FactoryPage = () => {
   const { projects, activeProjectId, setActiveProject, hydrate, isLoaded } = useFactoryStore();
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
 
-  useEffect(() => {
-    if (!isLoaded) hydrate();
-  }, [isLoaded, hydrate]);
-
-  // Las campañas se leían UNA sola vez: una pestaña abierta desde la mañana seguía mostrando el
-  // estado de la mañana, y al tocar cualquier cosa escribía esa copia vieja encima del trabajo de
-  // los demás (ver la guardia de escritura obsoleta en factoryStore). Volver a la pestaña ahora
-  // relee — es el momento natural para hacerlo y evita llegar al conflicto.
-  // No se recarga si hay un cambio propio todavía sin guardar: sería pisárselo a uno mismo.
-  useEffect(() => {
-    const refrescar = () => {
-      if (document.visibilityState === 'visible' && !haySincronizacionPendiente()) hydrate();
-    };
-    document.addEventListener('visibilitychange', refrescar);
-    window.addEventListener('focus', refrescar);
-    return () => {
-      document.removeEventListener('visibilitychange', refrescar);
-      window.removeEventListener('focus', refrescar);
-    };
-  }, [hydrate]);
+  // Carga inicial + relectura al volver a la pestaña (ver el hook).
+  useCampanasFrescas();
 
   const [createOpen, setCreateOpen] = useState(false);
   // Se relee al montar y cada vez que se cierra el asistente: es cuando puede haber cambiado

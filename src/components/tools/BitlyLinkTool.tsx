@@ -87,7 +87,16 @@ const EXTENSION_BY_MIME: Record<string, string> = {
 const filenameFromResponse = (res: Response): string => {
   const disposition = res.headers.get('Content-Disposition') ?? '';
   const match = disposition.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
-  if (match?.[1]) return decodeURIComponent(match[1]);
+  if (match?.[1]) {
+    // `decodeURIComponent` LANZA con un `%` mal formado (ej. "%zz"). Sin este try, un nombre raro
+    // que manda n8n hacía fallar toda la descarga y se mostraba "No se pudo descargar el QR"
+    // aunque el archivo hubiera llegado perfecto.
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }
 
   const mime = (res.headers.get('Content-Type') ?? 'image/png').split(';')[0].trim();
   const ext = EXTENSION_BY_MIME[mime] ?? 'png';

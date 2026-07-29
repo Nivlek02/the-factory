@@ -265,8 +265,13 @@ export function campaignToMarkdown(project: FactoryProject): string {
   // ── Adjuntos de la campaña ──
   if (project.attachments?.length) {
     seccion('Adjuntos de la campaña');
-    // Solo el nombre: el contenido es base64 y no tiene sentido en un .md.
-    for (const a of project.attachments) add(`- ${a.name}`);
+    for (const a of project.attachments) {
+      // Los nuevos viven en storage y su URL sí sirve dentro del .md. Los legados guardaban el
+      // archivo en base64 (`data`), que no tiene sentido volcar acá: de esos va solo el nombre.
+      // Los corchetes del nombre se escapan o parten el enlace.
+      const nombre = (a.name ?? '').replace(/[[\]]/g, '\\$&');
+      add(a.url ? `- [${nombre}](${a.url})` : `- ${nombre}`);
+    }
     add('');
   }
 

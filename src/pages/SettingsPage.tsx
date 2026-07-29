@@ -61,6 +61,15 @@ const USER_SORT_OPTIONS: { value: UserSortKey; label: string }[] = [
 const norm = (s: string) =>
   (s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
+/**
+ * Forma mínima de un correo. Es la MISMA validación que hace la edge function `activar-acceso`.
+ *
+ * Sin esto, un correo mal escrito entraba al directorio sin protestar, y el síntoma aparecía días
+ * después y sin pista: a esa persona no le llegaban las notificaciones y `/activar` no la
+ * encontraba (busca por correo exacto).
+ */
+const correoValido = (e: string) => /^[^\s@%]+@[^\s@%]+\.[^\s@%]{2,}$/.test(e.trim());
+
 
 const SettingsPage = () => {
   const {
@@ -116,6 +125,15 @@ const SettingsPage = () => {
       return;
     }
 
+    if (!correoValido(newEmail)) {
+      toast({
+        title: 'Correo inválido',
+        description: 'Revisa el correo: con uno mal escrito la persona no recibirá notificaciones ni podrá activar su cuenta.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsCreating(true);
     const result = await addUser(newUsername, newName, newEmail, newRole);
     setIsCreating(false);
@@ -156,6 +174,17 @@ const SettingsPage = () => {
       toast({
         title: 'Error',
         description: 'El nombre y usuario son obligatorios',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // El correo es opcional al editar (si se deja vacío no se toca), pero si escribieron algo
+    // tiene que servir: acá además puede ser el correo con el que la persona inicia sesión.
+    if (editEmail.trim() && !correoValido(editEmail)) {
+      toast({
+        title: 'Correo inválido',
+        description: 'Revisa el correo: es el que usa para iniciar sesión y para recibir notificaciones.',
         variant: 'destructive',
       });
       return;

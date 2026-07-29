@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,15 +15,22 @@ import RichTextEditor from '@/components/ui/rich-text-editor';
 import {
   Cog, Plus, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, FolderKanban, Check, Target, GitBranch, Calendar, Clock,
   Mail, MessageCircle, Smartphone, Facebook, Instagram, Music, Search, Phone, Store, Briefcase, Handshake,
-  Sparkles, Megaphone, MousePointerClick, Link2, ShieldCheck, Flag, RefreshCw,
+  Sparkles, Megaphone, MousePointerClick, Link2, ShieldCheck, Flag, RefreshCw, Loader2,
   type LucideIcon,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { uploadFile } from '@/services/storageService';
 
-import { FactoryProject, type ProjectState } from '@/store/factoryStore';
+import { FactoryProject, type ProjectState, type ProjectAttachment, attachmentHref } from '@/store/factoryStore';
 import {
   INTERACCION_OPCIONES, opcionesDeCanal, interaccionesDe, interaccionesValidas,
 } from '@/lib/interacciones';
 import { DRAFT_KEY, borrarBorrador } from '@/lib/campaignDraft';
+
+/** Tope por archivo de referencia. Antes no había ninguno y el archivo se guardaba en base64
+ *  dentro de la campaña, así que un PDF de 20 MB bloqueaba cada guardado. */
+const MAX_ADJUNTO_MB = 15;
+const MAX_ADJUNTO_BYTES = MAX_ADJUNTO_MB * 1024 * 1024;
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -579,9 +586,12 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     camposAdicionales: editProject?.formularioConfig?.camposAdicionales ?? '',
     cuadroTexto: editProject?.formularioConfig?.cuadroTexto ?? '',
   });
-  const [attachments, setAttachments] = useState<{ name: string; type: string; data: string }[]>(
+  const [attachments, setAttachments] = useState<ProjectAttachment[]>(
     editProject?.attachments ?? []
   );
+  const [subiendoAdjuntos, setSubiendoAdjuntos] = useState(false);
+  /** Para no repetir el aviso de "no se pudo guardar el borrador" cada 2 segundos. */
+  const avisoBorradorDado = useRef(false);
   const [fabricaBriefs, setFabricaBriefs] = useState<FabricaBriefItem[]>(
     editProject?.fabricaBriefs?.map((b) => ({ ...b })) ?? []
   );
@@ -632,7 +642,18 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           // viejo es el borrador (ver `hace` en campaignDraft.ts).
           guardadoEn: new Date().toISOString(),
         }));
-      } catch { /* QuotaExceededError — draft not persisted, data stays in state */ }
+      } catch {
+        // Normalmente QuotaExceededError. Antes se tragaba en silencio: la persona veía la
+        // función de "campaña sin terminar" y creía que su avance estaba a salvo cuando no lo
+        // estaba. Se avisa UNA vez por sesión del asistente — esto corre cada 2 s y si no
+        // llenaría la pantalla de avisos.
+        if (!avisoBorradorDado.current) {
+          avisoBorradorDado.current = true;
+          toast.error('No se pudo guardar el borrador', {
+            description: 'No hay espacio en este navegador, así que no podrás retomar la campaña si cierras el asistente. Termínala ahora o libera espacio.',
+          });
+        }
+      }
     }, 2000);
     return () => clearTimeout(timer);
   }, [open, isEditing, data, audiencia, canalesRows, loopsRows, etapas, mensajeBase, motor, requerimientos, formularioConfig, attachments, step]);
@@ -1294,7 +1315,19 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                 <div className="flex flex-wrap gap-2">
                   {attachments.map((file, i) => (
                     <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/60 bg-card text-xs">
-                      <span className="truncate max-w-[160px]">{file.name}</span>
+                      {/* Antes solo se mostraba el nombre, así que el archivo no se podía abrir.
+                          `download` evita que un adjunto se abra como página (importante para los
+                          legados, que son data URLs). */}
+                      <a
+                        href={attachmentHref(file)}
+                        download={file.name}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate max-w-[160px] hover:text-primary hover:underline"
+                        title={file.name}
+                      >
+                        {file.name}
+                      </a>
                       <button
                         type="button"
                         onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
@@ -1305,24 +1338,48 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                     </div>
                   ))}
                 </div>
-                <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer mt-1">
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Adjuntar archivo</span>
+                <label className={`inline-flex items-center gap-1.5 text-xs mt-1 transition-colors ${subiendoAdjuntos ? 'text-muted-foreground/60 cursor-wait' : 'text-muted-foreground hover:text-foreground cursor-pointer'}`}>
+                  {subiendoAdjuntos ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  <span>{subiendoAdjuntos ? 'Subiendo…' : 'Adjuntar archivo'}</span>
                   <input
                     type="file"
                     multiple
                     className="hidden"
+                    disabled={subiendoAdjuntos}
                     onChange={async (e) => {
                       const files = Array.from(e.target.files ?? []);
-                      const newFiles = await Promise.all(
-                        files.map((f) => new Promise<{ name: string; type: string; data: string }>((resolve) => {
-                          const reader = new FileReader();
-                          reader.onload = () => resolve({ name: f.name, type: f.type, data: reader.result as string });
-                          reader.readAsDataURL(f);
-                        }))
-                      );
-                      setAttachments((prev) => [...prev, ...newFiles]);
-                      e.target.value = '';
+                      e.target.value = ''; // se limpia ya: si no, volver a elegir el mismo archivo no dispara el evento
+                      if (files.length === 0) return;
+
+                      // Antes no había ningún límite y el archivo se guardaba en base64 dentro de
+                      // la campaña. Ahora va a storage, pero el tope se mantiene: un adjunto
+                      // enorme igual haría lenta la subida y el visor.
+                      const grandes = files.filter((f) => f.size > MAX_ADJUNTO_BYTES);
+                      if (grandes.length > 0) {
+                        toast.error(
+                          grandes.length === 1 ? 'Ese archivo es muy grande' : 'Hay archivos muy grandes',
+                          { description: `Máximo ${MAX_ADJUNTO_MB} MB por archivo. Quedaron fuera: ${grandes.map((f) => f.name).join(', ')}` }
+                        );
+                      }
+                      const aceptados = files.filter((f) => f.size <= MAX_ADJUNTO_BYTES);
+                      if (aceptados.length === 0) return;
+
+                      setSubiendoAdjuntos(true);
+                      // En serie y tolerante a fallos: si uno falla, los demás igual se suben y se
+                      // dice cuál no entró (antes un error dejaba el adjunto perdido sin aviso).
+                      const fallidos: string[] = [];
+                      for (const f of aceptados) {
+                        try {
+                          const { url } = await uploadFile(f);
+                          setAttachments((prev) => [...prev, { name: f.name, type: f.type, size: f.size, url }]);
+                        } catch {
+                          fallidos.push(f.name);
+                        }
+                      }
+                      setSubiendoAdjuntos(false);
+                      if (fallidos.length > 0) {
+                        toast.error('No se pudieron subir algunos archivos', { description: fallidos.join(', ') });
+                      }
                     }}
                   />
                 </label>

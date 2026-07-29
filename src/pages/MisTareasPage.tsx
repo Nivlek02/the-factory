@@ -1,17 +1,17 @@
-import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/layout/Layout';
 import { ClipboardList } from 'lucide-react';
 import { useFactoryStore } from '@/store/factoryStore';
+import { useCampanasFrescas } from '@/hooks/useCampanasFrescas';
 import { MyTasks } from '@/components/factory/MyTasks';
 
 const MisTareasPage = () => {
   const navigate = useNavigate();
-  const { hydrate, isLoaded, setActiveProject } = useFactoryStore();
+  const { setActiveProject } = useFactoryStore();
 
-  useEffect(() => {
-    if (!isLoaded) hydrate();
-  }, [isLoaded, hydrate]);
+  // Sin esto, la lista mostraba el estado de cuando se abrió la pestaña: una tarea ya aprobada por
+  // otra persona seguía apareciendo pendiente.
+  useCampanasFrescas();
 
   // Abrir una tarea = activar su campaña y saltar a La Fábrica, donde vive el flujo de trabajo.
   const openProject = (projectId: string) => {

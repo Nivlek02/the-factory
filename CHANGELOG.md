@@ -25,6 +25,32 @@ en ningún otro archivo.
 
 ---
 
+## [1.9.2] — 2026-07-29
+
+### Corregido
+
+- **Si tu sesión caducaba, la app parecía vacía.** Al vencerse la sesión (portátil dormido varios
+  días, o un cambio de contraseña) las campañas dejaban de cargarse **y no se veía ningún error**:
+  la lista salía vacía, como si alguien las hubiera borrado, y lo que guardabas se perdía sin aviso.
+  Ahora se te avisa que la sesión expiró y vuelves al inicio de sesión.
+- **Los archivos adjuntos de la campaña ahora se pueden abrir.** Antes solo se mostraba el nombre,
+  sin enlace: quedaban guardados pero nadie podía descargarlos. Además se guardaban dentro de la
+  campaña, así que cada cambio que hacías volvía a subirlos todos y el asistente se ponía lento.
+  Ahora suben una sola vez, se abren con un clic y hay un tope de 15 MB por archivo.
+- **El borrador de la campaña avisa si no se puede guardar.** Si no había espacio en el navegador
+  fallaba en silencio y creías que tu avance estaba a salvo cuando no lo estaba.
+- **"Mis tareas" y "Reportes" se actualizan al volver a la pestaña.** Antes mostraban el estado de
+  cuando abriste la página, así que una tarea ya aprobada por otra persona seguía apareciendo
+  pendiente.
+- **Ajustes valida el correo** al crear o editar a alguien del equipo. Con un correo mal escrito esa
+  persona no recibía notificaciones ni podía activar su cuenta, y el problema aparecía días después
+  sin ninguna pista.
+- Guardar una campaña es más liviano: la comprobación de cambios de otras personas ya no descarga la
+  campaña completa cada vez.
+- La descarga del código QR ya no falla por un nombre de archivo raro.
+
+---
+
 ## [1.9.1] — 2026-07-29
 
 ### Seguridad

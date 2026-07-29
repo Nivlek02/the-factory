@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import {
   AppUser,
@@ -88,6 +89,47 @@ async function callAdminUsuarios(
   }
 }
 
+/**
+ * Reacciona a que se PIERDA la sesión.
+ *
+ * Sin esto, nada se enteraba: el store se quedaba con `isAuthenticated: true` para siempre. Antes
+ * pasaba desapercibido porque las tablas estaban abiertas a `anon`; desde que la RLS exige sesión
+ * (migración 20260729000000) el efecto es directo y desconcertante: `hydrate` devuelve 0 filas, así
+ * que **la lista de campañas se ve vacía como si las hubieran borrado todas**, y cada guardado
+ * falla en silencio (42501 en la consola). Pasa cuando caduca el refresh token (portátil dormido
+ * varios días) o cuando le cambian la contraseña a la cuenta.
+ *
+ * Notas de implementación:
+ *  · Una sola suscripción por carga de la app (`suscrito`): `initialize()` puede correr más de una
+ *    vez (StrictMode) y no queremos callbacks apilados.
+ *  · **No se llama a supabase dentro del callback** — la doc advierte que puede quedarse trabado;
+ *    acá solo se toca el estado local.
+ *  · Se distingue el cierre voluntario del vencimiento para no decirle "tu sesión expiró" a quien
+ *    acaba de pulsar "Cerrar sesión".
+ */
+let suscrito = false;
+let cerrandoAdrede = false;
+
+const escucharSesion = (set: (partial: Partial<AuthStore>) => void) => {
+  if (suscrito) return;
+  suscrito = true;
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (session) return;                       // sigue habiendo sesión: nada que hacer
+    if (event === 'INITIAL_SESSION') return;   // arrancar sin sesión ya lo maneja initialize()
+
+    const expiro = !cerrandoAdrede;
+    cerrandoAdrede = false;
+    set({ currentUser: null, isAuthenticated: false, users: [], isLoading: false });
+
+    // App.tsx ya redirige al login al quedar sin sesión; el aviso explica por qué, que si no
+    // parece que la app se cayó sola.
+    if (expiro) {
+      toast.error('Tu sesión expiró', { description: 'Vuelve a iniciar sesión para seguir.' });
+    }
+  });
+};
+
 export const useAuthStore = create<AuthStore>()((set, get) => ({
   users: [],
   currentUser: null,
@@ -95,6 +137,8 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   isLoading: true,
 
   initialize: async () => {
+    escucharSesion(set);
+
     // Restaura la sesión de Supabase si ya existe (persistida en localStorage).
     const { data: { session } } = await supabase.auth.getSession();
 
@@ -130,6 +174,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   },
 
   logout: async () => {
+    cerrandoAdrede = true; // para que el listener no diga "tu sesión expiró"
     await logoutUser();
     set({ currentUser: null, isAuthenticated: false, users: [] });
   },

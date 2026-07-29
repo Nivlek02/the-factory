@@ -259,11 +259,31 @@ export interface FormularioConfig {
   cuadroTexto: string;
 }
 
+/**
+ * Archivo de referencia de la campaña.
+ *
+ * Los nuevos van a **storage** y acá queda solo la `url`, igual que los adjuntos de entregable
+ * (`file-upload.tsx`) y las imágenes del editor. Antes se guardaba el archivo entero en `data`
+ * como base64 **dentro del blob JSONB de la campaña**: eso hacía que cada guardado reenviara
+ * todos los adjuntos, que el borrador del asistente reventara la cuota de `localStorage`… y
+ * encima nadie usaba nunca ese base64 (solo se mostraba el nombre, sin enlace).
+ *
+ * `data` se mantiene **opcional y solo para leer** las campañas que ya lo tienen: sirve igual
+ * como `href`, así que esos archivos viejos ahora también se pueden abrir.
+ */
 export interface ProjectAttachment {
   name: string;
   type: string;
-  data: string; // base64
+  /** Ruta pública en storage. Es lo que se usa de ahora en adelante. */
+  url?: string;
+  /** Tamaño en bytes, para poder mostrarlo. Solo en los nuevos. */
+  size?: number;
+  /** LEGADO: el archivo en base64 (data URL). No se escribe más. */
+  data?: string;
 }
+
+/** De dónde bajar el adjunto: la URL de storage, o el base64 viejo si es de los de antes. */
+export const attachmentHref = (a: ProjectAttachment): string => a.url ?? a.data ?? '';
 
 export interface FactoryProject {
   id: string;
@@ -831,6 +851,9 @@ const projectToRow = (p: FactoryProject) => ({
  */
 const revisionConocida = new Map<string, number>();
 const revisionDe = (data: any): number => (typeof data?.revision === 'number' ? data.revision : 0);
+/** Igual que `revisionDe` pero para la proyección `revision:data->revision`, que trae el número
+ *  suelto en vez del blob entero (ver `syncProject`). */
+const soloRevision = (fila: any): number => (typeof fila?.revision === 'number' ? fila.revision : 0);
 
 const pendingSync = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -855,14 +878,28 @@ const syncProject = (project: FactoryProject) => {
     pendingSync.delete(project.id);
 
     const conocida = revisionConocida.get(project.id) ?? 0;
-    const { data: remoto } = await supabase
+    // Se pide SOLO el número de revisión, no `data`: el blob de una campaña puede pesar megas
+    // (los adjuntos del asistente van en base64 ahí dentro) y esta consulta corre antes de CADA
+    // guardado. Con `select('data')` cada cambio bajaba el proyecto entero para leer un entero.
+    // El `select` tipado no digiere una ruta JSON (`data->revision`) y revienta la inferencia
+    // con TS2589 ("type instantiation is excessively deep"), así que acá se le pasa el tipo del
+    // resultado a mano. La forma es la de la proyección: un solo campo.
+    const { data: remoto, error: errorRevision } = await supabase
       .from('factory_projects')
-      .select('data')
+      .select<'revision:data->revision', { revision: number | null }>('revision:data->revision')
       .eq('id', project.id)
       .maybeSingle();
 
+    // Si la consulta falla (red, sesión vencida) no se puede saber si hay conflicto. Se sigue
+    // adelante con el guardado —perder el cambio del usuario por un error transitorio sería peor
+    // que el riesgo de pisar— pero queda escrito en consola, porque si no este chequeo se
+    // desactivaría en silencio y nadie se enteraría.
+    if (errorRevision) {
+      console.warn('No se pudo leer la revisión remota; se guarda sin comprobar conflicto:', errorRevision.message);
+    }
+
     // `remoto` nulo = la campaña todavía no existe en la base (recién creada): se inserta.
-    if (remoto && revisionDe(remoto.data) > conocida) {
+    if (remoto && soloRevision(remoto) > conocida) {
       console.warn('Escritura descartada: la campaña cambió en la base', project.id);
       await recargarProyecto(project.id);
       toast.error('Otra persona actualizó esta campaña', {
