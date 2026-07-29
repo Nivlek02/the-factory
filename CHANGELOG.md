@@ -25,6 +25,28 @@ en ningún otro archivo.
 
 ---
 
+## [1.6.0] — 2026-07-29
+
+### Agregado
+
+- **El diagrama del ciclo ahora muestra el flujo de trabajo de la etapa de Interacción**: debajo
+  del esquema aparece una tarjeta por canal con cada interacción que se puede medir y la tarea que
+  deja. En correo, **quien no abre o no hace clic genera una tarea de copy** (un copy distinto para
+  esas personas) que cae sobre **Copywriter** y **Gestor de canales** — el primero lo redacta, el
+  segundo lo envía. Las demás interacciones se marcan como "se mide, no dispara acciones".
+
+### Cambiado
+
+- **Cada canal solo ofrece las interacciones que de verdad puede medir.** De WhatsApp y SMS solo se
+  puede medir el clic, así que ya no aparecen "no clic" ni "visita landing". En correo se quitó
+  "visita landing" (eso se mide en la landing, no en el correo) y quedan abre / no abre / clic /
+  no clic. Lo ya guardado con las opciones viejas simplemente deja de mostrarse; no se pierde nada
+  ni hay que corregir campañas a mano.
+
+> El Dashboard de métricas no cambió: sigue midiendo enviados, apertura y clics igual que antes.
+
+---
+
 ## [1.5.1] — 2026-07-28
 
 ### Corregido

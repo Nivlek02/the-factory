@@ -39,7 +39,7 @@ import {
   ContentBriefPanel, DeliveryBriefPanel, DoneDateBriefPanel, PautaBriefPanel, briefsForNode,
 } from './StrategyBriefPanels';
 import { getBriefStatus } from '@/components/factory/DeliverableSummary';
-import { interaccionesValidas } from '@/lib/interacciones';
+import { interaccionesValidas, accionDeInteraccion, type AccionInteraccion } from '@/lib/interacciones';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Stage palette: the strategic building blocks of a marketing project
@@ -1068,6 +1068,35 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
     });
   }
 
+  // ─── Flujo de trabajo de la etapa de Interacción ───
+  // Cada interacción medible de las acciones de Atracción, con la tarea que deja y sobre qué
+  // roles cae (ver `accionDeInteraccion`). Es documentación del flujo acordado dentro del
+  // diagrama: no crea tareas reales ni toca el Dashboard de métricas.
+  const intEtapa = etapas.find((e) => e.tipo === 'interaccion');
+  const flujoInteraccion: { canal: string; filas: { interaccion: string; accion: AccionInteraccion | null }[] }[] = [];
+  if (intEtapa && atrIdx >= 0) {
+    const atr = etapas[atrIdx];
+    // Se agrupa por canal (no por toque): dos correos con las mismas interacciones dejan la
+    // misma tarea, y repetirla por fila solo ensuciaría el diagrama.
+    const porCanal = new Map<string, Set<string>>();
+    for (const c of project.canales ?? []) {
+      if (c.etapaId !== atr.id) continue;
+      const canal = c.canal.trim();
+      if (!canal) continue;
+      const set = porCanal.get(canal) ?? new Set<string>();
+      interaccionesValidas(canal, c).forEach((v) => set.add(v));
+      porCanal.set(canal, set);
+    }
+    for (const [canal, set] of porCanal) {
+      if (set.size === 0) continue; // canales sin nada medible (Call Center y compañía, si nadie escribió una interacción)
+      flujoInteraccion.push({
+        canal,
+        filas: Array.from(set).map((interaccion) => ({ interaccion, accion: accionDeInteraccion(canal, interaccion) })),
+      });
+    }
+  }
+  const intColor = ETAPA_TIPO_META.interaccion.color;
+
   return (
     <div className="rounded-xl border border-border/60 bg-card/70 p-4 shadow-sm">
       <div className="flex justify-end mb-2">
@@ -1341,6 +1370,52 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
             );
           })}
           </div>
+
+          {/* ─── Flujo de trabajo de la interacción ─── */}
+          {flujoInteraccion.length > 0 && (
+            <div className="mt-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center mb-2">
+                Flujo de trabajo de la interacción
+              </p>
+              {/* items-start: sin esto las tarjetas de un solo renglón (WhatsApp, SMS) se estiran
+                  al alto de la de Correo y quedan medio vacías. */}
+              <div className="grid gap-2 items-start" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
+                {flujoInteraccion.map((c) => (
+                  <div key={c.canal} className="rounded-lg border border-border/60 bg-card p-2">
+                    <p className="text-[10px] font-semibold leading-tight" style={{ color: intColor }}>{c.canal}</p>
+                    <div className="mt-1.5 space-y-1.5">
+                      {c.filas.map((f) => (
+                        <div key={f.interaccion} className="flex items-start gap-1">
+                          <span
+                            className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 shrink-0"
+                            style={{ backgroundColor: `${intColor}1a`, color: intColor }}
+                          >
+                            {f.interaccion}
+                          </span>
+                          <span className="text-[8px] leading-tight text-muted-foreground shrink-0 pt-0.5">→</span>
+                          {f.accion ? (
+                            <div className="min-w-0">
+                              <p className="text-[8px] leading-snug text-foreground/80">{f.accion.tarea}</p>
+                              <div className="mt-0.5 flex flex-wrap gap-0.5">
+                                {f.accion.roles.map((r) => (
+                                  <span key={r} className="text-[7px] font-semibold leading-tight rounded px-1 py-0.5 bg-accent text-accent-foreground">
+                                    {r}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-[8px] leading-snug italic text-muted-foreground">Se mide, no dispara acciones</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {branchPaths.length > 0 && (
             <div className="mt-4 space-y-1 max-w-md mx-auto">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center mb-1">Ramas y reactivación</p>

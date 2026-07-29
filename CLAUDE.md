@@ -1411,6 +1411,46 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       de módulo. **Es un patrón fácil de repetir: nunca declarar un componente dentro de otro si
       envuelve inputs.** Verificado tecleando letra por letra y comprobando `document.activeElement`.
 
+### 2026-07-29
+
+41. **Interacción: cada canal solo mide lo que puede medir + flujo de trabajo en el diagrama**
+    (versión `1.6.0`)
+    - **`INTERACCIONES_POR_CANAL` (`src/lib/interacciones.ts`) se recortó**: Correo queda en
+      `Abre / No abre / Clic / No clic` (fuera "Visita landing"), y **WhatsApp y SMS quedan solo en
+      `Clic`** (fuera "No clic" y "Visita landing"). `INTERACCION_OPCIONES` **conserva las 5** a
+      propósito — es la lista de "qué es estándar", y sacar una de ahí haría que lo ya guardado
+      reapareciera como chip personalizado en vez de simplemente dejar de ofrecerse (ese es el
+      comentario que ya vivía en `InteraccionRow`).
+    - Como la regla vive en el lib compartido (punto 39 / `1.4.1`), el recorte aplica a la vez al
+      **wizard** (deja de ofrecer esos chips) y al **diagrama** (`interaccionesValidas` filtra lo
+      ya guardado en lectura). **Sin migración de base**, mismo patrón que `stripApprovalNodes`.
+    - **Nuevo `accionDeInteraccion(canal, interaccion)`** en el mismo lib: tabla de qué tarea deja
+      cada interacción y sobre qué roles cae. Hoy solo el correo dispara algo, y solo por el lado
+      negativo: `No abre` y `No clic` → copy alterno + reenvío, a cargo de **Copywriter** (redacta)
+      y **Gestor de canales** (envía). Todo lo demás —incluido el clic de WhatsApp/SMS, que el
+      usuario dijo explícitamente que no dispara acciones— sale como "Se mide, no dispara acciones".
+      **El reparto Copywriter + Gestor de canales es interpretación mía** del pedido ("deben alojar
+      tareas a los copys y al gestor de canales"): el usuario nombró explícitamente la tarea de copy
+      y los dos roles, no la división entre ellos.
+    - **Es documentación dentro del diagrama, NO automatización**: no crea `FabricaBriefItem`s ni
+      nodos de Flujo de trabajo, y **no toca nada del Dashboard de métricas** (pedido explícito:
+      "estos cambios solo aplican al diagrama"). Si algún día se quiere que esas tareas se creen
+      solas, el lugar es `activateNextStage`/`addFabricaBriefs`, no esta tabla.
+    - Render: bloque "Flujo de trabajo de la interacción" **debajo del hexágono**, dentro del `ref`
+      que exporta el PNG (verificado: sale en la imagen). Se puso ahí y no como sub-cajas alrededor
+      del nodo (como sí hace Atracción con `atrSubBoxes`): el nodo de Interacción cae arriba a la
+      derecha del hexágono y el abanico se salía del lienzo de `size` px. Se agrupa **por canal, no
+      por toque** — dos correos con las mismas interacciones dejan la misma tarea.
+    - Verificado con Playwright (sesión y `factory_projects` stubbeados, **cero escrituras a la base
+      real**) con datos sucios a propósito (un Correo con "Visita landing", un WhatsApp con "No
+      clic", un SMS con "No clic", un Call Center con "Clic" + una personalizada): los chips del
+      nodo quedan `Correo: Abre, No abre, Clic, No clic` / `WhatsApp: Clic` / `SMS: Clic` /
+      `Call Center: Agenda cita`; el bloque de flujo muestra la tarea de copy solo en los dos
+      negativos del correo y con los dos roles; WhatsApp/SMS no mencionan ningún rol; sin scroll
+      horizontal y sin errores de consola. En el wizard se confirmó que las filas de Interacción
+      ofrecen exactamente esos chips y que "Visita landing" **no** reaparece como personalizado.
+      Typecheck con el único error preexistente (`CreateProjectWizard.tsx:492`); build limpio.
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
