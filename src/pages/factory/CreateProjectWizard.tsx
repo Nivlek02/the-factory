@@ -964,8 +964,17 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   const updateFabricaLoop = (id: string, field: string, value: string) =>
     setFabricaBriefs((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)));
 
+  /**
+   * Cerrar el asistente **conserva el borrador** a propósito: es lo que permite retomar la campaña
+   * después (el aviso "Campaña sin terminar" de la lista). Antes esto llamaba a `clearDraft()`, así
+   * que cerrar —incluso sin querer, con un clic fuera del diálogo— borraba todo lo escrito y el
+   * aviso no llegaba a aparecer nunca. El borrador solo se descarta al **crear** la campaña
+   * (`handleCreate`) o al pulsar "Descartar" en ese aviso.
+   *
+   * El `reset()` limpia el formulario en memoria, no el borrador: al reabrir, el efecto de
+   * restauración lo vuelve a cargar desde localStorage.
+   */
   const close = () => {
-    clearDraft();
     onOpenChange(false);
     if (!isEditing) setTimeout(reset, 300);
   };
@@ -1052,7 +1061,15 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
 
   return (
     <Dialog open={open} onOpenChange={(v) => v ? onOpenChange(v) : close()}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      {/* Un clic fuera del diálogo NO lo cierra: es un formulario largo y perder el paso por un
+          clic despistado es demasiado fácil. Se cierra a propósito, con la X o con "Cancelar".
+          Radix dispara el cierre por dos vías distintas (`pointerDownOutside` para el clic y
+          `interactOutside` para foco/táctil), así que hay que frenar las dos. */}
+      <DialogContent
+        className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar campaña' : 'Nueva campaña'}</DialogTitle>
         </DialogHeader>

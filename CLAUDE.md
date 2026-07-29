@@ -1625,6 +1625,24 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       solo esas dos; los códigos `C1`/`C2` en la lista del nodo y en el título del diálogo; y el PNG
       exportado medido byte a byte desde su cabecera IHDR. Cero errores de consola.
 
+48. **Fix: el borrador se borraba al cerrar el asistente + el clic fuera lo cerraba** (`1.8.1`)
+    - **Causa del aviso que nunca salía** (reportado tras el punto 47): `close()` en
+      `CreateProjectWizard` llamaba a `clearDraft()`. Ese `close()` corre en **cualquier** cierre —
+      Cancelar, la X, Escape y el clic fuera —, así que el borrador se autoguardaba y se destruía
+      un segundo después. El aviso de la lista estaba bien; nunca había nada que mostrar. Ahora el
+      borrador solo se descarta al **crear** la campaña (`handleCreate`) o desde "Descartar".
+      `reset()` se mantiene: limpia el formulario en memoria, no el `localStorage`.
+    - **El clic fuera ya no cierra el diálogo**: `onPointerDownOutside` + `onInteractOutside`
+      preventivos en el `DialogContent` del wizard. **Hay que frenar los dos** — Radix dispara el
+      cierre por vías distintas según sea puntero o foco/táctil. `DialogContent` (shadcn) reenvía
+      `...props` a `DialogPrimitive.Content`, así que no hizo falta tocar el componente base, y ya
+      trae una X, así que nadie queda encerrado. **Escape se dejó vivo a propósito**: es una acción
+      deliberada y con el fix de arriba ya no pierde nada.
+    - Verificado con Playwright el ciclo completo: escribir → clic fuera (dos veces, en zonas
+      distintas del velo) → sigue abierto y con el texto → Cancelar → **el aviso aparece en el
+      sidebar con el nombre y "hace un momento"** → Continuar → el formulario vuelve con lo escrito
+      → Descartar → el aviso se va y `localStorage` queda limpio. Cero errores de consola.
+
 ### Estado del correo (2026-07-29) — FUNCIONANDO
 
 Transporte: **Gmail por SMTP, único**. Secrets: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `APP_URL`.

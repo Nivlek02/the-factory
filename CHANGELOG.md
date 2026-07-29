@@ -25,6 +25,20 @@ en ningún otro archivo.
 
 ---
 
+## [1.8.1] — 2026-07-29
+
+### Corregido
+
+- **El aviso de "campaña sin terminar" nunca aparecía.** El borrador se guardaba mientras llenabas
+  el formulario, pero **cerrar el asistente lo borraba de inmediato** — así que no quedaba nada que
+  retomar. Ahora cerrar conserva lo escrito, y el borrador solo se descarta al crear la campaña o al
+  pulsar "Descartar" en el aviso.
+- **Un clic fuera del formulario ya no lo cierra.** Era demasiado fácil perder el paso con un clic
+  despistado en medio de una campaña larga. Se cierra a propósito: con la X o con "Cancelar".
+  (Y aunque se cierre, ya no se pierde nada: el borrador queda guardado.)
+
+---
+
 ## [1.8.0] — 2026-07-29
 
 ### Agregado
