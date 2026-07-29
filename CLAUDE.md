@@ -1496,6 +1496,43 @@ Repo: `Nivlek02/the-factory`, rama de producción `master`.
       blanco. Y las pestañas de la campaña **no son `role="tab"`** (hay que buscarlas por texto);
       las del diálogo de la tarea sí lo son.
 
+43. **La tarea de Diseño se renombra al nacer** (versión `1.7.1`) — `AUTO_ADVANCE.diseno` pasó de
+    `{}` (heredar el nombre tal cual) a `{ renombrar: nombreDePieza }`. `nombreDePieza`
+    (`StrategyBriefPanels.tsx`) convierte `Redactar copy para Correo — Convocatoria` en
+    `Diseño de pieza para Correo — Convocatoria`; si el copy no matchea ese patrón (quick-add con
+    título libre en el nodo Copys) antepone `Diseño de pieza — ` sin tocar el texto, para no perder
+    lo que la persona escribió. El entregable original **no** se renombra y las tareas de diseño ya
+    creadas se quedan como están (no hay migración; el nombre solo se decide al crearlas).
+    - Verificado con Playwright (stub, cero escrituras reales) con los 3 casos —canal con ángulo,
+      canal sin ángulo y título libre— más que el copy original conserve su nombre en Copys y que
+      la tarea de diseño no aparezca dentro de ese nodo. Typecheck con el único error preexistente;
+      build limpio.
+    - **Detalle del stub, para la próxima:** `BriefDialog` avanza solo al siguiente entregable de la
+      cola al aprobar (`queue`/`onAdvance`), así que para aprobar varios no hay que volver a abrir
+      la fila — basta con clicar "Aprobar" seguido.
+
+### Estado del correo (revisado el 2026-07-29)
+
+**El sistema YA está en producción y funcionando.** Verificado contra la cuenta real:
+`notificar-correo` está `ACTIVE` (v3), y los secrets `RESEND_API_KEY`, `RESEND_MODO_PRUEBA` y
+`APP_URL` están puestos. Que lleguen "correos de prueba" es exactamente el sistema andando — solo
+que **`RESEND_MODO_PRUEBA` redirige TODO a una sola dirección**.
+
+**Lo que falta NO es código ni despliegue: es verificar el dominio en Resend.** Comprobado por DNS
+el 2026-07-29: `camarabaq.org.co` **no tiene los registros de Resend** (`resend._domainkey` no
+existe, tampoco el subdominio `send.`; el SPF de la raíz apunta a Outlook/emsd1/amazonses).
+Sin dominio verificado Resend solo deja enviar desde `onboarding@resend.dev` **y solo a la
+dirección dueña de la cuenta** — así que **borrar `RESEND_MODO_PRUEBA` hoy dejaría a todo el equipo
+sin recibir nada** (403 por cada destinatario). Por eso no se tocó.
+
+Cuando el dominio esté verificado en https://resend.com/domains, son dos comandos y **cero cambios
+de código**:
+
+```
+npx supabase secrets set RESEND_FROM="Tremu <notificaciones@camarabaq.org.co>" --project-ref yvzpfdwswmjcnipcgclg
+npx supabase secrets unset RESEND_MODO_PRUEBA --project-ref yvzpfdwswmjcnipcgclg
+```
+
 ## Rediseño visual "Tremu ISO" — CERRADO
 
 El plan detallado que vivía acá se ejecutó (punto 28) y el **PR #1 se mergeó el 2026-07-11**,
@@ -1519,10 +1556,13 @@ El detalle de las decisiones está en el punto 28 y en el historial del PR #1.
   - **Plan de Resend:** gratis = 3.000 correos/mes, **tope de 100/día**, 1 dominio. El siguiente
     es $20/mes por 50.000. El sistema agrupa **un correo por rol**, no por tarea (crear una
     campaña son ~5-6 correos), así que el tope diario queda muy holgado.
-- [ ] **Verificar el dominio en Resend para que el equipo reciba de verdad** — hoy se eligió
-  arrancar SIN dominio, así que todo va redirigido a una sola dirección (`RESEND_MODO_PRUEBA`) y
-  **nadie del equipo recibe sus notificaciones**. Al verificar `camarabaq.org.co` por DNS: apuntar
-  `RESEND_FROM` al dominio y **borrar `RESEND_MODO_PRUEBA`**. Sin cambios de código.
+- [ ] **BLOQUEANTE del correo — verificar el dominio en Resend.** Es lo ÚNICO que falta: la función
+  ya está desplegada y andando (ver "Estado del correo" arriba). Confirmado por DNS el 2026-07-29
+  que `camarabaq.org.co` **no tiene los registros de Resend**, así que todo sigue redirigido a una
+  sola dirección vía `RESEND_MODO_PRUEBA` y **nadie del equipo recibe sus notificaciones**.
+  **No borrar ese secret antes de verificar el dominio** o los envíos rebotan con 403 y no llega
+  nada a nadie. Pasos: agregar los DNS que da https://resend.com/domains → `supabase secrets set
+  RESEND_FROM=...` → `supabase secrets unset RESEND_MODO_PRUEBA`. Sin cambios de código.
   Bonus: Resend también da credenciales SMTP → destraba el "olvidé mi contraseña" de más abajo.
 - [ ] **Recordatorios por fecha (semáforo) por correo** — quedó FUERA del punto 33. No puede salir
   del navegador: necesita un cron en el servidor (pg_cron o Vercel Cron llamando a una edge

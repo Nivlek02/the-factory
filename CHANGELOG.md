@@ -25,6 +25,18 @@ en ningún otro archivo.
 
 ---
 
+## [1.7.1] — 2026-07-29
+
+### Cambiado
+
+- **La tarea que se crea en Diseño ya no se llama "Redactar copy para…".** Al aprobar un copy, la
+  tarea que aparece en el nodo de Diseño pasa a llamarse **"Diseño de pieza para {canal} — {ángulo}"**,
+  conservando el canal y el ángulo del copy original. Un copy creado a mano con otro título queda
+  como "Diseño de pieza — {título}", sin perder lo que se escribió. El copy original no cambia de
+  nombre y las tareas de diseño que ya existían se quedan como están.
+
+---
+
 ## [1.7.0] — 2026-07-29
 
 ### Agregado

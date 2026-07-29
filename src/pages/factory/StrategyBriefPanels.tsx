@@ -50,16 +50,29 @@ const formatDateTime = (iso: string) =>
  *  resto de copys no debe disparar el registro de Call Center. Ver también `briefsForNode`. */
 const isCallCenterGuion = (tarea: string) => /guion/i.test(tarea) && /call center/i.test(tarea);
 
+/** Nombre de la tarea de diseño a partir del copy que la disparó: "Redactar copy para Correo —
+ *  Convocatoria" pasa a "Diseño de pieza para Correo — Convocatoria", conservando el canal y el
+ *  ángulo. Un copy creado a mano desde el quick-add del nodo (título libre) no matchea el patrón:
+ *  ahí se antepone el prefijo sin tocar el texto, para no perder lo que la persona escribió. */
+const nombreDePieza = (tarea: string) => {
+  const m = tarea.match(/^Redactar\s+(?:el\s+)?copy\s+(?:para|de)\s+(.+)$/i);
+  return m ? `Diseño de pieza para ${m[1]}` : `Diseño de pieza — ${tarea}`;
+};
+
 /**
  * Etapas cuya aprobación puede activar automáticamente una tarea en el siguiente nodo de la
  * cadena (ver `activateNextStage`). Copys se bifurca hacia Diseño, Call Center y la landing.
  *
- * `tarea` fija el nombre de la tarea creada; sin él se hereda el del entregable aprobado (que es
- * lo que se quiere en Diseño: la pieza se llama igual que su copy). `unico` = un solo checkpoint
- * por nodo, sin importar cuántos entregables se aprueben aguas arriba.
+ * `tarea` fija un nombre igual para todas; `renombrar` lo deriva del entregable aprobado (Diseño:
+ * la pieza se llama como su copy, pero anunciando que ahora es un diseño). Sin ninguno de los dos
+ * se hereda el nombre tal cual. `unico` = un solo checkpoint por nodo, sin importar cuántos
+ * entregables se aprueben aguas arriba.
  */
-const AUTO_ADVANCE: Partial<Record<StrategyNode['stageType'], { tarea?: string; unico?: boolean }>> = {
-  diseno: {},
+const AUTO_ADVANCE: Partial<Record<
+  StrategyNode['stageType'],
+  { tarea?: string; renombrar?: (tarea: string) => string; unico?: boolean }
+>> = {
+  diseno: { renombrar: nombreDePieza },
   callcenter: { tarea: 'Registrar realización — Call Center', unico: true },
   landing_formulario: { tarea: 'Formulario de la landing', unico: true },
   landing: { tarea: 'Cargue de la landing', unico: true },
@@ -102,7 +115,7 @@ const activateNextStage = (project: FactoryProject, currentNodeId: string, brief
     toAdd.push({
       roleId: n.roleId ?? n.roleLabel!,
       roleLabel: n.roleLabel!,
-      tarea: cfg.tarea ?? brief.tarea,
+      tarea: cfg.tarea ?? cfg.renombrar?.(brief.tarea) ?? brief.tarea,
       currentNodeId: n.id,
       workflowStatus: 'pending',
       // La fecha viaja por la cadena: la pieza de diseño se necesita para la misma acción que su
