@@ -25,6 +25,17 @@ en ningún otro archivo.
 
 ---
 
+## [1.8.2] — 2026-07-29
+
+### Quitado
+
+- **Se quitó el bloque "Flujo de trabajo de la interacción"** que aparecía debajo del diagrama del
+  ciclo (pestaña Loop). Era una tabla informativa —qué tarea deja cada interacción y sobre qué
+  roles cae— que no creaba tareas reales; el diagrama queda con el hexágono y las ramas. Los chips
+  de interacciones sobre el nodo de Interacción **siguen ahí**.
+
+---
+
 ## [1.8.1] — 2026-07-29
 
 ### Corregido
