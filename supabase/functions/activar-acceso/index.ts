@@ -34,6 +34,11 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+/** Vuelve literal un valor que va a un `ilike`: `%` (cualquier texto), `_` (un carácter) y `\`
+ *  (el escape) dejan de ser comodines. Sin esto, el "correo" que escribe quien activa su cuenta
+ *  es en realidad un PATRÓN de búsqueda. */
+const comoLiteral = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405);
@@ -75,16 +80,25 @@ serve(async (req) => {
   const email = (body.email ?? '').trim().toLowerCase();
   const password = body.password ?? '';
   if (!email) return json({ error: 'Escribe tu correo.' }, 400);
+  // Forma mínima de correo. Además de atajar erratas, bloquea el `%`: ver `comoLiteral`.
+  if (!/^[^\s@%]+@[^\s@%]+\.[^\s@%]{2,}$/.test(email)) {
+    return json({ error: 'Escribe un correo válido.' }, 400);
+  }
   if (password.length < MIN_PASSWORD) {
     return json({ error: `La contraseña debe tener al menos ${MIN_PASSWORD} caracteres.` }, 400);
   }
 
   // ── 3. ¿Está en el directorio? ──
-  // El correo se compara sin distinguir mayúsculas: en la tabla están escritos a mano.
+  // El correo se compara sin distinguir mayúsculas: en la tabla están escritos a mano. Se sigue
+  // usando `ilike` por eso mismo (y no `eq`), pero el valor va **escapado**: `%` y `_` son
+  // comodines para `ilike`, así que sin escaparlos un patrón como '%netsat%' que matcheara una
+  // sola fila permitía activar la cuenta de un compañero SIN saber su correo — y la respuesta
+  // devolvía su nombre. El `_` se escapa porque es legal dentro de un correo real
+  // (maria_jose@…): no se puede rechazar, hay que tratarlo como texto.
   const { data: fila, error: filaError } = await admin
     .from('usuarios_roles')
     .select('id, user_id, email, nombre_completo')
-    .ilike('email', email)
+    .ilike('email', comoLiteral(email))
     .maybeSingle();
 
   if (filaError) return json({ error: 'No se pudo consultar el directorio.' }, 500);

@@ -52,6 +52,23 @@ Zustand + Supabase.
 - **`activacion_config`**: RLS activa y **sin ninguna policy** → inalcanzable desde el navegador. La
   edge function la lee porque el service_role bypassea RLS.
 - `profiles` y `user_roles` quedaron **vacías y muertas** (enum de roles viejo). No se borraron.
+- **Storage `task-attachments`**: subir y borrar solo `authenticated`, pero la lectura es
+  **`{public}`** — cualquiera con la URL de un archivo lo abre sin cuenta. **Decisión consciente del
+  usuario (2026-07-29): se deja así.** Las rutas llevan un id aleatorio, así que no se adivinan,
+  pero las URLs quedan guardadas en las campañas y en el Markdown exportado. Cerrarlo es pasar el
+  bucket a privado y cambiar `getPublicUrl` → `createSignedUrl` resolviendo al mostrar (las URLs ya
+  guardadas dejarían de servir directo).
+
+**Auditoría del 2026-07-29** (`pg_policies` sobre `public` y `storage`): **no queda ninguna policy
+con `anon`**. La única `{public}` es el SELECT de los adjuntos, ya explicado.
+
+**Lección de esa auditoría — mirar las policies que YA hay antes de crear otras.** La migración
+`20260729000000` asumió que `tasks`/`task_comments` tenían las policies `anon` de `20260106024406`;
+Postgres avisó con NOTICE que **no existían** (esa migración vieja nunca llegó a este proyecto:
+esas dos tablas estaban restringidas desde `20251217203726`). Quedaron dos juegos equivalentes, y
+eso **rompió una restricción real**: `task_comments` tenía `"Authenticated users can edit recent
+comments"` (solo 10 minutos) y un `USING (true)` al lado la anulaba — **entre policies permisivas
+gana la más laxa**. Se corrigió con `20260729010000`, que borra las duplicadas.
 
 **Dos reglas que ya costaron bugs:**
 1. Un INSERT rechazado por RLS **falla en silencio** — solo se ve en la consola del navegador.
@@ -294,6 +311,17 @@ cargando para siempre. `motivoDelError()` comprueba `instanceof Response` antes 
   secuestrar una cuenta activa ni cambiarle la clave a nadie), y nunca acepta un rol desde el body.
   Si el `update` que enlaza falla, **borra el usuario recién creado** para no dejar una cuenta que
   existe en auth pero que el directorio no reconoce.
+- **El correo que se escribe ahí va a un `ilike`, o sea que era un PATRÓN de búsqueda.** `%` y `_`
+  son comodines: un `%netsat%` que matcheara una sola fila permitía activar la cuenta de un
+  compañero **sin saber su correo**, y la respuesta devolvía su nombre. Hoy se valida la forma del
+  correo (que además bloquea el `%`) y el valor se escapa con `comoLiteral()`. Se sigue usando
+  `ilike` y no `eq` porque en la tabla los correos están escritos a mano y pueden traer mayúsculas.
+  **Regla general: cualquier texto de usuario que llegue a un `.ilike()`/`.like()` hay que
+  escaparlo.** El `_` se escapa en vez de rechazarse porque es legal en un correo real.
+- La pantalla distingue "ese correo no está en el equipo" (404) de "esa cuenta ya está activa"
+  (409). Eso permite tantear qué correos están en el directorio, pero se dejó a propósito: sin esos
+  mensajes, quien se equivoca de correo no tiene forma de saber qué pasó. La mitigación es cerrar
+  la ventana pronto.
 - **La ventana se administra SOLO desde el SQL Editor de Supabase** (la tabla no tiene policies):
   ```sql
   update public.activacion_config set activo_hasta = '2026-08-07 23:59:59-05', updated_at = now();
@@ -386,6 +414,10 @@ build).
 
 Solo lo que sigue explicando el estado actual. Lo anterior está en el historial de git.
 
+- **2026-07-29 (v1.9.1)** — se cerró el comodín del `ilike` en `activar-acceso` (permitía activar la
+  cuenta de un compañero sin saber su correo) y se quitaron las policies duplicadas que anularon la
+  ventana de 10 minutos de edición de comentarios. Auditoría de `pg_policies`: cero policies con
+  `anon`.
 - **2026-07-29 (v1.9.0) — revisión de seguridad.** Se cerró el acceso anónimo a
   `factory_projects`/`tasks`/`task_comments`; se saneó el HTML con DOMPurify; guardia de escritura
   obsoleta + relectura al volver a la pestaña; `roleId` correcto en las tareas que crea
@@ -411,12 +443,16 @@ Solo lo que sigue explicando el estado actual. Lo anterior está en el historial
 ## Pendientes
 
 ### Hay que hacerlo (requiere tus credenciales)
-- [ ] **Aplicar la migración `20260729000000_cerrar-acceso-anonimo.sql`** a producción
-      (`supabase db push --linked`). **Hasta que se aplique, las campañas siguen abiertas a
-      internet.** Justo después conviene confirmar en producción que crear/editar una campaña
-      guarda bien — un rechazo de RLS falla en silencio.
-- [ ] **Redesplegar `notificar-correo`** (`supabase functions deploy notificar-correo`) para que
-      entre la limpieza de CR/LF. El correo funciona igual sin esto.
+- [ ] **Aplicar la migración `20260729010000_quitar-policies-duplicadas.sql`**
+      (`supabase db push --linked`). Devuelve la ventana de 10 minutos para editar comentarios, que
+      la migración anterior anuló sin querer.
+- [ ] **Redesplegar `activar-acceso`** (`supabase functions deploy activar-acceso`) para que entre
+      el escape del `ilike`. **Hasta que se despliegue, el comodín sigue vivo en producción.**
+- [x] ~~Aplicar `20260729000000_cerrar-acceso-anonimo.sql`~~ — hecho el 2026-07-29 y **verificado**:
+      sin sesión, SELECT devuelve 0 filas e INSERT da `42501` en las 3 tablas, y `pg_policies` no
+      muestra ninguna policy con `anon`.
+- [x] ~~Redesplegar `notificar-correo`~~ — hecho y verificado (401 sin token, con token basura y con
+      la key anónima sin sesión).
 
 ### Credenciales que quedaron expuestas en chats
 - [ ] Cambiar la contraseña de **`kelvin.trujillo@netsat.co`** (se compartió el 2026-07-29 para
@@ -441,6 +477,12 @@ Solo lo que sigue explicando el estado actual. Lo anterior está en el historial
 - [ ] Considerar **SMTP propio en Supabase Auth**: sin eso no habrá "olvidé mi contraseña".
       Verificar un dominio destraparía esto y de paso permitiría un remitente institucional en vez
       de un gmail (es un registro DNS que **no toca el correo de nadie**).
+
+### Decidido, no hacer (para que nadie lo "arregle" de sorpresa)
+- **Los adjuntos siguen públicos de lectura** — decisión del usuario el 2026-07-29. Ver Storage
+  arriba.
+- **Sin cabeceras de seguridad / CSP en `vercel.json`** todavía: se explicó la opción y quedó
+  pendiente de decisión, no descartada.
 
 ### Deuda técnica y verificaciones
 - [ ] **`react-router` 6.30.x tiene un aviso moderado** que solo se cierra subiendo a **7.x**

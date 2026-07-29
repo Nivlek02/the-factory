@@ -25,6 +25,21 @@ en ningún otro archivo.
 
 ---
 
+## [1.9.1] — 2026-07-29
+
+### Seguridad
+
+- **La pantalla de activación de cuenta ya no acepta comodines en el correo.** Lo que se escribía ahí
+  se usaba como *patrón de búsqueda*, así que con algo como `%netsat%` se podía activar la cuenta de
+  un compañero **sin saber su correo**. Ahora el correo tiene que ser el exacto. Quien se active
+  normalmente no nota ningún cambio.
+  *(Requiere redesplegar la función `activar-acceso`.)*
+- **Se restauró el límite de 10 minutos para editar un comentario.** La migración anterior lo había
+  anulado sin querer, dejando que cualquiera editara cualquier comentario en cualquier momento.
+  *(Requiere aplicar la migración `20260729010000`.)*
+
+---
+
 ## [1.9.0] — 2026-07-29
 
 Revisión de seguridad y de bugs de toda la app.
