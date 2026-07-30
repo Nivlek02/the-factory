@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useFactoryStore } from '@/store/factoryStore';
 import { useAuthStore } from '@/store/authStore';
 import { flattenCampaignTasks, isTaskOwnedBy, compareByUrgencia, CampaignTask } from '@/lib/campaignTasks';
@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { format, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { format, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { CalendarIcon, Download, BarChart3, ListTodo, Users, Layers, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -76,12 +76,14 @@ const ReportsPage = () => {
 
   const filteredTasks = useMemo(() => {
     const filtered = allTasks.filter((task) => {
-      // Date filter (sobre la fecha de entrega de la acción)
-      if (dateFrom && dateTo) {
+      // Filtro por fecha de entrega. Funciona con UNA sola fecha: antes exigía las dos, así que
+      // elegir solo "Desde" (o solo "Hasta") no filtraba nada y no lo decía en ningún lado —
+      // parecía que el calendario estuviera roto.
+      if (dateFrom || dateTo) {
         const d = task.fechaAccion ? parseFecha(task.fechaAccion) : null;
-        if (!d || !isWithinInterval(d, { start: startOfDay(dateFrom), end: endOfDay(dateTo) })) {
-          return false;
-        }
+        if (!d) return false;
+        if (dateFrom && d < startOfDay(dateFrom)) return false;
+        if (dateTo && d > endOfDay(dateTo)) return false;
       }
 
       if (projectFilter !== 'all' && task.projectId !== projectFilter) return false;
@@ -98,6 +100,15 @@ const ReportsPage = () => {
     });
     return filtered.sort(compareByUrgencia);
   }, [allTasks, dateFrom, dateTo, projectFilter, statusFilter, roleFilter, userFilter, users]);
+
+  // Al filtrar, la página actual puede quedar fuera de rango (estabas en la 4 y el filtro dejó
+  // una sola). Los filtros de arriba resetean la página al cambiar, pero los dos calendarios no
+  // lo hacían y la tabla quedaba **en blanco**: la fila de "no hay tareas" mira el total, no la
+  // página, así que no se veía ni un dato ni una explicación. Esto lo cubre pase lo que pase.
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filteredTasks.length / itemsPerPage));
+    if (allTasksPage > totalPages) setAllTasksPage(1);
+  }, [filteredTasks.length, itemsPerPage, allTasksPage]);
 
   // Stats
   const stats = useMemo(() => {
@@ -150,7 +161,17 @@ const ReportsPage = () => {
 
   const statusClass = (status: BriefWorkflowStatus) => BRIEF_STATUS_META[status].cls;
 
-  const csvCell = (v: string) => `"${(v ?? '').replace(/"/g, '""')}"`;
+  /**
+   * Celda de CSV. Además de escapar las comillas, **neutraliza las fórmulas**: Excel y Sheets
+   * ejecutan cualquier celda que empiece por `=`, `+`, `-` o `@`, y los títulos de las tareas los
+   * escribe el equipo. Un `=HYPERLINK(...)` o un `=IMPORTXML(...)` en el nombre de una tarea se
+   * ejecuta en la máquina de quien abra el reporte. Se antepone un apóstrofo, que es la marca
+   * estándar de "esto es texto" y no se ve como parte del dato.
+   */
+  const csvCell = (v: string) => {
+    const s = (v ?? '').replace(/"/g, '""');
+    return /^[=+\-@\t\r]/.test(s) ? `"'${s}"` : `"${s}"`;
+  };
 
   const exportToCSV = () => {
     const headers = ['Tarea', 'Campaña', 'Cliente', 'Rol', 'Responsables', 'Estado', 'Fecha de entrega', 'Estratega'];
@@ -166,10 +187,14 @@ const ReportsPage = () => {
     ]);
     const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
     const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    link.href = url;
     link.download = `reporte_campanas_${format(new Date(), 'yyyy-MM-dd')}.csv`;
     link.click();
+    // El blob queda vivo hasta que se recargue la página si no se revoca; con varias descargas
+    // seguidas se van acumulando reportes enteros en memoria.
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -217,7 +242,12 @@ const ReportsPage = () => {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
-                    <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} locale={es} />
+                    <Calendar
+                      mode="single"
+                      selected={dateFrom}
+                      onSelect={(d) => { setDateFrom(d); setAllTasksPage(1); }}
+                      locale={es}
+                    />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -239,7 +269,12 @@ const ReportsPage = () => {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
-                    <Calendar mode="single" selected={dateTo} onSelect={setDateTo} locale={es} />
+                    <Calendar
+                      mode="single"
+                      selected={dateTo}
+                      onSelect={(d) => { setDateTo(d); setAllTasksPage(1); }}
+                      locale={es}
+                    />
                   </PopoverContent>
                 </Popover>
               </div>

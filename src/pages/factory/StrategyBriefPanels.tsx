@@ -31,6 +31,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Plus, MessageSquare, FileText, Image as ImageIcon, History, Calendar as CalendarIcon, CalendarClock, Trash2 } from 'lucide-react';
 import { calcularUrgencia, formatFechaCorta, formatFechaLarga } from '@/lib/urgencia';
+import {
+  PREFIJO_ENVIO, PREFIJO_PAUTA, camposDeMetricas, canalDeEnvio, canalDeMetricas, canalDePauta,
+  esTareaDeMetricas, tareaDeMetricasPara, yaTieneMetricas,
+} from '@/lib/metricas';
 import { notificarEnRevision, notificarAprobada, notificarCorreccion } from '@/services/emailNotifications';
 import { cn } from '@/lib/utils';
 import { esUrlHttp } from '@/lib/urlSegura';
@@ -54,6 +58,10 @@ const formatDateTime = (iso: string) =>
  *  resto de copys no debe disparar el registro de Call Center. Ver también `briefsForNode`. */
 const isCallCenterGuion = (tarea: string) => /guion/i.test(tarea) && /call center/i.test(tarea);
 
+/** El guion del video también vive dentro de Copys (mismo roleLabel Copywriter), pero pertenece
+ *  solo a la rama de Video: no debe disparar Diseño, igual que el guion de Call Center. */
+const isVideoGuion = (tarea: string) => /guion/i.test(tarea) && /\bvideo\b/i.test(tarea);
+
 /** Nombre de la tarea de diseño a partir del copy que la disparó: "Redactar copy para Correo —
  *  Convocatoria" pasa a "Diseño de pieza para Correo — Convocatoria", conservando el canal y el
  *  ángulo. Un copy creado a mano desde el quick-add del nodo (título libre) no matchea el patrón:
@@ -61,6 +69,17 @@ const isCallCenterGuion = (tarea: string) => /guion/i.test(tarea) && /call cente
 const nombreDePieza = (tarea: string) => {
   const m = tarea.match(/^Redactar\s+(?:el\s+)?copy\s+(?:para|de)\s+(.+)$/i);
   return m ? `Diseño de pieza para ${m[1]}` : `Diseño de pieza — ${tarea}`;
+};
+
+/** Nombre de la tarea de producción a partir del guion aprobado: "Redactar guion de video —
+ *  Testimonial" pasa a "Producir video — Testimonial". Un guion creado a mano desde el quick-add
+ *  no matchea el patrón: ahí se antepone el prefijo sin tocar lo que la persona escribió. */
+const nombreDeVideo = (tarea: string) => {
+  const m = tarea.match(/^Redactar\s+(?:el\s+)?guion\s+(?:de|para)\s+video\s*(?:—\s*(.+))?$/i);
+  if (!m) return `Producir video — ${tarea}`;
+  // El guion puede no traer ángulo ("Redactar guion de video" a secas): ahí la producción se
+  // llama igual de simple, en vez de "Producir video — Redactar guion de video".
+  return m[1] ? `Producir video — ${m[1]}` : 'Producir video';
 };
 
 /**
@@ -77,6 +96,9 @@ const AUTO_ADVANCE: Partial<Record<
   { tarea?: string; renombrar?: (tarea: string) => string; unico?: boolean }
 >> = {
   diseno: { renombrar: nombreDePieza },
+  // Video NO es `unico`: cada guion aprobado es un video distinto que hay que producir, a
+  // diferencia del registro de Call Center, que es un solo checkpoint por campaña.
+  video: { renombrar: nombreDeVideo },
   callcenter: { tarea: 'Registrar realización — Call Center', unico: true },
   landing_formulario: { tarea: 'Formulario de la landing', unico: true },
   landing: { tarea: 'Cargue de la landing', unico: true },
@@ -94,8 +116,11 @@ const roleIdDeEtiqueta = (label: string): string =>
  *  (Diseño, Call Center y landing) no se cruzan: cada entregable dispara solo la suya. */
 const avanzaDesde = (stageType: StrategyNode['stageType'], tarea: string): boolean => {
   if (stageType === 'callcenter') return isCallCenterGuion(tarea);
+  if (stageType === 'video') return isVideoGuion(tarea);
   if (stageType === 'landing_formulario') return isLandingCopy(tarea);
-  if (stageType === 'diseno') return !isCallCenterGuion(tarea) && !isLandingCopy(tarea);
+  if (stageType === 'diseno') {
+    return !isCallCenterGuion(tarea) && !isLandingCopy(tarea) && !isVideoGuion(tarea);
+  }
   return true; // landing ← landing_formulario: cadena lineal, sin bifurcación
 };
 
@@ -172,6 +197,9 @@ export const briefsForNode = (project: FactoryProject, node: StrategyNode): Fabr
     // activateNextStage), así que este texto es solo una red de seguridad. El guion de la llamada
     // vive en Copys (roleLabel Copywriter), no aquí.
     if (node.stageType === 'callcenter') return /call center/i.test(b.tarea) && !isCallCenterGuion(b.tarea);
+    // Igual que Call Center: la tarea de producción siempre lleva currentNodeId (la crea
+    // activateNextStage), así que esto es solo red de seguridad. El GUION vive en Copys.
+    if (node.stageType === 'video') return /\bvideo\b/i.test(b.tarea) && !isVideoGuion(b.tarea);
     return true;
   });
 
@@ -718,6 +746,94 @@ const BriefDialog = ({
   );
 };
 
+// ───────────────────────────────────────────────────────────────────────────
+// Métricas — el entregable de "Recolectar métricas de X".
+//
+// Estas tareas nacen con el `currentNodeId` del nodo que las generó (Envíos o Pauta), así que
+// aparecen en la lista de ese nodo. Antes no tenían diálogo propio acá y se abrían con el de su
+// vecino: la de métricas de un correo preguntaba "¿Enviado?" y la de una pauta preguntaba
+// "¿Publicada?" — y esta última, al guardar, generaba una tarea llamada "Recolectar métricas de
+// Recolectar métricas de Facebook". El formulario real solo existía en la pestaña Equipo.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** ¿Tiene algún número cargado? Decide el badge: una tarea de métricas sin datos sigue pendiente
+ *  aunque alguien la haya abierto. */
+const tieneMetricas = (brief: FabricaBriefItem) =>
+  Object.values(brief.deliverableMetricas ?? {}).some((v) => (v ?? '').trim() !== '');
+
+const MetricsStatusBadge = ({ brief }: { brief: FabricaBriefItem }) =>
+  tieneMetricas(brief) ? (
+    <Badge variant="outline" className="border-0 bg-state-done-bg text-state-done text-[10px] px-1.5 h-4">Registradas</Badge>
+  ) : (
+    <Badge variant="outline" className="border-0 bg-muted text-muted-foreground text-[10px] px-1.5 h-4">Pendiente</Badge>
+  );
+
+const MetricsEditDialog = ({
+  project, brief, onClose,
+}: {
+  project: FactoryProject;
+  brief: FabricaBriefItem;
+  onClose: () => void;
+}) => {
+  const { updateFabricaBrief } = useFactoryStore();
+  const [metricas, setMetricas] = useState<Record<string, string>>(brief.deliverableMetricas ?? {});
+
+  // Los campos dependen del canal, y el canal se corta por prefijo (ver src/lib/metricas.ts):
+  // con `\w+` "Google Ads" quedaba en "Google" y salían los campos equivocados.
+  const canal = canalDeMetricas(brief.tarea);
+  const campos = camposDeMetricas(canal);
+
+  const handleSave = () => {
+    updateFabricaBrief(project.id, brief.id, {
+      deliverableMetricas: metricas,
+      deliverableSubmittedAt: brief.deliverableSubmittedAt ?? new Date().toISOString(),
+    });
+    onClose();
+  };
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent
+        className="sm:max-w-md"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle>{brief.tarea}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-3 border rounded-lg p-4 bg-muted/20">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Métricas del envío
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {campos.map(({ key, label }) => (
+                <div key={key} className="space-y-1">
+                  <Label className="text-xs">{label}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    className="h-8 text-xs"
+                    value={metricas[key] ?? ''}
+                    onChange={(e) => setMetricas((prev) => ({ ...prev, [key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSave}>
+            {brief.deliverableSubmittedAt ? 'Actualizar' : 'Guardar'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const AttachmentsByDate = ({ briefs }: { briefs: FabricaBriefItem[] }) => {
   const groups = useMemo(() => {
     const map = new Map<string, { attachment: Attachment; brief: FabricaBriefItem }[]>();
@@ -834,6 +950,13 @@ export const ContentBriefPanel = ({ project, node }: { project: FactoryProject; 
 
       {openBrief && (
         <BriefDialog
+          /* `key` por tarea, y no es cosmético: al aprobar o corregir, el diálogo AVANZA al
+             siguiente entregable de la cola reutilizando la misma instancia, así que el estado
+             local se quedaba con lo de la tarea anterior. El caso feo era el comentario de
+             corrección: rechazabas A con "falta el logo", el diálogo pasaba a B con ese texto ya
+             escrito y el botón habilitado, y un clic de más se lo mandaba a B. Con el key React
+             monta una instancia nueva por tarea y todo arranca en blanco. */
+          key={openBrief.id}
           project={project}
           brief={openBrief}
           nodeId={node.id}
@@ -873,8 +996,9 @@ const DeliveryEditDialog = ({
 
   const handleSave = () => {
     const now = new Date().toISOString();
-    const canalMatch = brief.tarea.match(/Configurar envío por (\w+)/);
-    const canalTipo = canalMatch?.[1] ?? '';
+    // Por prefijo, no con `/…por (\w+)/`: ese `\w+` parte los nombres con espacio (ver
+    // src/lib/metricas.ts). Hoy solo Correo/WhatsApp/SMS llegan acá, pero la regla es una sola.
+    const canalTipo = canalDeEnvio(brief.tarea);
 
     updateFabricaBrief(project.id, brief.id, {
       deliverableEnviado: enviado,
@@ -885,15 +1009,18 @@ const DeliveryEditDialog = ({
 
     if (enviado === true && canalTipo) {
       const liveProject = useFactoryStore.getState().projects.find((p) => p.id === project.id);
-      const alreadyHasMetrics = liveProject?.fabricaBriefs.some(
-        (b) => b.tarea === `Recolectar métricas de ${canalTipo}`
-      ) ?? false;
-      if (!alreadyHasMetrics) {
+      if (!yaTieneMetricas(liveProject?.fabricaBriefs ?? [], brief.id, canalTipo)) {
         addFabricaBriefs(project.id, [{
           roleId: brief.roleId,
           roleLabel: brief.roleLabel,
-          tarea: `Recolectar métricas de ${canalTipo}`,
+          // Conserva la fecha y el segmento del toque: dos correos de la misma campaña ya no
+          // comparten nombre, así que cada uno tiene su propia recolección de métricas.
+          tarea: tareaDeMetricasPara(brief.tarea, canalTipo, PREFIJO_ENVIO),
           currentNodeId: brief.currentNodeId,
+          // De qué envío salen estas métricas. Es lo que evita duplicarlas al reguardar.
+          // (Sin `fechaAccion`: las tareas de métricas no heredan la fecha del envío a propósito,
+          // o quedarían en rojo al día siguiente de mandarlo.)
+          sourceBriefId: brief.id,
         }]);
       }
     }
@@ -953,7 +1080,12 @@ const DeliveryEditDialog = ({
 export const DeliveryBriefPanel = ({ project, node }: { project: FactoryProject; node: StrategyNode }) => {
   const { addFabricaBriefs } = useFactoryStore();
   const briefs = briefsForNode(project, node);
+  // Las tareas de métricas viven en este mismo nodo (las siembra el envío al marcarse como
+  // realizado), pero son otro entregable: van en su propia lista y con su propio diálogo.
+  const envios = briefs.filter((b) => !esTareaDeMetricas(b.tarea));
+  const metricas = briefs.filter((b) => esTareaDeMetricas(b.tarea));
   const [editingBrief, setEditingBrief] = useState<FabricaBriefItem | null>(null);
+  const [metricsBrief, setMetricsBrief] = useState<FabricaBriefItem | null>(null);
   const [newTitle, setNewTitle] = useState('');
 
   if (!node.roleLabel) {
@@ -993,13 +1125,23 @@ export const DeliveryBriefPanel = ({ project, node }: { project: FactoryProject;
 
       <BriefGroup
         title="Envíos"
-        items={briefs}
+        items={envios}
         onOpen={setEditingBrief}
         badge={(b) => <CanalStatusBadge brief={b} />}
         emptyLabel="Sin canales configurados para este rol."
       />
+      <BriefGroup
+        title="Métricas"
+        items={metricas}
+        onOpen={setMetricsBrief}
+        badge={(b) => <MetricsStatusBadge brief={b} />}
+        hideIfEmpty
+      />
       {editingBrief && (
         <DeliveryEditDialog project={project} brief={editingBrief} onClose={() => setEditingBrief(null)} />
+      )}
+      {metricsBrief && (
+        <MetricsEditDialog project={project} brief={metricsBrief} onClose={() => setMetricsBrief(null)} />
       )}
     </div>
   );
@@ -1164,7 +1306,11 @@ const PautaEditDialog = ({
   const [attachments, setAttachments] = useState<Attachment[]>(brief.deliverableAttachments ?? []);
   const [publicada, setPublicada] = useState<boolean | null>(brief.deliverablePublicada ?? null);
 
-  const campana = brief.tarea.match(/Configurar campaña en (\w+)/)?.[1] ?? brief.tarea;
+  // Por prefijo, no con `/…en (\w+)/`: ese `\w+` partía "Google Ads" en "Google", así que la
+  // tarea salía como "Recolectar métricas de Google". Y si el título no era el de una pauta
+  // (una tarea creada a mano, o la propia tarea de métricas abierta acá por error), el `??`
+  // caía al título entero y generaba "Recolectar métricas de Recolectar métricas de Facebook".
+  const campana = canalDePauta(brief.tarea);
 
   const handleSave = () => {
     const now = new Date().toISOString();
@@ -1176,16 +1322,15 @@ const PautaEditDialog = ({
       deliverableSubmittedAt: publicada === true ? (brief.deliverableSubmittedAt ?? now) : brief.deliverableSubmittedAt,
     });
 
-    if (publicada === true) {
+    if (publicada === true && campana) {
       const liveProject = useFactoryStore.getState().projects.find((p) => p.id === project.id);
-      const metricsTarea = `Recolectar métricas de ${campana}`;
-      const alreadyHasMetrics = liveProject?.fabricaBriefs.some((b) => b.tarea === metricsTarea) ?? false;
-      if (!alreadyHasMetrics) {
+      if (!yaTieneMetricas(liveProject?.fabricaBriefs ?? [], brief.id, campana)) {
         addFabricaBriefs(project.id, [{
           roleId: brief.roleId,
           roleLabel: brief.roleLabel,
-          tarea: metricsTarea,
+          tarea: tareaDeMetricasPara(brief.tarea, campana, PREFIJO_PAUTA),
           currentNodeId: brief.currentNodeId,
+          sourceBriefId: brief.id,
         }]);
       }
     }
@@ -1232,9 +1377,9 @@ const PautaEditDialog = ({
                 <span className="text-sm">No</span>
               </label>
             </div>
-            {publicada === true && (
+            {publicada === true && campana && (
               <p className="text-xs text-muted-foreground italic">
-                Al guardar se creará la tarea "Recolectar métricas de {campana}".
+                Al guardar se creará la tarea "{tareaDeMetricasPara(brief.tarea, campana, PREFIJO_PAUTA)}".
               </p>
             )}
           </div>
@@ -1251,7 +1396,12 @@ const PautaEditDialog = ({
 export const PautaBriefPanel = ({ project, node }: { project: FactoryProject; node: StrategyNode }) => {
   const { addFabricaBriefs } = useFactoryStore();
   const briefs = briefsForNode(project, node);
+  // Igual que en Envíos: la recolección de métricas de la pauta vive en este nodo pero es otro
+  // entregable (números, no contenido) y necesita su propio diálogo.
+  const campanas = briefs.filter((b) => !esTareaDeMetricas(b.tarea));
+  const metricas = briefs.filter((b) => esTareaDeMetricas(b.tarea));
   const [editingBrief, setEditingBrief] = useState<FabricaBriefItem | null>(null);
+  const [metricsBrief, setMetricsBrief] = useState<FabricaBriefItem | null>(null);
   const [newTitle, setNewTitle] = useState('');
 
   if (!node.roleLabel) {
@@ -1291,13 +1441,23 @@ export const PautaBriefPanel = ({ project, node }: { project: FactoryProject; no
 
       <BriefGroup
         title="Campañas"
-        items={briefs}
+        items={campanas}
         onOpen={setEditingBrief}
         badge={(b) => <PautaStatusBadge brief={b} />}
         emptyLabel="Sin campañas configuradas."
       />
+      <BriefGroup
+        title="Métricas"
+        items={metricas}
+        onOpen={setMetricsBrief}
+        badge={(b) => <MetricsStatusBadge brief={b} />}
+        hideIfEmpty
+      />
       {editingBrief && (
         <PautaEditDialog project={project} brief={editingBrief} onClose={() => setEditingBrief(null)} />
+      )}
+      {metricsBrief && (
+        <MetricsEditDialog project={project} brief={metricsBrief} onClose={() => setMetricsBrief(null)} />
       )}
     </div>
   );

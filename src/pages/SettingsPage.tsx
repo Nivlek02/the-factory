@@ -655,6 +655,12 @@ const SettingsPage = () => {
                           : `${editingUser.fullName} ya puede iniciar sesión con ${editingUser.email}.`,
                       });
                       setEditPassword('');
+                      // `editingUser` es una instantánea del momento en que se abrió el diálogo:
+                      // tras crear el acceso seguía diciendo "Crear cuenta de acceso" y un segundo
+                      // intento rebotaba con "este usuario ya tiene cuenta". Se relee del store,
+                      // que `createUserAccess`/`setUserPassword` acaban de refrescar.
+                      const refrescado = useAuthStore.getState().users.find((u) => u.id === editingUser.id);
+                      if (refrescado) setEditingUser(refrescado);
                     } else {
                       toast({ title: 'Error', description: result.error, variant: 'destructive' });
                     }

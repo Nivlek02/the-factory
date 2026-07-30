@@ -59,6 +59,7 @@ import { WorkflowTab, MetricsDashboardTab, LoopTab } from './MapTab';
 import { DeliverableSummary, BriefStatusBadge, isMetricsBrief, isUrlBrief } from '@/components/factory/DeliverableSummary';
 import { dangerousHtml } from '@/lib/sanitizeHtml';
 import { esUrlHttp } from '@/lib/urlSegura';
+import { camposDeMetricas, canalDeMetricas } from '@/lib/metricas';
 import { useCampanasFrescas } from '@/hooks/useCampanasFrescas';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -522,22 +523,10 @@ const TeamTasksTab = ({
             // Métricas y URL (Landing/Formulario) no tienen hoy un lugar en "Construir estrategia",
             // así que se siguen editando aquí. Copy/Diseño y el estado de envío se editan allá.
             if (isMetricsBrief(deliverableBrief.tarea)) {
-              // Se corta por prefijo: el /…de (\w+)/ que había antes partía los nombres con
-              // espacio o tilde ("Call Center" → "Call") y le mostraba los campos equivocados.
-              const canalTipo = deliverableBrief.tarea.replace(/^Recolectar métricas de /, '').trim();
-              const fields = canalTipo === 'Correo'
-                ? [
-                    { key: 'baseTotal', label: 'Base total' },
-                    { key: 'enviados', label: 'Enviados' },
-                    { key: 'apertura', label: 'Apertura' },
-                    { key: 'clics', label: 'Clics' },
-                  ]
-                : [
-                    // WhatsApp/SMS no tienen apertura ni una "base" distinta de lo que sale:
-                    // se pide directamente lo enviado, que es lo que muestra el dashboard.
-                    { key: 'enviados', label: 'Enviados' },
-                    { key: 'clics', label: 'Clics' },
-                  ];
+              // Canal y campos salen de src/lib/metricas.ts, el mismo módulo que usan el
+              // dashboard y el diálogo del nodo de Envíos: tres lecturas distintas del mismo
+              // título era justo lo que hacía que unas cortaran bien y otras no.
+              const fields = camposDeMetricas(canalDeMetricas(deliverableBrief.tarea));
               return (
                 <div className="space-y-4 py-2">
                   <div className="space-y-3 border rounded-lg p-4 bg-muted/20">

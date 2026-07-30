@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Button } from './button';
 import { Paperclip, X, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { uploadFile } from '@/services/storageService';
+import { uploadFile, MAX_ADJUNTO_BYTES, MAX_ADJUNTO_MB, errorDeTamano } from '@/services/storageService';
 import { toast } from 'sonner';
 
 export interface Attachment {
@@ -41,8 +41,15 @@ const FileUpload = ({ attachments, onChange, maxFiles = 10, className, taskId }:
           break;
         }
 
+        // Se comprueba acá, antes de subir: así se dice QUÉ archivo se pasó y se siguen subiendo
+        // los demás, en vez de que se caiga el lote entero contra el límite del bucket.
+        if (file.size > MAX_ADJUNTO_BYTES) {
+          toast.error(errorDeTamano(file), { description: `Máximo ${MAX_ADJUNTO_MB} MB por archivo.` });
+          continue;
+        }
+
         const isImage = file.type.startsWith('image/');
-        
+
         // Upload to Supabase Storage
         const result = await uploadFile(file, taskId);
         
@@ -65,7 +72,11 @@ const FileUpload = ({ attachments, onChange, maxFiles = 10, className, taskId }:
       }
     } catch (error) {
       console.error('Error uploading files:', error);
-      toast.error('Error al subir archivos');
+      // El motivo real (tamaño, permisos, red) viene en el Error de storageService: sin mostrarlo,
+      // "Error al subir archivos" dejaba a la persona sin saber qué hacer.
+      toast.error('Error al subir archivos', {
+        description: error instanceof Error ? error.message : undefined,
+      });
     } finally {
       setUploading(false);
       // Reset input

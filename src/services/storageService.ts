@@ -2,12 +2,29 @@ import { supabase } from '@/integrations/supabase/client';
 
 const BUCKET_NAME = 'task-attachments';
 
+/**
+ * Tope por archivo. Vive acá —y no en cada formulario— porque la comprobación tiene que estar en
+ * el único sitio por el que pasan TODAS las subidas: el asistente lo validaba antes de subir, pero
+ * los adjuntos de entregable (que son los que se usan todos los días) no validaban nada y un
+ * archivo grande se iba al servidor para volver con un error crudo y un "Error al subir archivos"
+ * que no decía ni cuál era el archivo ni por qué.
+ */
+export const MAX_ADJUNTO_MB = 50;
+export const MAX_ADJUNTO_BYTES = MAX_ADJUNTO_MB * 1024 * 1024;
+
+/** Mensaje único para el archivo que se pasa de tamaño. */
+export const errorDeTamano = (file: { name: string }) =>
+  `"${file.name}" pesa más de ${MAX_ADJUNTO_MB} MB y no se puede adjuntar.`;
+
 export interface UploadResult {
   url: string;
   path: string;
 }
 
 export async function uploadFile(file: File, taskId?: string): Promise<UploadResult> {
+  // Última barrera: aunque el formulario ya haya filtrado, nadie sube por encima del tope.
+  if (file.size > MAX_ADJUNTO_BYTES) throw new Error(errorDeTamano(file));
+
   const timestamp = Date.now();
   const randomId = Math.random().toString(36).substring(2, 9);
   const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');

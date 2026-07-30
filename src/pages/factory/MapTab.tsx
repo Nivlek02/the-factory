@@ -17,7 +17,7 @@ import {
   MoreVertical, Trash2, Workflow, Rocket, Download,
   FileText, LayoutPanelTop, PenLine, Palette, Megaphone, Send,
   TrendingUp, Users, RefreshCw, CalendarClock,
-  Briefcase, Store, Handshake, PhoneCall, Mail, MailOpen,
+  Briefcase, Store, Handshake, PhoneCall, Clapperboard, Mail, MailOpen,
   MessageCircle, Smartphone,
   MousePointerClick, Link2, ShieldCheck, Flag,
   Heart, Brain, Gift,
@@ -40,6 +40,7 @@ import {
 } from './StrategyBriefPanels';
 import { getBriefStatus } from '@/components/factory/DeliverableSummary';
 import { interaccionesValidas } from '@/lib/interacciones';
+import { PREFIJO_METRICAS, canalDeMetricas } from '@/lib/metricas';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Stage palette: the strategic building blocks of a marketing project
@@ -78,6 +79,7 @@ const STAGES: StageMeta[] = [
   { type: 'btl',        label: 'BTL',                short: 'BTL',      icon: Store,           color: DIAGRAM_COLORS.orange,  suggestRole: ['Estratega'] },
   { type: 'relacionamiento', label: 'Relacionamiento', short: 'Relac.', icon: Handshake,       color: DIAGRAM_COLORS.violet,  suggestRole: ['Estratega'] },
   { type: 'callcenter', label: 'Call Center',        short: 'Call Center', icon: PhoneCall,    color: DIAGRAM_COLORS.violet,  suggestRole: ['Estratega'] },
+  { type: 'video',      label: 'Producción de video', short: 'Video',   icon: Clapperboard,    color: DIAGRAM_COLORS.orange,  suggestRole: ['Videógrafo'] },
 ];
 
 const STAGE_BY_TYPE = Object.fromEntries(STAGES.map((s) => [s.type, s])) as Record<StrategyStageType, StageMeta>;
@@ -349,99 +351,17 @@ export const WorkflowTab = ({ project }: Props) => {
     backgroundSize: '18px 18px',
   } as React.CSSProperties;
 
-  // ── Auto-build from canales + loops ────────────────────────────────────
-  useEffect(() => {
-    const canalTypes = project.canales?.map((c) => c.canal) ?? [];
-    const loopRows = project.loops ?? [];
-    if ((canalTypes.length === 0 && loopRows.length === 0) || nodes.length > 0) return;
-
-    const typeToStage: Record<string, StrategyStageType> = {
-      'Formulario de inscripción': 'formulario',
-      Landing: 'landing',
-      Copys: 'copys',
-      Diseño: 'diseno',
-      Pauta: 'pauta',
-      Envíos: 'envios',
-    };
-
-    // Deduplicate by stage type while preserving order
-    const seen = new Set<StrategyStageType>();
-    const toCreate: { stage: StrategyStageType; label: string }[] = [];
-    for (const ct of canalTypes) {
-      const st = typeToStage[ct];
-      if (st && !seen.has(st)) {
-        seen.add(st);
-        toCreate.push({ stage: st, label: ct });
-      }
-    }
-
-    if (toCreate.length === 0 && loopRows.length === 0) return;
-
-    // First pass: create all nodes, map id by stage type
-    const nodeIdsByStage = new Map<StrategyStageType, string>();
-    for (const item of toCreate) {
-      const stage = STAGES.find((s) => s.type === item.stage);
-      let role = stage?.suggestRole
-        ? project.roleGroups.find((g) => stage.suggestRole!.some((sr) => g.roleLabel.toLowerCase().includes(sr.toLowerCase())))
-        : undefined;
-      if (!role) role = project.roleGroups[0];
-      const member = role?.members[0];
-
-      const id = addStrategyNode(project.id, {
-        stageType: item.stage,
-        label: item.label,
-        roleId: role?.roleId ?? null,
-        roleLabel: role?.roleLabel ?? null,
-        memberId: member?.id ?? null,
-        memberName: member?.name ?? null,
-        status: 'pending',
-        dependsOn: [], // will link second pass
-      });
-      nodeIdsByStage.set(item.stage, id);
-    }
-
-    // Create nodes from loops de comportamiento (custom type)
-    const seenLoops = new Set<string>();
-    const lastCanalId = nodeIdsByStage.get('envios') ?? nodeIdsByStage.get('pauta') ?? null;
-    let prevLoopId: string | null = null;
-    for (const loop of loopRows) {
-      if (!loop.disparador && !loop.reaccion) continue;
-      const key = `${loop.disparador}→${loop.reaccion}`;
-      if (seenLoops.has(key)) continue;
-      seenLoops.add(key);
-
-      const role = loop.responsable
-        ? project.roleGroups.find((g) => g.roleLabel === loop.responsable)
-        : undefined;
-      const member = role?.members[0];
-
-      const id = addStrategyNode(project.id, {
-        stageType: 'custom',
-        label: `Loop: ${loop.disparador || '…'} → ${loop.reaccion || '…'}`,
-        description: loop.responsable ? `Responsable: ${loop.responsable}` : undefined,
-        roleId: role?.roleId ?? null,
-        roleLabel: role?.roleLabel ?? null,
-        memberId: member?.id ?? null,
-        memberName: member?.name ?? null,
-        status: 'pending',
-        dependsOn: prevLoopId ? [prevLoopId] : lastCanalId ? [lastCanalId] : [],
-      });
-      prevLoopId = id;
-    }
-
-    // Second pass: set dependencies (copys → diseno → envios)
-    const disenoId = nodeIdsByStage.get('diseno');
-    const copysId = nodeIdsByStage.get('copys');
-    if (disenoId && copysId) {
-      updateStrategyNode(project.id, disenoId, { dependsOn: [copysId] });
-    }
-    const enviosId = nodeIdsByStage.get('envios');
-    if (enviosId && disenoId) {
-      updateStrategyNode(project.id, enviosId, { dependsOn: [disenoId] });
-    } else if (enviosId && copysId) {
-      updateStrategyNode(project.id, enviosId, { dependsOn: [copysId] });
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Nota: acá vivía un "auto-build" de nodos a partir de los canales que NO PODÍA FUNCIONAR ──
+  //
+  // Mapeaba nombres que nunca son un canal ('Copys', 'Diseño', 'Envíos', 'Pauta', 'Landing'):
+  // los valores reales son 'Correo', 'WhatsApp', 'Facebook', 'Call Center'… Así que su lista de
+  // nodos a crear salía siempre vacía y lo único que llegaba a hacer, en una campaña legada sin
+  // ningún nodo pero con loops, era sembrar nodos sueltos "Loop: … → …" colgando de nada.
+  //
+  // Hoy los nodos los crea `buildDefaultStrategyNodes` al nacer la campaña y los mantienen
+  // `syncCanalNodes`/`syncRequerimientoNodes` al editarla (ver factoryStore). No se reemplaza por
+  // una versión "arreglada" a propósito: desde que se puede borrar un nodo a mano, reconstruir la
+  // cadena al montar haría que borrar el último nodo la resucitara sola.
 
   return (
     <div className="space-y-4">
@@ -612,8 +532,10 @@ export const WorkflowTab = ({ project }: Props) => {
         );
       })()}
 
-      {/* Edit node dialog */}
-      {editingId && (
+      {/* Edit node dialog. El nodo se busca en vivo y si ya no está no se pinta nada: con el `!`
+          de antes, borrar el nodo (o que lo quitara una relectura) mientras el diálogo estaba
+          abierto le pasaba `undefined` a EditNodeDialog y la pantalla se caía entera. */}
+      {editingId && nodes.some((n) => n.id === editingId) && (
         <EditNodeDialog
           project={project}
           node={nodes.find((n) => n.id === editingId)!}
@@ -645,8 +567,6 @@ export const WorkflowTab = ({ project }: Props) => {
 
 // ─── Dashboard de métricas ────────────────────────────────────────────────────
 
-const PREFIJO_METRICAS = 'Recolectar métricas de ';
-
 /**
  * Los únicos canales que este dashboard mide, y siempre se muestran tengan datos o no.
  *
@@ -663,11 +583,6 @@ const CANALES_ENVIO = [
 const esCanalMedido = (canal: string) => CANALES_ENVIO.some((c) => c.id === canal);
 const colorDe = (canal: string) =>
   CANALES_ENVIO.find((c) => c.id === canal)?.color ?? 'hsl(var(--muted-foreground))';
-
-/** Lo que sigue después de "Recolectar métricas de ". Se corta por prefijo y no con
- *  `/…de (\w+)/` (como hace FactoryPage) porque `\w+` parte los nombres con espacio o tilde:
- *  "Call Center" quedaría en "Call" y una campaña de pauta perdería medio nombre. */
-const canalDeMetricas = (tarea: string) => tarea.slice(PREFIJO_METRICAS.length).trim();
 
 const aNumero = (v?: string) => {
   const n = parseInt(v ?? '', 10);

@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 /** Rol de equipo — puramente informativo, ya no controla acceso a tableros ni RLS. */
-export type AppRole = 'copy' | 'diseno' | 'gestor_canales' | 'estratega' | 'soporte' | 'trafficker';
+export type AppRole = 'copy' | 'diseno' | 'gestor_canales' | 'estratega' | 'soporte' | 'trafficker' | 'videografo';
 
 export interface AppUser {
   id: string;
@@ -23,6 +23,9 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   estratega: 'Estratega',
   soporte: 'Soporte',
   trafficker: 'Trafficker',
+  // OJO: la etiqueta tiene que estar EXACTAMENTE igual en el check constraint de
+  // `usuarios_roles.rol` (migración 20260730000000), tilde incluida, o el INSERT rebota.
+  videografo: 'Videógrafo',
 };
 
 /** usuarios_roles.rol guarda la etiqueta ('Copywriter'); acá la volvemos al id interno. */
@@ -51,8 +54,27 @@ type UsuarioRolRow = {
   created_at: string;
 };
 
+/**
+ * Rol para una etiqueta que no está en el catálogo.
+ *
+ * **No puede ser un rol gestor.** Antes caía a `'soporte'`, que es justo uno de los dos que
+ * pueden administrar el equipo: cualquier etiqueta nueva en `usuarios_roles.rol` —o una con una
+ * tilde de más— convertía a esa persona en gestora a los ojos del frontend, con el menú de
+ * Ajustes y los botones de crear/editar/borrar usuarios a la vista. La base la seguiría frenando
+ * (la policy compara contra la etiqueta real), así que el efecto sería una pantalla llena de
+ * acciones que fallan; pero el que decide qué se muestra no debería ser un accidente.
+ *
+ * Hoy el CHECK de la tabla solo admite las 6 etiquetas conocidas, así que esto no debería pasar
+ * nunca: por eso además queda en consola.
+ */
+const ROL_DESCONOCIDO: AppRole = 'copy';
+
 const rowToUser = (row: UsuarioRolRow): AppUser => {
-  const role = ROLE_IDS[row.rol] ?? 'soporte';
+  const conocido = ROLE_IDS[row.rol];
+  if (!conocido) {
+    console.warn(`Rol desconocido en usuarios_roles: "${row.rol}" (usuario ${row.usuario}).`);
+  }
+  const role = conocido ?? ROL_DESCONOCIDO;
   return {
     id: row.id,
     // Los usuarios sin cuenta de auth todavía caen a su id de tabla: siguen siendo
@@ -62,7 +84,10 @@ const rowToUser = (row: UsuarioRolRow): AppUser => {
     email: row.email,
     fullName: row.nombre_completo,
     role,
-    displayRole: CARGO_POR_USUARIO[row.usuario] ?? ROLE_LABELS[role],
+    // Si la etiqueta no es del catálogo se muestra TAL CUAL: es el dato real de la base, y
+    // pintarle la del rol de reemplazo diría una mentira ("Copywriter" para alguien que en la
+    // tabla dice otra cosa).
+    displayRole: CARGO_POR_USUARIO[row.usuario] ?? (conocido ? ROLE_LABELS[role] : row.rol),
     createdAt: row.created_at,
   };
 };

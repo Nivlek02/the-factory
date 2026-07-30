@@ -25,6 +25,49 @@ en ningún otro archivo.
 
 ---
 
+## [1.12.0] — 2026-07-30
+
+### Nuevo
+
+- **Rol Videógrafo y canal Video.** Al agregar el canal **Video** al Plan de canales, la campaña
+  crea sola la tarea de **guion de video** para el Copywriter. Cuando ese guion se aprueba, nace
+  la tarea **"Producir video"** en el nodo *Producción de video*, ya asignada al Videógrafo — el
+  mismo patrón del guion de Call Center. El guion de video **no** dispara Diseño: las ramas que
+  salen de Copys no se cruzan.
+  > Para que alguien pueda tener el rol hay que aplicar antes la migración
+  > `20260730000000_rol-videografo.sql` (la tabla valida la etiqueta con un check constraint).
+- **Las métricas se editan desde el flujo.** La tarea "Recolectar métricas de…" ya tiene su
+  formulario en el nodo de Envíos y en el de Pauta, en su propia lista *Métricas*. Antes solo se
+  podía llenar desde la pestaña Equipo.
+
+### Arreglado
+
+- **El asistente ya no guarda una foto vieja de la campaña.** Leía los datos al abrir la campaña
+  y no volvía a mirarlos: si alguien más cambiaba algo (o la app releía al volver a la pestaña),
+  abrir *Editar campaña* y guardar **borraba ese cambio** —canales, loops, etapas, adjuntos— sin
+  ningún aviso. Ahora relee la campaña cada vez que se abre.
+- **Cambiar la Estratega ahora sí se guarda.** El selector se mostraba y dejaba cambiarla, pero el
+  valor no viajaba al guardar: al reabrir volvía la anterior. Además decide a quién le llega el
+  correo de "un entregable espera tu revisión".
+- **Cada envío tiene sus propias métricas.** Una campaña con dos correos (convocatoria y
+  recordatorio) generaba una sola tarea de métricas, así que del segundo envío en adelante nadie
+  las recogía. Ahora la tarea lleva la fecha y el segmento del envío que la originó.
+- **"Google Ads" ya no queda en "Google".** El nombre del canal se cortaba en el primer espacio,
+  así que la pauta de Google Ads pedía métricas de un canal inexistente. Igual con "Call Center".
+- **Borrar un nodo del flujo ya no esconde sus tareas.** Quedaban contando en "Mis tareas" y en
+  Reportes pero invisibles en Flujo de trabajo, sin forma de abrirlas ni borrarlas.
+- **La corrección ya no se arrastra a la tarea siguiente.** Al aprobar o corregir, el diálogo pasa
+  al siguiente entregable: el comentario de corrección se quedaba escrito y un clic de más se lo
+  mandaba a quien no era.
+- **Borrar una campaña ya no la resucita.** Si el guardado automático estaba en vuelo, la fila se
+  volvía a crear después del borrado y la campaña reaparecía sola.
+- **Reportes:** el filtro de fechas ahora funciona con una sola fecha (antes exigía las dos y no
+  lo decía), y la tabla ya no queda en blanco al filtrar estando en una página que dejó de existir.
+- **Adjuntos:** los de entregable ahora avisan si el archivo pasa de 50 MB, en vez de fallar con
+  "Error al subir archivos" sin explicar por qué.
+- Al crear la cuenta de acceso de alguien, el diálogo ya no sigue ofreciendo "Crear cuenta".
+- El CSV de Reportes ya no puede ejecutar fórmulas de Excel escondidas en el nombre de una tarea.
+
 ## [1.11.0] — 2026-07-30
 
 ### Arreglado

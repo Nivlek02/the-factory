@@ -18,6 +18,7 @@ const DEFAULT_TAREAS: Record<string, string[]> = {
   gestor_canales: ['Formulario de inscripción', 'Landing'],
   soporte:     [],
   trafficker:  [],
+  videografo:  [],
 };
 
 /** Roles visibles para asignar equipo a un proyecto (pestaña Equipo). 'social', 'seo' y
@@ -31,13 +32,15 @@ const DEFAULT_ROLES: CustomRole[] = [
   { id: 'estratega',      label: 'Estratega',          isDefault: true, tareas: DEFAULT_TAREAS.estratega },
   { id: 'soporte',        label: 'Soporte',            isDefault: true, tareas: DEFAULT_TAREAS.soporte },
   { id: 'trafficker',     label: 'Trafficker',         isDefault: true, tareas: DEFAULT_TAREAS.trafficker },
+  { id: 'videografo',     label: 'Videógrafo',         isDefault: true, tareas: DEFAULT_TAREAS.videografo },
   { id: 'social',         label: 'Social Media',       isDefault: true, tareas: DEFAULT_TAREAS.social },
   { id: 'seo',            label: 'SEO',                isDefault: true, tareas: DEFAULT_TAREAS.seo },
   { id: 'produccion',     label: 'Producción',         isDefault: true, tareas: DEFAULT_TAREAS.produccion },
 ];
 
-/** Los 6 roles asignables desde la pestaña Equipo de un proyecto. */
-export const ASSIGNABLE_ROLE_IDS = ['copy', 'diseno', 'gestor_canales', 'estratega', 'soporte', 'trafficker'];
+/** Los 7 roles asignables desde la pestaña Equipo de un proyecto. Es la misma lista de
+ *  `ROLE_LABELS` (authService): un rol que exista como rol de equipo tiene que poder asignarse. */
+export const ASSIGNABLE_ROLE_IDS = ['copy', 'diseno', 'gestor_canales', 'estratega', 'soporte', 'trafficker', 'videografo'];
 
 interface RolesStore {
   roles: CustomRole[];
@@ -89,7 +92,11 @@ export const useRolesStore = create<RolesStore>()(
     }),
     {
       name: 'factory-roles-store',
-      version: 3,
+      // v4: entra el rol Videógrafo. HAY QUE SUBIR LA VERSIÓN al agregar un rol por defecto —
+      // este store vive en localStorage y `migrate` solo corre si la versión guardada es menor,
+      // así que sin esto el rol nuevo no le aparecería a nadie que ya haya abierto la app (que
+      // son todos): no se podría asignar al equipo ni elegir como responsable de un loop.
+      version: 4,
       migrate: (persisted: any) => {
         const oldRoles: { id: string; label: string; isDefault?: boolean }[] = persisted?.roles ?? [];
         const roles = oldRoles.map((r) => {

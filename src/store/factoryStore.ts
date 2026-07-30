@@ -54,6 +54,9 @@ export const CANAL_CATEGORIAS: CanalCategoria[] = [
   { id: 'directos', label: 'Canales directos', canales: ['Correo', 'WhatsApp', 'SMS'] },
   { id: 'pauta', label: 'Pauta digital', canales: ['Facebook', 'Instagram', 'Google Ads', 'TikTok'] },
   { id: 'relacionamiento', label: 'Relacionamiento', canales: ['Call Center', 'BTL', 'KAM', 'Relacionamiento'] },
+  // Video es su propia categoría: no es un canal de envío ni de pauta, es una pieza que se produce
+  // (guion → grabación/edición) y después se usa en los demás canales.
+  { id: 'contenido', label: 'Contenido audiovisual', canales: ['Video'] },
 ];
 
 /** Devuelve las categorías (en orden de CANAL_CATEGORIAS) representadas por un conjunto de
@@ -247,6 +250,7 @@ export type StrategyStageType =
   | 'relacionamiento'
   | 'callcenter_guion'
   | 'callcenter'
+  | 'video'
   | 'custom';
 
 export interface StrategyNode {
@@ -342,7 +346,10 @@ interface FactoryStore {
   hydrate: () => Promise<void>;
 
   addProject: (data: Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn' | 'formularioConfig' | 'attachments' | 'etapas' | 'mensajeBase' | 'motor'>) => string;
-  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn' | 'formularioConfig' | 'attachments' | 'etapas' | 'mensajeBase' | 'motor'>>) => void;
+  /** `strategistName` está en la lista a propósito: el wizard de edición muestra el selector de
+   *  Estratega, así que tiene que poder guardarse. Sin él, cambiarla no hacía nada y los correos
+   *  de "espera tu revisión" (que resuelven a la estratega por nombre) seguían yendo a la anterior. */
+  updateProject: (id: string, updates: Partial<Pick<FactoryProject, 'name' | 'description' | 'client' | 'state' | 'priority' | 'startDate' | 'dueDate' | 'strategistName' | 'audienciaNarrativa' | 'canales' | 'loops' | 'fabricaBriefs' | 'requerimientos' | 'segmentLink' | 'eventCategory' | 'promocionarEn' | 'formularioConfig' | 'attachments' | 'etapas' | 'mensajeBase' | 'motor'>>) => void;
   deleteProject: (id: string) => void;
 
   addRoleGroup: (projectId: string, roleId: string, roleLabel: string) => void;
@@ -571,9 +578,28 @@ const syncCanalNodes = (nodes: StrategyNode[], canales: CanalRow[]): StrategyNod
     }
   }
 
+  // Video: igual que Call Center, cuelga de Copys. El copywriter redacta el guion del video como
+  // una tarea más dentro de Copys y, al aprobarse, se activa la producción en el nodo de Video
+  // (ver `activateNextStage`). El nodo es del Videógrafo, así que no comparte roleLabel con
+  // ningún otro y `briefsForNode` no necesita desambiguar por texto.
+  const copys = result.find((n) => n.stageType === 'copys');
+  const wantsVideo = canalTypes.has('Video');
+  const video = result.find((n) => n.stageType === 'video');
+  if (wantsVideo && !video) {
+    result = [...result, {
+      id: `node-${uid()}`, stageType: 'video', label: 'Producción de video', roleId: 'videografo',
+      roleLabel: 'Videógrafo', memberId: null, memberName: null, status: 'pending',
+      dependsOn: copys ? [copys.id] : [],
+    }];
+  } else if (!wantsVideo && video) {
+    result = result.filter((n) => n.id !== video.id)
+      .map((n) => ({ ...n, dependsOn: n.dependsOn.filter((d) => d !== video.id) }));
+  } else if (wantsVideo && video && copys && !video.dependsOn.includes(copys.id)) {
+    result = result.map((n) => (n.id === video.id ? { ...n, dependsOn: [copys.id] } : n));
+  }
+
   // Call Center: un solo nodo de registro (Estratega) que depende del nodo Copys.
   const wantsCallCenter = canalTypes.has('Call Center');
-  const copys = result.find((n) => n.stageType === 'copys');
   const callcenter = result.find((n) => n.stageType === 'callcenter');
   if (wantsCallCenter && !callcenter) {
     result = [...result, {
@@ -653,6 +679,7 @@ const LETRA_POR_STAGE: Record<StrategyStageType, string> = {
   pauta: 'P',
   callcenter: 'CC',
   callcenter_guion: 'C',   // legado: el guion vive hoy dentro de Copys
+  video: 'V',
   kam: 'K',
   btl: 'B',
   relacionamiento: 'R',
@@ -670,6 +697,7 @@ const LETRA_POR_ROL: Record<string, string> = {
   Soporte: 'Z',
   Trafficker: 'P',
   'Social Media': 'P',
+  'Videógrafo': 'V',
 };
 
 const letraDeTarea = (
@@ -967,9 +995,10 @@ const soloRevision = (fila: any): number => (typeof fila?.revision === 'number' 
 const pendingSync = new Map<string, ReturnType<typeof setTimeout>>();
 
 /**
- * Campañas cuya escritura ya SALIÓ (está esperando a Supabase). Es un conjunto aparte de
- * `pendingSync` porque ese solo guarda el temporizador del debounce y se vacía en cuanto el
- * temporizador dispara — o sea, justo ANTES de las dos llamadas de red.
+ * Campañas cuya escritura ya SALIÓ (está esperando a Supabase), con la promesa de esa escritura
+ * para poder esperarla desde fuera (ver `deleteRow`). Es un registro aparte de `pendingSync`
+ * porque ese solo guarda el temporizador del debounce y se vacía en cuanto el temporizador
+ * dispara — o sea, justo ANTES de las dos llamadas de red.
  *
  * Sin esto quedaba una ventana ciega de medio segundo a dos segundos (leer la revisión + subir el
  * blob, que puede pesar megas) en la que `haySincronizacionPendiente()` decía "no hay nada
@@ -979,7 +1008,7 @@ const pendingSync = new Map<string, ReturnType<typeof setTimeout>>();
  * persona volvía a tocar algo, ese siguiente guardado salía de la copia vieja y **borraba el
  * cambio también de la base**, sin error y sin aviso.
  */
-const escriturasEnVuelo = new Set<string>();
+const escriturasEnVuelo = new Map<string, Promise<void>>();
 
 /** ¿Hay escrituras locales sin confirmar? Se usa para no recargar encima de un cambio en vuelo. */
 export const haySincronizacionPendiente = () =>
@@ -1046,24 +1075,34 @@ const escribirProyecto = async (project: FactoryProject) => {
 const syncProject = (project: FactoryProject) => {
   const existing = pendingSync.get(project.id);
   if (existing) clearTimeout(existing);
-  const t = setTimeout(async () => {
+  const t = setTimeout(() => {
     pendingSync.delete(project.id);
     // El debounce terminó, pero la escritura recién empieza: se marca en vuelo hasta que Supabase
     // conteste, o `hydrate()` puede colarse en el medio (ver `escriturasEnVuelo`).
-    escriturasEnVuelo.add(project.id);
-    try {
-      await escribirProyecto(project);
-    } finally {
+    const enVuelo = escribirProyecto(project).finally(() => {
       escriturasEnVuelo.delete(project.id);
-    }
+    });
+    escriturasEnVuelo.set(project.id, enVuelo);
   }, 400);
   pendingSync.set(project.id, t);
 };
 
+/**
+ * Borra la campaña de la base.
+ *
+ * **Espera a la escritura en vuelo antes de borrar.** Limpiar el temporizador del debounce no
+ * alcanza: si el guardado ya salió (subir el blob puede tardar segundos), el `upsert` aterrizaba
+ * DESPUÉS del DELETE y **volvía a crear la fila**. La campaña reaparecía sola en la siguiente
+ * recarga, con el contenido de antes de borrarla y sin ningún error de por medio.
+ */
 const deleteRow = async (id: string) => {
   const existing = pendingSync.get(id);
   if (existing) clearTimeout(existing);
   pendingSync.delete(id);
+
+  const enVuelo = escriturasEnVuelo.get(id);
+  if (enVuelo) await enVuelo.catch(() => { /* si falló, mejor todavía: no hay nada que pisar */ });
+
   revisionConocida.delete(id);
   const { error } = await supabase.from('factory_projects').delete().eq('id', id);
   if (error) console.error('Error deleting project:', error);
@@ -1281,12 +1320,17 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
 
   deleteStrategyNode: (projectId, nodeId) =>
     persistAfter(set, get, projectId, (s) => ({
-      projects: patchProject(s.projects, projectId, (p) => ({
-        ...p,
-        strategyNodes: (p.strategyNodes ?? [])
+      projects: patchProject(s.projects, projectId, (p) => {
+        const strategyNodes = (p.strategyNodes ?? [])
           .filter((n) => n.id !== nodeId)
-          .map((n) => ({ ...n, dependsOn: n.dependsOn.filter((d) => d !== nodeId) })),
-      })),
+          .map((n) => ({ ...n, dependsOn: n.dependsOn.filter((d) => d !== nodeId) }));
+        // Las tareas que vivían en ese nodo quedan apuntando a un nodo que ya no existe. Sin
+        // limpiarlo desaparecen de Flujo de trabajo (`briefsForNode` no las encuentra en ningún
+        // nodo) pero siguen contando en "Mis tareas" y en Reportes, y ya no hay diálogo desde el
+        // cual abrirlas ni borrarlas. Es el mismo arreglo que hace `updateProject` al quitar un
+        // canal; borrar el nodo a mano se lo estaba saltando.
+        return { ...p, strategyNodes, fabricaBriefs: limpiarNodosMuertos(strategyNodes, p.fabricaBriefs ?? []) };
+      }),
     })),
 
   addFabricaBriefs: (projectId, briefs) => {

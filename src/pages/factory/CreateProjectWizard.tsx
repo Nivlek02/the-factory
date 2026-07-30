@@ -14,12 +14,12 @@ import { useAuthStore } from '@/store/authStore';
 import RichTextEditor from '@/components/ui/rich-text-editor';
 import {
   Cog, Plus, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, FolderKanban, Check, Target, GitBranch, Calendar, Clock,
-  Mail, MessageCircle, Smartphone, Facebook, Instagram, Music, Search, Phone, Store, Briefcase, Handshake,
+  Mail, MessageCircle, Smartphone, Facebook, Instagram, Music, Search, Phone, Store, Briefcase, Handshake, Video,
   Sparkles, Megaphone, MousePointerClick, Link2, ShieldCheck, Flag, RefreshCw, Loader2,
   type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { uploadFile } from '@/services/storageService';
+import { uploadFile, MAX_ADJUNTO_MB, MAX_ADJUNTO_BYTES } from '@/services/storageService';
 
 import { FactoryProject, type ProjectState, type ProjectAttachment, attachmentHref } from '@/store/factoryStore';
 import {
@@ -37,9 +37,10 @@ import { DRAFT_KEY, borrarBorrador } from '@/lib/campaignDraft';
  * OJO: **50 MB es también el tope por archivo del plan gratuito de Supabase Storage.** Si un
  * archivo justo en el borde es rechazado por el servidor, el aviso lo dice y el límite real está en
  * el dashboard (Storage → Settings), no acá.
+ *
+ * El número vive en `storageService` (el único punto por el que pasan todas las subidas) para que
+ * no pueda quedar un formulario con un tope distinto al de otro.
  */
-const MAX_ADJUNTO_MB = 50;
-const MAX_ADJUNTO_BYTES = MAX_ADJUNTO_MB * 1024 * 1024;
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -130,6 +131,7 @@ const CHANNELS: { id: string; icon: LucideIcon }[] = [
   { id: 'BTL', icon: Store },
   { id: 'KAM', icon: Briefcase },
   { id: 'Relacionamiento', icon: Handshake },
+  { id: 'Video', icon: Video },
 ];
 
 /** Las 6 etapas del ecosistema cíclico de convocatoria/conversión/reactivación — ver
@@ -609,6 +611,73 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     editProject?.fabricaBriefs?.map((b) => ({ ...b })) ?? []
   );
 
+  /**
+   * Vuelve a leer la campaña **cada vez que se abre el asistente** (solo en modo edición).
+   *
+   * POR QUÉ: todos los `useState` de arriba se inicializan UNA vez, al montarse el componente —y
+   * el asistente se monta con el workspace de la campaña (`ProjectWorkspace`, con `key` por id),
+   * o sea cuando la seleccionaste, no cuando abres el diálogo—. Nada volvía a leer `editProject`,
+   * así que el formulario mostraba la campaña **como estaba en ese momento**.
+   *
+   * Eso no era solo ver datos viejos: al guardar se escribían esos datos viejos encima. Si otra
+   * persona agregaba un canal y la relectura al volver a la pestaña lo traía, abrir "Editar
+   * campaña" y guardar cualquier cosa **borraba ese canal, su nodo y sus tareas vacías**. Y la
+   * guardia de `data.revision` no salta, porque ese `hydrate` ya había puesto la revisión al día:
+   * para la base es una escritura legítima sobre la última versión.
+   *
+   * Se resincroniza al ABRIR y no con cada cambio de `editProject` a propósito: si el diálogo ya
+   * está abierto, alguien está escribiendo en él y pisarle el formulario sería peor.
+   */
+  useEffect(() => {
+    if (!open || !editProject) return;
+    const p = editProject;
+    setData({
+      name: p.name ?? '',
+      description: p.description ?? '',
+      client: p.client ?? '',
+      state: (p.state ?? 'planning') as ProjectState,
+      priority: (p.priority ?? 'P1') as 'P0' | 'P1' | 'P2',
+      startDate: p.startDate ?? today(),
+      dueDate: p.dueDate ?? '',
+      strategistName: p.strategistName ?? '',
+      segmentLink: p.segmentLink ?? '',
+      eventCategory: p.eventCategory ?? '',
+      promocionarEn: p.promocionarEn ?? [],
+    });
+    setAudiencia({
+      segmentos: p.audienciaNarrativa?.segmentos ?? [],
+      metaInscripciones: p.audienciaNarrativa?.metaInscripciones ?? '',
+      dolor: p.audienciaNarrativa?.dolor ?? '',
+      promesa: p.audienciaNarrativa?.promesa ?? '',
+      bigIdea: p.audienciaNarrativa?.bigIdea ?? '',
+    });
+    setCanalesRows((p.canales ?? []).map((c) => ({ hora: '', ...c })));
+    setLoopsRows((p.loops ?? []).map((l) => ({ ...l })));
+    setEtapas(p.etapas ?? []);
+    setMensajeBase({
+      emocion: p.mensajeBase?.emocion ?? '',
+      logica: p.mensajeBase?.logica ?? '',
+      motivacion: p.mensajeBase?.motivacion ?? '',
+      recompensa: p.mensajeBase?.recompensa ?? '',
+    });
+    setMotor({
+      fuenteValidacion: p.motor?.fuenteValidacion ?? '',
+      validacionSegmentos: p.motor?.validacionSegmentos ?? [],
+      desenlaces: p.motor?.desenlaces ?? {},
+      reactivacionNegativos: p.motor?.reactivacionNegativos ?? [],
+    });
+    setRequerimientos(p.requerimientos ?? []);
+    setFormularioConfig({
+      basico: p.formularioConfig?.basico ?? null,
+      camposAdicionales: p.formularioConfig?.camposAdicionales ?? '',
+      cuadroTexto: p.formularioConfig?.cuadroTexto ?? '',
+    });
+    setAttachments(p.attachments ?? []);
+    setFabricaBriefs((p.fabricaBriefs ?? []).map((b) => ({ ...b })));
+    // `editProject` fuera de las deps: la resincronización es al abrir, ver el comentario.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   // ─── Draft auto-save to localStorage (ver src/lib/campaignDraft.ts) ───
 
   // Restore draft from localStorage when opening without editProject
@@ -634,41 +703,48 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     }
   }, [open]);
 
+  /** Escribe el borrador ya, sin esperar al debounce. Se llama desde el temporizador y también al
+   *  CERRAR el asistente: el efecto de abajo cancela su timer al cambiar `open`, así que lo escrito
+   *  en los últimos 2 segundos —justo lo último que hizo la persona antes de cerrar— no llegaba a
+   *  guardarse nunca. */
+  const guardarBorrador = () => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        data,
+        audiencia,
+        canalesRows,
+        loopsRows,
+        etapas,
+        mensajeBase,
+        motor,
+        requerimientos,
+        formularioConfig,
+        attachments,
+        step,
+        // Marca de tiempo para que el aviso de "campaña sin terminar" pueda decir qué tan
+        // viejo es el borrador (ver `hace` en campaignDraft.ts).
+        guardadoEn: new Date().toISOString(),
+      }));
+    } catch {
+      // Normalmente QuotaExceededError. Antes se tragaba en silencio: la persona veía la
+      // función de "campaña sin terminar" y creía que su avance estaba a salvo cuando no lo
+      // estaba. Se avisa UNA vez por sesión del asistente — esto corre cada 2 s y si no
+      // llenaría la pantalla de avisos.
+      if (!avisoBorradorDado.current) {
+        avisoBorradorDado.current = true;
+        toast.error('No se pudo guardar el borrador', {
+          description: 'No hay espacio en este navegador, así que no podrás retomar la campaña si cierras el asistente. Termínala ahora o libera espacio.',
+        });
+      }
+    }
+  };
+
   // Auto-save to localStorage on changes (debounced)
   useEffect(() => {
     if (!open || isEditing) return;
-    const timer = setTimeout(() => {
-      try {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({
-          data,
-          audiencia,
-          canalesRows,
-          loopsRows,
-          etapas,
-          mensajeBase,
-          motor,
-          requerimientos,
-          formularioConfig,
-          attachments,
-          step,
-          // Marca de tiempo para que el aviso de "campaña sin terminar" pueda decir qué tan
-          // viejo es el borrador (ver `hace` en campaignDraft.ts).
-          guardadoEn: new Date().toISOString(),
-        }));
-      } catch {
-        // Normalmente QuotaExceededError. Antes se tragaba en silencio: la persona veía la
-        // función de "campaña sin terminar" y creía que su avance estaba a salvo cuando no lo
-        // estaba. Se avisa UNA vez por sesión del asistente — esto corre cada 2 s y si no
-        // llenaría la pantalla de avisos.
-        if (!avisoBorradorDado.current) {
-          avisoBorradorDado.current = true;
-          toast.error('No se pudo guardar el borrador', {
-            description: 'No hay espacio en este navegador, así que no podrás retomar la campaña si cierras el asistente. Termínala ahora o libera espacio.',
-          });
-        }
-      }
-    }, 2000);
+    const timer = setTimeout(guardarBorrador, 2000);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isEditing, data, audiencia, canalesRows, loopsRows, etapas, mensajeBase, motor, requerimientos, formularioConfig, attachments, step]);
 
   const clearDraft = borrarBorrador;
@@ -889,6 +965,18 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           }
           break;
         }
+        case 'Video': {
+          // Mismo patrón que Call Center: acá solo nace el GUION (Copywriter). La producción del
+          // video (Videógrafo) se activa sola al aprobarse el guion, en el nodo "Producción de
+          // video" — ver AUTO_ADVANCE/`activateNextStage` en StrategyBriefPanels.
+          addItem('copy', 'Copywriter',
+            `Redactar guion de video${row.copy ? ` — ${row.copy}` : ''}`);
+          const copyRole = roles.find((r) => r.id === 'copy');
+          if (copyRole) {
+            addRoleTareasFiltered(copyRole.id, copyRole.label, copyRole.tareas);
+          }
+          break;
+        }
         case 'BTL': {
           addItem('estratega', 'Estratega',
             `Coordinar activación BTL${ref ? ` — ${ref}` : ''}`);
@@ -969,6 +1057,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       TikTok:      ['trafficker'],
       'Google Ads': ['trafficker'],
       'Call Center': ['copy'],
+      // El guion lo escribe Copy; la producción la hace el Videógrafo (su tarea nace al aprobar).
+      Video: ['copy', 'videografo'],
       BTL:         ['estratega', 'diseno'],
       KAM:         ['estratega'],
       Relacionamiento: ['estratega'],
@@ -1011,8 +1101,14 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
    *
    * El `reset()` limpia el formulario en memoria, no el borrador: al reabrir, el efecto de
    * restauración lo vuelve a cargar desde localStorage.
+   *
+   * `conservarBorrador: false` es para cuando la campaña ya se creó: ahí el borrador se acaba de
+   * descartar y volver a escribirlo acá lo resucitaría, con el aviso de "campaña sin terminar"
+   * apareciendo justo después de terminarla.
    */
-  const close = () => {
+  const close = ({ conservarBorrador = true }: { conservarBorrador?: boolean } = {}) => {
+    // Antes de cerrar se vuelca lo que el debounce todavía no alcanzó a escribir.
+    if (!isEditing && conservarBorrador) guardarBorrador();
     onOpenChange(false);
     if (!isEditing) setTimeout(reset, 300);
   };
@@ -1039,6 +1135,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         priority: data.priority,
         startDate: data.startDate || null,
         dueDate: data.dueDate || null,
+        // El selector de Estratega se muestra igual al editar, pero su valor no viajaba en esta
+        // llamada (ni `updateProject` lo aceptaba): cambiarla no hacía nada y al reabrir volvía
+        // la anterior. Además de la etiqueta en la campaña, esto decide a quién le llega el
+        // correo de "un entregable espera tu revisión" (ver notificarEnRevision).
+        strategistName: data.strategistName.trim(),
         audienciaNarrativa: {
           segmentos: audiencia.segmentos,
           metaInscripciones: audiencia.metaInscripciones.trim(),
@@ -1094,7 +1195,8 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       attachments,
     });
     onCreated(id);
-    close();
+    // La campaña ya existe: el borrador se descartó arriba y no hay que volver a escribirlo.
+    close({ conservarBorrador: false });
   };
 
   return (

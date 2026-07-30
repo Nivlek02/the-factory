@@ -77,6 +77,19 @@ gana la más laxa**. Se corrigió con `20260729010000`, que borra las duplicadas
    `deleteUser` en `authStore`).
 
 ### Roles
+**Agregar un rol de equipo toca 4 sitios, y si falta uno el rol queda a medias:**
+1. `AppRole` + `ROLE_LABELS` (`authService`) — la etiqueta va con tilde: `Videógrafo`.
+2. El **check constraint** de `usuarios_roles.rol` (migración). Sin esto, guardar la persona con
+   ese rol rebota con `usuarios_roles_rol_check` → "Ese rol no es válido".
+3. `DEFAULT_ROLES` + `ASSIGNABLE_ROLE_IDS` en `rolesStore`, **subiendo `version`** del `persist`:
+   ese store vive en `localStorage` y `migrate` solo corre si la versión guardada es menor, así
+   que sin subirla el rol nuevo no le aparece a nadie que ya haya abierto la app (o sea, a nadie).
+4. `LETRA_POR_ROL` en `factoryStore`, para el código de tarea.
+
+Un rol desconocido en la tabla **ya no cae a `soporte`** (`ROL_DESCONOCIDO = 'copy'`): soporte es
+rol gestor, así que una etiqueta nueva convertía a esa persona en gestora a los ojos del front
+(la base la frenaba igual, pero veía botones que fallaban).
+
 `usuarios_roles.rol` guarda la **etiqueta** ('Copywriter', 'Estratega'…) con un check constraint;
 `authService` la traduce al id interno (`copy`, `estratega`…) con un mapa inverso de `ROLE_LABELS`.
 El rol es **informativo en todas partes menos en la gestión de usuarios**, que es el único lugar
@@ -280,13 +293,19 @@ por rol/texto.
 
 ## Flujo de trabajo (los nodos)
 
-Cadena base: **Copys → Diseño de piezas → Envío de acciones**. Copys **se bifurca en tres ramas
+Cadena base: **Copys → Diseño de piezas → Envío de acciones**. Copys **se bifurca en cuatro ramas
 que no se cruzan**:
 - → **Diseño** (cualquier copy normal). La tarea se renombra al nacer con `nombreDePieza`
   (`Redactar copy para Correo — X` → `Diseño de pieza para Correo — X`).
 - → **Call Center** (solo el guion de la llamada, `isCallCenterGuion`). Checkpoint **único** por
   nodo.
+- → **Producción de video** (solo el guion del video, `isVideoGuion`). **No es `unico`**: cada
+  guion aprobado es un video distinto que hay que producir, a diferencia del registro de Call
+  Center, que es un solo checkpoint por campaña. El nodo lleva `roleId: 'videografo'` real.
 - → **Formulario de la landing → Cargue de la landing** (solo `Copy de landing`, `isLandingCopy`).
+
+**Cada rama nueva que salga de Copys hay que restarla de `avanzaDesde('diseno', …)`**, o el guion
+también generaría una pieza de diseño.
 
 Los demás nodos (Pauta, BTL, KAM, Relacionamiento, Call Center) **nacen del Plan de canales**, no de
 un checkbox: `syncCanalNodes` los agrega y los quita al agregar o quitar canales, igual que
@@ -325,6 +344,14 @@ se corrige después se ve corregido).
   Landing/Loops heredarían la fecha del último canal.
 - **Las tareas de métricas NO heredan fecha** a propósito: heredar la del envío las dejaría en rojo
   al día siguiente de enviar.
+- **Todo lo que lee el título de una tarea de métricas vive en `src/lib/metricas.ts`** — canal,
+  campos del formulario, nombre de la tarea y el "¿ya existe?". Antes eso estaba repetido en tres
+  lugares y dos cortaban con `/…de (\w+)/`. La tarea se llama
+  `Recolectar métricas de {canal}{ — fecha — segmento}`: **conserva la referencia del toque a
+  propósito**, porque una campaña manda varios correos y con el nombre a secas solo se creaba la
+  del primero (los demás envíos se quedaban sin métricas). El dedup es por **`sourceBriefId`**, no
+  por nombre; las tareas de métricas viejas no lo tienen y se siguen tratando como la única de su
+  canal para no duplicarlas al reguardar un envío antiguo.
 - **Dashboard de métricas: solo Correo, WhatsApp y SMS** (`esCanalMedido`). Muestra Enviados +
   Clics, y Apertura **solo en Correo** (`mideApertura`), espejo de los campos que pide el formulario
   de `FactoryPage`. Si ese formulario cambia, hay que actualizar esas funciones o el dashboard
@@ -563,6 +590,35 @@ build).
 
 Solo lo que sigue explicando el estado actual. Lo anterior está en el historial de git.
 
+- **2026-07-30 (v1.12.0) — rol Videógrafo + segunda tanda de bugs.** Lo nuevo: canal **Video** →
+  guion (Copy) → al aprobarlo nace "Producir video" en el nodo del Videógrafo. Los arreglos, con
+  prueba de regresión vista fallar contra el build anterior:
+  1. **El wizard de edición trabajaba con una copia congelada de la campaña.** Sus `useState` se
+     inicializan al montar `ProjectWorkspace` (o sea al SELECCIONAR la campaña), y nada volvía a
+     leer `editProject`: con un cambio de otra persona ya hidratado, "Guardar cambios" lo borraba
+     —canales, loops, etapas, adjuntos— y **la guardia de `revision` no salta**, porque ese
+     `hydrate` ya había puesto la revisión al día. Hoy se resincroniza al ABRIR el diálogo (no con
+     cada cambio de props: si está abierto, alguien está escribiendo ahí).
+  2. **`strategistName` no se guardaba al editar** — ni el wizard lo mandaba ni `updateProject` lo
+     aceptaba. Decide además el destinatario de `tarea.en_revision`.
+  3. **Las tareas de métricas abrían el diálogo del vecino** (viven en el nodo de Envíos/Pauta por
+     su `currentNodeId`): preguntaban "¿Enviado?" en vez de pedir los números, y en Pauta guardar
+     ahí generaba `Recolectar métricas de Recolectar métricas de Facebook`.
+  4. **Solo el primer envío de cada canal generaba métricas** (dedup por nombre) y `\w+` partía
+     "Google Ads". Ver `src/lib/metricas.ts`.
+  5. **Borrar un nodo dejaba sus tareas huérfanas** — `deleteStrategyNode` no pasaba por
+     `limpiarNodosMuertos`.
+  6. **`BriefDialog` sin `key`**: al avanzar al siguiente entregable reusaba la instancia y se
+     arrastraba el comentario de corrección de la tarea anterior.
+  7. **Borrar una campaña con la escritura en vuelo la resucitaba** — el `upsert` aterrizaba
+     después del DELETE. `deleteRow` ahora espera la escritura pendiente.
+  8. Menores: filtro de fechas de Reportes con una sola fecha + paginación fuera de rango; tope de
+     50 MB en los adjuntos de entregable (vive en `storageService`, el único paso obligado de toda
+     subida); rol desconocido ya no cae a `soporte`; CSV injection en el export; el diálogo de
+     usuario se refresca tras crear el acceso; y se borró el "auto-build" muerto de `MapTab` (sus
+     nombres de canal —'Copys', 'Envíos'— no son valores reales, así que nunca creó nada salvo
+     nodos "Loop:" sueltos).
+
 - **2026-07-30 (v1.11.0) — revisión de bugs.** Cuatro arreglos, todos con prueba de regresión que
   se comprobó que **falla** con el código anterior:
   1. **El wizard de edición ya no borra el trabajo de los entregables** (`fusionarBriefs` +
@@ -615,7 +671,24 @@ Solo lo que sigue explicando el estado actual. Lo anterior está en el historial
 
 ## Pendientes
 
-### Nada pendiente de desplegar
+### Pendiente de aplicar: la migración del rol Videógrafo
+
+`20260730000000_rol-videografo.sql` **todavía no está aplicada**. Sin ella, guardar a alguien con
+rol Videógrafo rebota ("Ese rol no es válido"); el canal Video y su flujo funcionan igual, pero la
+tarea de producción no tendría a quién notificarle. Es una sola línea y no toca ninguna fila:
+
+```sql
+alter table public.usuarios_roles drop constraint if exists usuarios_roles_rol_check;
+alter table public.usuarios_roles add constraint usuarios_roles_rol_check check (
+  rol in ('Copywriter','Diseñador','Gestor de canales','Estratega','Soporte','Trafficker','Videógrafo')
+);
+```
+
+Se puede pegar en el SQL Editor de Supabase. **`supabase db push --linked` NO es equivalente**:
+arrastraría también `20260729020000` (borrar las tablas del kanban), que sigue siendo una decisión
+aparte.
+
+### Nada más pendiente de desplegar
 
 Las 2 migraciones y las 2 functions de la revisión del 2026-07-29 **están aplicadas y verificadas
 contra producción**. Lo que sigue son decisiones y tareas de cuenta, no despliegues.
