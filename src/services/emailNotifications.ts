@@ -31,6 +31,11 @@ interface Respuesta {
   /** Solo en la prueba: a dónde fue realmente (puede diferir si hay modo de prueba activo). */
   enviadoA?: string[];
   modoPrueba?: boolean;
+  /** El correo salió para unos destinatarios y para otros no (una dirección que Gmail rechaza,
+   *  la cuota diaria agotándose a mitad de la lista). La función ya lo registra con nombre y
+   *  apellido; acá se repite en consola para que se vea sin entrar al panel de Supabase. */
+  parcial?: boolean;
+  fallidos?: { correo: string; motivo: string }[];
 }
 
 /** Si la función no responde en este tiempo, se corta: nada acá justifica esperar más. */
@@ -102,6 +107,9 @@ const disparar = (body: Payload) => {
   void invocar(body)
     .then((r) => {
       if (!r.success) console.warn('[notificar-correo] no se envió:', r.error);
+      else if (r.parcial) {
+        console.warn('[notificar-correo] envío PARCIAL, no le llegó a:', r.fallidos);
+      }
     })
     .catch((e) => console.warn('[notificar-correo] falló la invocación:', e));
 };

@@ -405,8 +405,35 @@ class Smtp {
  *  suya. El volumen lo permite de sobra — el sistema agrupa un correo por rol, no por tarea,
  *  contra un tope de ~500 destinatarios/día de una cuenta Gmail gratuita. Se reutiliza una sola
  *  conexión para todos. */
-const enviarPorGmail = async (destino: string[], asunto: string, html: string) => {
+interface ResultadoEnvio {
+  /** Hubo al menos un destinatario al que sí le salió el correo. */
+  ok: boolean;
+  enviadoA: string[];
+  /** A quién NO se le pudo mandar y por qué. Vacío en el caso feliz. */
+  fallidos: { correo: string; motivo: string }[];
+  /** Solo cuando no salió ninguno. */
+  motivo?: string;
+}
+
+/** Fallo que deja la conexión inservible: seguir con los que faltan no tiene sentido, cada
+ *  comando siguiente daría el mismo error. Cualquier otra cosa (un rechazo de Gmail a una
+ *  dirección concreta) es recuperable. */
+const conexionPerdida = (e: unknown) =>
+  e instanceof SmtpError && /cerró la conexión|no respondió a tiempo/i.test(e.message);
+
+/** Pista para el error más común: 535 = credenciales rechazadas, y casi siempre es lo mismo — se
+ *  puso la clave de la cuenta en vez de una contraseña de aplicación, o se revocó al cambiar la
+ *  contraseña de Google. */
+const pistaDeError = (detalle: string) =>
+  /535|BadCredentials|Username and Password not accepted/i.test(detalle)
+    ? ' — Gmail rechazó las credenciales: GMAIL_APP_PASSWORD tiene que ser una contraseña de aplicación vigente (no la clave de la cuenta) y la verificación en dos pasos debe seguir activa'
+    : '';
+
+const enviarPorGmail = async (destino: string[], asunto: string, html: string): Promise<ResultadoEnvio> => {
   let smtp: Smtp | null = null;
+  const enviados: string[] = [];
+  const fallidos: { correo: string; motivo: string }[] = [];
+
   try {
     smtp = new Smtp(await Deno.connectTls({ hostname: 'smtp.gmail.com', port: 465 }));
     await smtp.saludo();                                   // 220
@@ -416,48 +443,71 @@ const enviarPorGmail = async (destino: string[], asunto: string, html: string) =
 
     const de = `${cabecera(FROM_NAME)} <${GMAIL_USER}>`;
     for (const to of destino) {
-      await smtp.cmd(`MAIL FROM:<${GMAIL_USER}>`, 250);
-      await smtp.cmd(`RCPT TO:<${to}>`, 250);
-      await smtp.cmd('DATA', 354);
-      // El cuerpo va en base64: así no hay que preocuparse por líneas largas, por el UTF-8, ni
-      // por el "dot stuffing" (una línea que empiece con "." termina el mensaje antes de tiempo).
-      const mensaje = [
-        `From: ${de}`,
-        `To: <${to}>`,
-        `Subject: ${cabecera(asunto)}`,
-        `Date: ${new Date().toUTCString()}`,
-        'MIME-Version: 1.0',
-        'Content-Type: text/html; charset=utf-8',
-        'Content-Transfer-Encoding: base64',
-        '',
-        b64(html).replace(/(.{76})/g, '$1\r\n'),
-      ].join('\r\n');
-      await smtp.cmd(`${mensaje}\r\n.`, 250);
+      // CADA destinatario va en su propia transacción y con su propio try.
+      //
+      // Antes el try envolvía el bucle entero, así que un solo rechazo —una dirección del
+      // directorio que Gmail no acepta (se escriben a mano), o la cuota diaria de ~500 que se
+      // agota a mitad de la lista— abortaba el resto: los que venían después NO recibían nada.
+      // Y no lo notaba nadie, porque notificar es fire-and-forget y el único rastro era un
+      // console.warn en el navegador de quien disparó la acción, que no es ninguno de los que
+      // se quedaron sin correo.
+      try {
+        await smtp.cmd(`MAIL FROM:<${GMAIL_USER}>`, 250);
+        await smtp.cmd(`RCPT TO:<${to}>`, 250);
+        await smtp.cmd('DATA', 354);
+        // El cuerpo va en base64: así no hay que preocuparse por líneas largas, por el UTF-8, ni
+        // por el "dot stuffing" (una línea que empiece con "." termina el mensaje antes de tiempo).
+        const mensaje = [
+          `From: ${de}`,
+          `To: <${to}>`,
+          `Subject: ${cabecera(asunto)}`,
+          `Date: ${new Date().toUTCString()}`,
+          'MIME-Version: 1.0',
+          'Content-Type: text/html; charset=utf-8',
+          'Content-Transfer-Encoding: base64',
+          '',
+          b64(html).replace(/(.{76})/g, '$1\r\n'),
+        ].join('\r\n');
+        await smtp.cmd(`${mensaje}\r\n.`, 250);
+        enviados.push(to);
+      } catch (e) {
+        if (conexionPerdida(e)) throw e;
+        fallidos.push({ correo: to, motivo: String(e instanceof Error ? e.message : e).slice(0, 200) });
+        // La transacción quedó a medias (un RCPT rechazado deja el MAIL FROM abierto): RSET la
+        // limpia antes del siguiente. Si ni el RSET contesta, la conexión tampoco sirve.
+        try {
+          await smtp.cmd('RSET', 250);
+        } catch {
+          throw e;
+        }
+      }
     }
     try { await smtp.cmd('QUIT', 221); } catch { /* da igual si no contesta */ }
-    return { ok: true as const, enviadoA: destino };
   } catch (e) {
     const detalle = String(e instanceof Error ? e.message : e).slice(0, 400);
     console.error('GMAIL_ERROR', detalle);
-    // 535 = credenciales rechazadas, y casi siempre es lo mismo: se puso la clave de la cuenta en
-    // vez de una contraseña de aplicación, o se revocó al cambiar la contraseña de Google.
-    const pista = /535|BadCredentials|Username and Password not accepted/i.test(detalle)
-      ? ' — Gmail rechazó las credenciales: GMAIL_APP_PASSWORD tiene que ser una contraseña de aplicación vigente (no la clave de la cuenta) y la verificación en dos pasos debe seguir activa'
-      : '';
-    return { ok: false as const, motivo: `gmail: ${detalle}${pista}` };
+    const motivo = `gmail: ${detalle}${pistaDeError(detalle)}`;
+    // Si ya salieron algunos, esto no es un fallo total: se reporta lo que sí se envió y se anota
+    // que el resto de la lista se quedó sin mandar.
+    if (enviados.length === 0) return { ok: false, enviadoA: [], fallidos, motivo };
+    for (const to of destino.filter((d) => !enviados.includes(d) && !fallidos.some((f) => f.correo === d))) {
+      fallidos.push({ correo: to, motivo: detalle });
+    }
   } finally {
     smtp?.cerrar();
   }
+
+  return { ok: enviados.length > 0, enviadoA: enviados, fallidos };
 };
 
-const enviar = async (para: string[], asunto: string, html: string) => {
+const enviar = async (para: string[], asunto: string, html: string): Promise<ResultadoEnvio> => {
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
-    return { ok: false as const, motivo: 'correo sin configurar (faltan GMAIL_USER / GMAIL_APP_PASSWORD)' };
+    return { ok: false, enviadoA: [], fallidos: [], motivo: 'correo sin configurar (faltan GMAIL_USER / GMAIL_APP_PASSWORD)' };
   }
   // Última barrera antes del socket: una dirección con un salto de línea rompería el diálogo SMTP.
   const limpios = para.map((e) => unaLinea(e)).filter(correoValido);
   if (limpios.length === 0) {
-    return { ok: false as const, motivo: 'ninguna dirección válida entre los destinatarios' };
+    return { ok: false, enviadoA: [], fallidos: [], motivo: 'ninguna dirección válida entre los destinatarios' };
   }
   return await enviarPorGmail(limpios, asunto, html);
 };
@@ -514,8 +564,8 @@ serve(async (req) => {
   if (evento === 'prueba') {
     const r = await enviar([quienLlama.email], 'Prueba de notificaciones — Tremu', ejemplo(quienLlama.nombre_completo));
     return r.ok
-      ? json({ success: true, destinatarios: 1, enviadoA: r.enviadoA })
-      : json({ error: `No se pudo enviar: ${r.motivo}` }, 502);
+      ? json({ success: true, destinatarios: r.enviadoA.length, enviadoA: r.enviadoA })
+      : json({ error: `No se pudo enviar: ${r.motivo ?? r.fallidos[0]?.motivo ?? 'sin detalle'}` }, 502);
   }
 
   const copy = COPY[evento as Exclude<Evento, 'prueba'>];
@@ -588,10 +638,24 @@ serve(async (req) => {
 
   if (!r.ok) {
     // Con el correo todavía sin configurar esto NO es un fallo de la app: se registra y ya.
-    console.error('ENVIO_FALLIDO', JSON.stringify({ evento, motivo: r.motivo }));
-    return json({ success: false, destinatarios: correos.length, motivo: r.motivo });
+    console.error('ENVIO_FALLIDO', JSON.stringify({ evento, previstos: correos.length, motivo: r.motivo }));
+    return json({ success: false, destinatarios: 0, previstos: correos.length, motivo: r.motivo });
   }
 
-  console.log('ENVIADO', JSON.stringify({ evento, destinatarios: correos.length }));
-  return json({ success: true, destinatarios: correos.length });
+  if (r.fallidos.length > 0) {
+    // Salió para unos y no para otros. Se registra CON las direcciones que fallaron: es lo único
+    // que permite darse cuenta de que a alguien dejaron de llegarle los avisos, porque del lado
+    // del navegador esto solo es un console.warn — y no en la máquina del que se quedó sin correo.
+    console.error('ENVIO_PARCIAL', JSON.stringify({ evento, enviados: r.enviadoA.length, fallidos: r.fallidos }));
+    return json({
+      success: true,
+      parcial: true,
+      destinatarios: r.enviadoA.length,
+      previstos: correos.length,
+      fallidos: r.fallidos,
+    });
+  }
+
+  console.log('ENVIADO', JSON.stringify({ evento, destinatarios: r.enviadoA.length }));
+  return json({ success: true, destinatarios: r.enviadoA.length });
 });

@@ -58,6 +58,7 @@ import CreateProjectWizard from './CreateProjectWizard';
 import { WorkflowTab, MetricsDashboardTab, LoopTab } from './MapTab';
 import { DeliverableSummary, BriefStatusBadge, isMetricsBrief, isUrlBrief } from '@/components/factory/DeliverableSummary';
 import { dangerousHtml } from '@/lib/sanitizeHtml';
+import { esUrlHttp } from '@/lib/urlSegura';
 import { useCampanasFrescas } from '@/hooks/useCampanasFrescas';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -248,9 +249,15 @@ const OverviewTab = ({ project }: { project: FactoryProject }) => {
               <div className="col-span-2">
                 <span className="text-muted-foreground">Link del segmento</span>
                 <p className="font-medium mt-0.5 truncate">
-                  <a href={project.segmentLink} target="_blank" rel="noopener noreferrer" className="text-factory hover:underline">
-                    {project.segmentLink}
-                  </a>
+                  {/* Solo se vuelve enlace si es http/https: un `javascript:` guardado acá se
+                      ejecutaría con la sesión de quien lo clique (ver src/lib/urlSegura.ts). */}
+                  {esUrlHttp(project.segmentLink) ? (
+                    <a href={project.segmentLink.trim()} target="_blank" rel="noopener noreferrer" className="text-factory hover:underline">
+                      {project.segmentLink}
+                    </a>
+                  ) : (
+                    <span className="text-foreground/80">{project.segmentLink}</span>
+                  )}
                 </p>
               </div>
             )}
@@ -568,6 +575,14 @@ const TeamTasksTab = ({
                       onChange={(e) => setDeliverableContent(e.target.value)}
                       className="text-sm"
                     />
+                    {/* El `type="url"` no valida nada acá: este input vive en un Dialog, no en un
+                        <form>, así que la validación nativa del navegador nunca corre (solo se
+                        dispara al hacer submit). La comprobación real es esta. */}
+                    {deliverableContent.trim() && !esUrlHttp(deliverableContent) && (
+                      <p className="text-xs text-state-blocked">
+                        Tiene que ser un enlace que empiece por http:// o https://
+                      </p>
+                    )}
                   </div>
                 </div>
               );
@@ -597,7 +612,7 @@ const TeamTasksTab = ({
                   }
                   setDeliverableBrief(null);
                 }}
-                disabled={isUrlBrief(deliverableBrief.tarea) && !deliverableContent.trim()}
+                disabled={isUrlBrief(deliverableBrief.tarea) && !esUrlHttp(deliverableContent)}
               >
                 {deliverableBrief.deliverableSubmittedAt ? 'Actualizar' : 'Guardar'}
               </Button>

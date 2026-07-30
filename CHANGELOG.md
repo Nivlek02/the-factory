@@ -25,6 +25,32 @@ en ningún otro archivo.
 
 ---
 
+## [1.11.0] — 2026-07-30
+
+### Arreglado
+
+- **Editar una campaña ya no borra el trabajo de las tareas.** Hasta ahora, abrir "Editar proyecto"
+  y pulsar "Guardar cambios" —aunque no se tocara nada— dejaba las tareas en blanco: se perdían el
+  contenido del entregable, los archivos adjuntos, todos los comentarios y el historial de
+  aprobación, y desaparecían las tareas que habían nacido dentro del flujo (las piezas de diseño, el
+  registro de Call Center, la landing, las de métricas y las agregadas a mano desde un nodo). Ahora
+  cada tarea conserva su contenido al guardar.
+- **Quitar un canal del Plan de canales** borra sus tareas **solo si estaban vacías**. Si alguien ya
+  había trabajado en ellas, se conservan (y hay que borrarlas a mano con "Eliminar tarea" si de
+  verdad sobran). Además dejan de quedar tareas "fantasma": las que salían en Mis tareas y en
+  Reportes pero no se podían abrir desde ningún lado.
+- **Un cambio ya no se revierte solo al volver a la ventana.** Si se cambiaba de aplicación justo
+  mientras la campaña se estaba guardando, la pantalla volvía al estado anterior y el cambio podía
+  perderse también del servidor. 
+- **Los enlaces guardados solo se abren si son `http://` o `https://`.** Cualquier otra cosa se
+  sigue viendo como texto, pero deja de ser clicable. Aplica a la URL del entregable, al link del
+  segmento de la campaña y a los links de Seguimiento de eventos. Al escribir la URL de un
+  entregable, ahora avisa si no es un enlace válido y no deja guardarla.
+- **Un correo mal escrito en el directorio ya no deja sin notificación al resto del equipo.** Antes,
+  si una sola dirección era rechazada, las personas que venían después en la lista no recibían nada
+  y no quedaba ningún aviso. Ahora el envío continúa con los demás y queda registrado a quién no le
+  llegó y por qué.
+
 ## [1.10.3] — 2026-07-29
 
 ### Cambiado

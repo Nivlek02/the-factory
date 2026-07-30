@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { AlertCircle, Check, Copy, Download, Loader2, QrCode } from 'lucide-react';
+import { esUrlHttp } from '@/lib/urlSegura';
 
 /**
  * Autocontenido: los campos del formulario viven acá (no hay un webhook de schema — n8n
@@ -62,14 +63,9 @@ const T = {
   inputRadius: '14px',
 } as const;
 
-const isValidUrl = (value: string) => {
-  try {
-    const u = new URL(value);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    return false;
-  }
-};
+/** Los design tokens de acá son locales a propósito, pero esta comprobación no: es la misma que
+ *  protege los `href` guardados y vive en un solo lugar (src/lib/urlSegura.ts). */
+const isValidUrl = (value: string) => esUrlHttp(value);
 
 const errorMessageFrom = (err: unknown, fallback: string) =>
   err instanceof Error && err.message ? err.message : fallback;

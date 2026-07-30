@@ -819,6 +819,10 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
         roleLabel,
         tarea,
         checked: false,
+        // Marca de origen: estas tareas las sabe regenerar el wizard a partir del plan, así que
+        // `fusionarBriefs` puede descartar las que el plan ya no contemple SI están vacías. Sin
+        // la marca, una tarea nunca se descarta (ver factoryStore.fusionarBriefs).
+        origen: 'wizard',
         ...(fechaCanalActual ? { fechaAccion: fechaCanalActual } : {}),
         ...extra,
       });

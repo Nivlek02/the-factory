@@ -33,20 +33,16 @@ import { Plus, MessageSquare, FileText, Image as ImageIcon, History, Calendar as
 import { calcularUrgencia, formatFechaCorta, formatFechaLarga } from '@/lib/urgencia';
 import { notificarEnRevision, notificarAprobada, notificarCorreccion } from '@/services/emailNotifications';
 import { cn } from '@/lib/utils';
+import { esUrlHttp } from '@/lib/urlSegura';
 import RichTextEditor from '@/components/ui/rich-text-editor';
 import FileUpload, { Attachment } from '@/components/ui/file-upload';
 
 const genId = () => `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const authorName = () => useAuthStore.getState().currentUser?.fullName ?? 'Usuario';
 
-const isValidUrl = (value: string) => {
-  try {
-    const u = new URL(value);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    return false;
-  }
-};
+/** Misma comprobación que usa el render de los enlaces guardados, en un solo lugar: si algún día
+ *  se relaja una, no puede quedar la otra por detrás. Ver src/lib/urlSegura.ts. */
+const isValidUrl = (value: string) => esUrlHttp(value);
 
 const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleDateString('es-CO', {

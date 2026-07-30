@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { FileText, Link2, MessageSquare, History } from 'lucide-react';
 import { dangerousHtml } from '@/lib/sanitizeHtml';
+import { esUrlHttp } from '@/lib/urlSegura';
 
 export const BRIEF_STATUS_META: Record<BriefWorkflowStatus, { label: string; cls: string }> = {
   pending: { label: 'Pendiente', cls: 'bg-muted text-muted-foreground' },
@@ -130,9 +131,11 @@ export const DeliverableSummary = ({ brief }: { brief: FabricaBriefItem }) => {
       ) : isUrlBrief(brief.tarea) ? (
         <div className="space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">URL del entregable</p>
-          {brief.deliverableContent ? (
+          {!brief.deliverableContent ? (
+            <p className="text-sm text-muted-foreground italic">Sin URL registrada</p>
+          ) : esUrlHttp(brief.deliverableContent) ? (
             <a
-              href={brief.deliverableContent}
+              href={brief.deliverableContent.trim()}
               target="_blank"
               rel="noreferrer"
               className="text-sm text-factory hover:underline flex items-center gap-1.5 break-all"
@@ -141,7 +144,14 @@ export const DeliverableSummary = ({ brief }: { brief: FabricaBriefItem }) => {
               {brief.deliverableContent}
             </a>
           ) : (
-            <p className="text-sm text-muted-foreground italic">Sin URL registrada</p>
+            /* No es http/https: se muestra el texto pero NO como enlace. Un `javascript:` acá se
+               ejecutaría con la sesión de quien lo clique — ver src/lib/urlSegura.ts. */
+            <div className="space-y-1">
+              <p className="text-sm text-foreground/80 break-all">{brief.deliverableContent}</p>
+              <p className="text-xs text-state-blocked">
+                No es un enlace válido (debe empezar por http:// o https://), así que no se abre.
+              </p>
+            </div>
           )}
         </div>
       ) : (

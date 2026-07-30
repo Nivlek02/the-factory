@@ -187,6 +187,17 @@ export interface FabricaBriefItem {
   workflowStatus?: BriefWorkflowStatus;
   /** Hilo de comentarios (notas y correcciones de aprobación) */
   comments?: TaskComment[];
+  /** De dónde salió la tarea.
+   *
+   *  `'wizard'` = la genera `buildFabricaBriefs` a partir del Plan de canales / loops /
+   *  requerimientos, así que el wizard de edición puede volver a generarla — y descartarla si el
+   *  plan cambió y la tarea seguía vacía.
+   *
+   *  Sin marca = nació en el flujo de trabajo (una aprobación vía `activateNextStage`, el
+   *  quick-add de un nodo, la tarea de métricas) **o es anterior a esta marca**. Esas no se
+   *  descartan nunca: el wizard no sabe reconstruirlas, así que si las tirara no volverían.
+   *  Ver `fusionarBriefs`. */
+  origen?: 'wizard';
 }
 
 export type ProjectPriority = 'P0' | 'P1' | 'P2';
@@ -697,26 +708,124 @@ const asignarCodigos = <T extends FabricaBriefItem>(
 };
 
 /**
- * Recupera el código de las tareas que el wizard de edición reconstruyó: las empareja con las que
- * había antes por texto + rol. Sin esto, cada "Guardar cambios" les daría un código nuevo (C1 →
- * C7 → C13…), porque `buildFabricaBriefs` las regenera desde cero con ids nuevos.
- * Se emparejan de a una (`shift`) para que dos tareas con el mismo nombre no se lleven el mismo
- * código.
+ * Campos que representan TRABAJO ya hecho sobre la tarea (o su identidad dentro de la campaña).
+ * Sobreviven a que el wizard de edición reconstruya `fabricaBriefs` desde cero — ver
+ * `fusionarBriefs`. Todo lo que NO esté acá se toma de la versión recién generada, porque es
+ * justamente lo que el wizard acaba de definir (texto, rol, notas del brief, estrategia de loop).
  */
-const heredarCodigos = (previas: FabricaBriefItem[], nuevas: FabricaBriefItem[]): FabricaBriefItem[] => {
-  const disponibles = new Map<string, string[]>();
+const CAMPOS_DE_TRABAJO: (keyof FabricaBriefItem)[] = [
+  'codigo',
+  'currentNodeId',
+  'sourceBriefId',
+  'workflowStatus',
+  'comments',
+  'deliverableContent',
+  'deliverableAttachments',
+  'deliverableSubmittedAt',
+  'deliverableEnviado',
+  'deliverableMotivoNoEnvio',
+  'deliverableMetricas',
+  'deliverableDone',
+  'deliverableDate',
+  'deliverablePublicada',
+];
+
+/** ¿Alguien ya trabajó sobre esta tarea? Decide si una tarea que el wizard dejó de generar se
+ *  descarta (estaba vacía: no se pierde nada) o se conserva aunque quede fuera del plan. */
+const tieneTrabajo = (b: FabricaBriefItem): boolean =>
+  !!b.deliverableContent?.trim() ||
+  (b.deliverableAttachments?.length ?? 0) > 0 ||
+  (b.comments?.length ?? 0) > 0 ||
+  Object.values(b.deliverableMetricas ?? {}).some((v) => (v ?? '').trim() !== '') ||
+  !!b.deliverableSubmittedAt ||
+  b.deliverableEnviado != null ||
+  b.deliverableDone != null ||
+  b.deliverablePublicada != null ||
+  (!!b.workflowStatus && b.workflowStatus !== 'pending');
+
+/**
+ * Fusiona las tareas que el wizard de edición acaba de reconstruir con las que ya tenía la
+ * campaña.
+ *
+ * POR QUÉ EXISTE: `buildFabricaBriefs` rearma `fabricaBriefs` **entero, con ids nuevos y en
+ * blanco**, y el `useEffect` que lo llama corre ya al ABRIR el diálogo. Sin esto, "Guardar
+ * cambios" —aunque no se tocara un solo campo— reemplazaba la lista completa y se llevaba por
+ * delante `deliverableContent`, los adjuntos, el hilo de `comments` con todo el historial de
+ * aprobación, el `workflowStatus`, las métricas y las tareas que habían nacido en el flujo. Como
+ * cada escritura reemplaza el blob entero, no había forma de recuperarlo.
+ *
+ * CÓMO:
+ *  1. Se emparejan por `texto + rol`, de a una (`shift`), para que dos tareas con el mismo nombre
+ *     no se lleven la misma pareja.
+ *  2. La emparejada conserva su `id` —`sourceBriefId` referencia POR ID, así que con uno nuevo la
+ *     pestaña "Paso anterior" de las tareas que colgaban de esta dejaría de encontrarla— y todos
+ *     los CAMPOS_DE_TRABAJO. El resto (texto, rol, notas) viene de la versión nueva.
+ *  3. Las que quedan sin pareja se conservan, salvo que las hubiera generado el propio wizard
+ *     (`origen: 'wizard'`) y estén vacías: eso es una tarea del plan que se renombró o se quitó,
+ *     y descartarla no pierde nada. Lo que nació en el flujo, el quick-add y **todo lo legado**
+ *     (sin marca de origen) no se descarta nunca.
+ *
+ * Efecto de borde asumido: si se le cambia la fecha o el segmento a un canal, su tarea cambia de
+ * nombre y no empareja. Si ya tenía trabajo, quedan las dos (la vieja con su contenido y la nueva
+ * vacía) y hay que borrar la que sobra a mano. Es a propósito: una tarea duplicada se ve y se
+ * arregla; un entregable borrado en silencio, no.
+ */
+const fusionarBriefs = (
+  previas: FabricaBriefItem[],
+  nuevas: FabricaBriefItem[]
+): FabricaBriefItem[] => {
+  const porClave = new Map<string, FabricaBriefItem[]>();
   for (const b of previas) {
-    if (!b.codigo) continue;
     const k = `${b.tarea}|${b.roleLabel}`;
-    const lista = disponibles.get(k);
-    if (lista) lista.push(b.codigo);
-    else disponibles.set(k, [b.codigo]);
+    const cola = porClave.get(k);
+    if (cola) cola.push(b);
+    else porClave.set(k, [b]);
   }
-  return nuevas.map((b) => {
-    if (b.codigo) return b;
-    const heredado = disponibles.get(`${b.tarea}|${b.roleLabel}`)?.shift();
-    return heredado ? { ...b, codigo: heredado } : b;
+
+  const emparejadas = new Set<string>();
+  const fusionadas = nuevas.map((n) => {
+    const previa = porClave.get(`${n.tarea}|${n.roleLabel}`)?.shift();
+    if (!previa) return n;
+    emparejadas.add(previa.id);
+
+    const conservado: Partial<FabricaBriefItem> = {};
+    for (const campo of CAMPOS_DE_TRABAJO) {
+      if (previa[campo] !== undefined) {
+        (conservado as Record<string, unknown>)[campo] = previa[campo];
+      }
+    }
+
+    return {
+      ...n,
+      ...conservado,
+      id: previa.id,
+      // La fecha del Plan de canales manda cuando el wizard la trae (es donde se reprograma la
+      // campaña). Las tareas que no nacen de un canal no la traen, y ahí se conserva la que se
+      // haya puesto desde la propia tarea.
+      fechaAccion: n.fechaAccion !== undefined ? n.fechaAccion : previa.fechaAccion,
+    };
   });
+
+  const rescatadas = previas.filter(
+    (b) => !emparejadas.has(b.id) && (b.origen !== 'wizard' || tieneTrabajo(b))
+  );
+
+  return [...fusionadas, ...rescatadas];
+};
+
+/** Quita el `currentNodeId` que apunta a un nodo que ya no existe (pasa al desmarcar un canal o
+ *  un requerimiento: `syncCanalNodes`/`syncRequerimientoNodes` borran el nodo). Sin esto la tarea
+ *  queda invisible en Flujo de trabajo —`briefsForNode` no la encuentra en ningún nodo— pero
+ *  sigue contando en "Mis tareas" y en Reportes, y ya no hay forma de abrirla ni de borrarla.
+ *  Dejándolo en null vuelve a caer en las heurísticas por rol/texto de `briefsForNode`. */
+const limpiarNodosMuertos = (
+  nodes: StrategyNode[],
+  briefs: FabricaBriefItem[]
+): FabricaBriefItem[] => {
+  const vivos = new Set(nodes.map((n) => n.id));
+  return briefs.map((b) =>
+    b.currentNodeId && !vivos.has(b.currentNodeId) ? { ...b, currentNodeId: null } : b
+  );
 };
 
 /** Número consecutivo de campaña. Se toma el máximo ya usado + 1 en vez de `length + 1`: si se
@@ -857,8 +966,24 @@ const soloRevision = (fila: any): number => (typeof fila?.revision === 'number' 
 
 const pendingSync = new Map<string, ReturnType<typeof setTimeout>>();
 
+/**
+ * Campañas cuya escritura ya SALIÓ (está esperando a Supabase). Es un conjunto aparte de
+ * `pendingSync` porque ese solo guarda el temporizador del debounce y se vacía en cuanto el
+ * temporizador dispara — o sea, justo ANTES de las dos llamadas de red.
+ *
+ * Sin esto quedaba una ventana ciega de medio segundo a dos segundos (leer la revisión + subir el
+ * blob, que puede pesar megas) en la que `haySincronizacionPendiente()` decía "no hay nada
+ * pendiente". Un `focus` en ese momento —volver a la ventana tras mirar otra cosa, que es lo más
+ * normal del mundo— disparaba el `hydrate()` de `useCampanasFrescas`, que traía la fila TODAVÍA
+ * VIEJA y pisaba el store con ella. El cambio recién hecho desaparecía de la pantalla y, si la
+ * persona volvía a tocar algo, ese siguiente guardado salía de la copia vieja y **borraba el
+ * cambio también de la base**, sin error y sin aviso.
+ */
+const escriturasEnVuelo = new Set<string>();
+
 /** ¿Hay escrituras locales sin confirmar? Se usa para no recargar encima de un cambio en vuelo. */
-export const haySincronizacionPendiente = () => pendingSync.size > 0;
+export const haySincronizacionPendiente = () =>
+  pendingSync.size > 0 || escriturasEnVuelo.size > 0;
 
 /** Recarga UNA campaña desde la base y la deja en el store (sin tocar las demás). */
 const recargarProyecto = async (id: string) => {
@@ -871,54 +996,66 @@ const recargarProyecto = async (id: string) => {
   }));
 };
 
+/** El guardado en sí. Vive aparte de `syncProject` para que el `finally` que libera
+ *  `escriturasEnVuelo` cubra todas las salidas, incluidos los `return` tempranos. */
+const escribirProyecto = async (project: FactoryProject) => {
+  const conocida = revisionConocida.get(project.id) ?? 0;
+  // Se pide SOLO el número de revisión, no `data`: el blob de una campaña puede pesar megas
+  // (los adjuntos del asistente van en base64 ahí dentro) y esta consulta corre antes de CADA
+  // guardado. Con `select('data')` cada cambio bajaba el proyecto entero para leer un entero.
+  // El `select` tipado no digiere una ruta JSON (`data->revision`) y revienta la inferencia
+  // con TS2589 ("type instantiation is excessively deep"), así que acá se le pasa el tipo del
+  // resultado a mano. La forma es la de la proyección: un solo campo.
+  const { data: remoto, error: errorRevision } = await supabase
+    .from('factory_projects')
+    .select<'revision:data->revision', { revision: number | null }>('revision:data->revision')
+    .eq('id', project.id)
+    .maybeSingle();
+
+  // Si la consulta falla (red, sesión vencida) no se puede saber si hay conflicto. Se sigue
+  // adelante con el guardado —perder el cambio del usuario por un error transitorio sería peor
+  // que el riesgo de pisar— pero queda escrito en consola, porque si no este chequeo se
+  // desactivaría en silencio y nadie se enteraría.
+  if (errorRevision) {
+    console.warn('No se pudo leer la revisión remota; se guarda sin comprobar conflicto:', errorRevision.message);
+  }
+
+  // `remoto` nulo = la campaña todavía no existe en la base (recién creada): se inserta.
+  if (remoto && soloRevision(remoto) > conocida) {
+    console.warn('Escritura descartada: la campaña cambió en la base', project.id);
+    await recargarProyecto(project.id);
+    toast.error('Otra persona actualizó esta campaña', {
+      description: 'Se recargó con la versión más reciente. Vuelve a hacer tu cambio para no perder lo que hizo el otro.',
+    });
+    return;
+  }
+
+  const nueva = conocida + 1;
+  const row = projectToRow(project);
+  row.data.revision = nueva;
+  const { error } = await supabase
+    .from('factory_projects')
+    .upsert([row] as any, { onConflict: 'id' });
+  if (error) {
+    console.error('Error syncing project:', error);
+    return;
+  }
+  revisionConocida.set(project.id, nueva);
+};
+
 const syncProject = (project: FactoryProject) => {
   const existing = pendingSync.get(project.id);
   if (existing) clearTimeout(existing);
   const t = setTimeout(async () => {
     pendingSync.delete(project.id);
-
-    const conocida = revisionConocida.get(project.id) ?? 0;
-    // Se pide SOLO el número de revisión, no `data`: el blob de una campaña puede pesar megas
-    // (los adjuntos del asistente van en base64 ahí dentro) y esta consulta corre antes de CADA
-    // guardado. Con `select('data')` cada cambio bajaba el proyecto entero para leer un entero.
-    // El `select` tipado no digiere una ruta JSON (`data->revision`) y revienta la inferencia
-    // con TS2589 ("type instantiation is excessively deep"), así que acá se le pasa el tipo del
-    // resultado a mano. La forma es la de la proyección: un solo campo.
-    const { data: remoto, error: errorRevision } = await supabase
-      .from('factory_projects')
-      .select<'revision:data->revision', { revision: number | null }>('revision:data->revision')
-      .eq('id', project.id)
-      .maybeSingle();
-
-    // Si la consulta falla (red, sesión vencida) no se puede saber si hay conflicto. Se sigue
-    // adelante con el guardado —perder el cambio del usuario por un error transitorio sería peor
-    // que el riesgo de pisar— pero queda escrito en consola, porque si no este chequeo se
-    // desactivaría en silencio y nadie se enteraría.
-    if (errorRevision) {
-      console.warn('No se pudo leer la revisión remota; se guarda sin comprobar conflicto:', errorRevision.message);
+    // El debounce terminó, pero la escritura recién empieza: se marca en vuelo hasta que Supabase
+    // conteste, o `hydrate()` puede colarse en el medio (ver `escriturasEnVuelo`).
+    escriturasEnVuelo.add(project.id);
+    try {
+      await escribirProyecto(project);
+    } finally {
+      escriturasEnVuelo.delete(project.id);
     }
-
-    // `remoto` nulo = la campaña todavía no existe en la base (recién creada): se inserta.
-    if (remoto && soloRevision(remoto) > conocida) {
-      console.warn('Escritura descartada: la campaña cambió en la base', project.id);
-      await recargarProyecto(project.id);
-      toast.error('Otra persona actualizó esta campaña', {
-        description: 'Se recargó con la versión más reciente. Vuelve a hacer tu cambio para no perder lo que hizo el otro.',
-      });
-      return;
-    }
-
-    const nueva = conocida + 1;
-    const row = projectToRow(project);
-    row.data.revision = nueva;
-    const { error } = await supabase
-      .from('factory_projects')
-      .upsert([row] as any, { onConflict: 'id' });
-    if (error) {
-      console.error('Error syncing project:', error);
-      return;
-    }
-    revisionConocida.set(project.id, nueva);
   }, 400);
   pendingSync.set(project.id, t);
 };
@@ -958,13 +1095,28 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       set({ isLoaded: true });
       return;
     }
+    // Una campaña con la escritura EN VUELO se queda con la copia local: lo que acaba de traer
+    // este SELECT es anterior a ese guardado, así que pisarla borraría el cambio de la pantalla
+    // —y el siguiente guardado saldría de la copia vieja y lo borraría también de la base—.
+    // `useCampanasFrescas` ya evita llamar acá en ese momento; esto cubre el `hydrate` de montaje,
+    // que no pasa por ese guardia. Ver `escriturasEnVuelo`.
+    const enVuelo = new Map(
+      get().projects.filter((p) => escriturasEnVuelo.has(p.id)).map((p) => [p.id, p] as const)
+    );
+
     // Punto de partida de la guardia de escritura obsoleta: a partir de acá sabemos en qué
-    // revisión venía cada campaña, y no se pisa una que haya avanzado por otro lado.
-    for (const row of data ?? []) revisionConocida.set(row.id, revisionDe(row.data));
+    // revisión venía cada campaña, y no se pisa una que haya avanzado por otro lado. La revisión
+    // de las que están en vuelo la fija `escribirProyecto` al terminar: tocarla acá la dejaría
+    // por debajo de lo que se está escribiendo y el guardado siguiente vería un falso conflicto.
+    for (const row of data ?? []) {
+      if (!escriturasEnVuelo.has(row.id)) revisionConocida.set(row.id, revisionDe(row.data));
+    }
 
     // Las campañas anteriores a los números consecutivos reciben el suyo acá, una sola vez.
     // Se persisten solo las que cambiaron; a partir de la siguiente carga esto no hace nada.
-    const { projects, cambiados } = asignarNumerosFaltantes((data ?? []).map(rowToProject));
+    const { projects, cambiados } = asignarNumerosFaltantes(
+      (data ?? []).map((row) => enVuelo.get(row.id) ?? rowToProject(row))
+    );
     set({ projects, isLoaded: true });
     cambiados.forEach(syncProject);
   },
@@ -1016,13 +1168,13 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
         const base = updates.canales || updates.requerimientos
           ? stampCanalNodeIds(strategyNodes, updates.fabricaBriefs ?? p.fabricaBriefs)
           : (updates.fabricaBriefs ?? p.fabricaBriefs);
-        // Guardar el wizard de edición reconstruye `fabricaBriefs` desde cero (ver el riesgo del
-        // punto 14 de la bitácora), así que las tareas vuelven sin código. Primero se recupera el
-        // que ya tenían (por texto + rol) y solo lo verdaderamente nuevo estrena consecutivo.
+        // Guardar el wizard de edición reconstruye `fabricaBriefs` desde cero, en blanco y con
+        // ids nuevos: `fusionarBriefs` le devuelve a cada tarea su id y su trabajo, y conserva
+        // las que el wizard no sabe generar. Solo lo verdaderamente nuevo estrena código.
         const fabricaBriefs = asignarCodigos(
           strategyNodes,
           p.fabricaBriefs ?? [],
-          heredarCodigos(p.fabricaBriefs ?? [], base)
+          limpiarNodosMuertos(strategyNodes, fusionarBriefs(p.fabricaBriefs ?? [], base))
         );
         return { ...p, ...updates, strategyNodes, fabricaBriefs };
       }),

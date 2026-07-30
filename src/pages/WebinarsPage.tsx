@@ -5,6 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import { RefreshCw, ExternalLink, Copy, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProgresoCarga } from '@/hooks/useProgresoCarga';
+import { esUrlHttp } from '@/lib/urlSegura';
 
 const WEBINARS_URL = 'https://n8n.camarabaq.org.co/webhook/webinars';
 const REGISTROS_WEBHOOK = 'https://n8n.camarabaq.org.co/webhook/webinars_registros';
@@ -243,9 +244,12 @@ const WebinarsPage = () => {
                       </div>
 
                       <div style={{ display: 'grid', gap: 10 }}>
-                        {w.has_link && w.link ? (
+                        {/* `w.link` llega del webhook de n8n, o sea de fuera de la app: es el único
+                            dato que se pinta sin haber pasado nunca por nuestra base. Se exige
+                            http/https antes de volverlo un enlace — ver src/lib/urlSegura.ts. */}
+                        {w.has_link && esUrlHttp(w.link) ? (
                           <>
-                            <a href={w.link} target="_blank" rel="noopener noreferrer" style={primaryBtn}>
+                            <a href={w.link.trim()} target="_blank" rel="noopener noreferrer" style={primaryBtn}>
                               <ExternalLink className="h-4 w-4" />
                               Abrir link de inscripción
                             </a>
