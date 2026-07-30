@@ -90,10 +90,14 @@ const AppSidebar = ({ collapsed = false, onToggle }: AppSidebarProps) => {
         <div className={`flex items-center w-full ${collapsed ? 'justify-center' : 'justify-between'}`}>
           {!collapsed && (
             <div className="flex items-center gap-2.5 min-w-0">
+              {/* Sin `shadow-glow` ni `rounded-xl`: el glow es un halo AZUL (ver --shadow-glow en
+                  index.css) pensado para botones de acento, y sobre el logo se veía como una
+                  sombra rara; el redondeo venía de tapar el fondo blanco que traía el propio SVG
+                  —ya se lo quitamos— y ahora solo recortaría las esquinas del dibujo. */}
               <img
                 src="/fabrica-logo.svg"
                 alt="La Fábrica"
-                className="w-9 h-9 rounded-xl shadow-glow shrink-0"
+                className="w-9 h-9 shrink-0"
               />
               <div className="min-w-0">
                 <h1 className="font-logo text-lg leading-none text-sidebar-foreground">Tremu</h1>
