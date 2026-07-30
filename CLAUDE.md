@@ -69,8 +69,16 @@ Zustand + Supabase.
   edge function la lee porque el service_role bypassea RLS.
 - `profiles` y `user_roles` quedaron **vacías y muertas** (enum de roles viejo). No se borraron.
 - **Storage `task-attachments`**: subir y borrar solo `authenticated`, pero la lectura es
-  **`{public}`** — cualquiera con la URL de un archivo lo abre sin cuenta. **Decisión consciente del
-  usuario (2026-07-29): se deja así.** Las rutas llevan un id aleatorio, así que no se adivinan,
+  **`{public}`** — cualquiera con la URL de un archivo lo abre sin cuenta. Verificado el 2026-07-30
+  que sin sesión **no se puede listar el bucket ni subir** (403), así que las URLs no se
+  descubren: hay que tenerlas. **Decisión consciente del usuario (2026-07-29): se deja así.**
+- **Nada borra archivos del bucket: `deleteFile` no tiene un solo llamador.** Quitar un adjunto,
+  borrar la tarea o borrar la campaña entera solo elimina **la referencia** en el JSONB; el archivo
+  se queda en storage y, como la lectura es pública, sigue abriéndose con su URL para siempre. Las
+  URLs además quedan escritas en el Markdown exportado. O sea: **hoy no hay forma de "borrar de
+  verdad" un adjunto desde la app**, y la cuota crece sin tope. Si algún día se implementa, ojo con
+  la policy de DELETE: exige `owner = auth.uid()` o `has_role(…,'mercadeo')`, y `user_roles` está
+  vacía — así que **solo quien subió el archivo podría borrarlo**, nadie más. Las rutas llevan un id aleatorio, así que no se adivinan,
   pero las URLs quedan guardadas en las campañas y en el Markdown exportado. Cerrarlo es pasar el
   bucket a privado y cambiar `getPublicUrl` → `createSignedUrl` resolviendo al mostrar (las URLs ya
   guardadas dejarían de servir directo).
@@ -784,9 +792,9 @@ contra producción**. Lo que sigue son decisiones y tareas de cuenta, no desplie
 - [ ] **Recordatorios por fecha por correo** — no puede salir del navegador: necesita un cron
       (pg_cron o Vercel Cron) que recorra `factory_projects` y junte las tareas rojas por persona.
       La regla ya existe en `src/lib/urgencia.ts`.
-- [ ] **Aplicar `20260729020000_borrar-tablas-del-kanban.sql`** (`supabase db push --linked`). Borra
-      `tasks`/`task_comments` **solo si están vacías**; si tienen filas falla sin tocar nada y hay
-      que revisarlas a mano.
+- [x] **`20260729020000_borrar-tablas-del-kanban.sql` ya está aplicada** — verificado contra
+      producción el 2026-07-30: `tasks` y `task_comments` devuelven `PGRST205` ("Could not find the
+      table"), o sea que ya no existen.
 - [ ] Confirmar a mano el **round-trip de "Editar proyecto"** del ecosistema cíclico (etapas, ELMR,
       motor, `etapaId`/`siguienteEtapaId`): se creó y se vio en la misma sesión, no se reabrió.
       (Las **tareas** de ese round-trip ya están cubiertas por las pruebas de `fusionarBriefs`; lo
