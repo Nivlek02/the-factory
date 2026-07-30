@@ -13,6 +13,11 @@
     {
       "source": "/version.json",
       "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }]
+    },
+    {
+      "//": "Vercel sirve dist/assets con max-age=0, must-revalidate, así que el navegador PREGUNTA por cada archivo en cada carga (recibe 304, no vuelve a bajarlo, pero paga el viaje). Vite les pone un hash de contenido en el nombre, o sea que un archivo nunca cambia: puede cachearse para siempre. Medido: una recarga pasa de ~615 ms a no pedir nada. OJO: esto vale SOLO para /assets/ — index.html y version.json tienen que seguir revalidando o nadie vería una versión nueva.",
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     }
   ]
 }

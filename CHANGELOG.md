@@ -25,6 +25,14 @@ en ningún otro archivo.
 
 ---
 
+## [1.10.3] — 2026-07-29
+
+### Cambiado
+
+- **La app se abre más rápido en visitas repetidas.** Los archivos del programa ya se pueden guardar
+  en el navegador de forma permanente (llevan un identificador único en el nombre, así que nunca
+  cambian sin cambiar de nombre). Antes el navegador preguntaba por cada archivo en cada carga.
+
 ## [1.10.2] — 2026-07-29
 
 ### Corregido
