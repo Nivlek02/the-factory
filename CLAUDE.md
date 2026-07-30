@@ -687,11 +687,18 @@ Solo lo que sigue explicando el estado actual. Lo anterior está en el historial
 
 ## Pendientes
 
-### Pendiente de aplicar: la migración del rol Videógrafo
+### La migración del rol Videógrafo — aplicada a mano, falta confirmarla
 
-`20260730000000_rol-videografo.sql` **todavía no está aplicada**. Sin ella, guardar a alguien con
-rol Videógrafo rebota ("Ese rol no es válido"); el canal Video y su flujo funcionan igual, pero la
-tarea de producción no tendría a quién notificarle. Es una sola línea y no toca ninguna fila:
+`20260730000000_rol-videografo.sql` se aplicó desde el SQL Editor el 2026-07-30 (reportado por el
+usuario, **no verificado contra la base todavía**). Para confirmarlo:
+
+```sql
+select pg_get_constraintdef(oid) from pg_constraint where conname = 'usuarios_roles_rol_check';
+```
+
+Tiene que aparecer `'Videógrafo'` en la lista. Si no, guardar a alguien con ese rol rebota con
+"Ese rol no es válido" (el canal Video y su flujo funcionan igual, pero la tarea de producción no
+tendría a quién notificarle). El SQL, que no toca ninguna fila:
 
 ```sql
 alter table public.usuarios_roles drop constraint if exists usuarios_roles_rol_check;
@@ -726,6 +733,13 @@ contra producción**. Lo que sigue son decisiones y tareas de cuenta, no desplie
 </details>
 
 ### Credenciales que quedaron expuestas en chats
+- [ ] **Rotar el token personal de Vercel** (`vcp_…`, compartido en un chat el 2026-07-30 para
+      diagnosticar el despliegue). Da acceso a **toda la cuenta** `nivlek02`, que además del
+      proyecto `tremu` tiene `roble`, `blacknothing` y `pdfcol`: crear/borrar deploys y leer o
+      cambiar variables de entorno de los cuatro.
+      https://vercel.com/account/tokens → borrar el actual y crear otro.
+      Vive en `.env` como `VERCEL_TOKEN` (**sin** el prefijo `VITE_`, a propósito: con ese prefijo
+      Vite lo hornearía en el bundle público). `.env` está en `.gitignore`.
 - [ ] Cambiar la contraseña de **`kelvin.trujillo@netsat.co`** (se compartió el 2026-07-29 para
       verificar el envío; es rol **Soporte**, o sea que **puede gestionar usuarios**).
 - [ ] Cambiar la contraseña inicial de **`ktrujillo`** (`Colombia2026*`, en texto plano en un chat).
