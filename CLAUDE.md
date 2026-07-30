@@ -28,6 +28,22 @@ Zustand + Supabase.
   que excluirlo ahí o Vercel devolverá `index.html` en su lugar** (ya pasó dos veces: con
   `version.json` el aviso de versión no habría aparecido nunca, y con el logo del correo salía un
   icono roto).
+- **`vercel.json` NO admite comentarios, ni siquiera con la convención `"//"`.** Vercel lo valida
+  contra un schema estricto y **falla el build entero**: `The vercel.json schema validation failed:
+  headers[1] should NOT have additional property //`. Costó **4 despliegues**: el `"//"` entró en
+  v1.10.3 y desde ahí producción se quedó congelada en v1.10.2 — cada push fallaba en Vercel
+  mientras en local `npm run build` seguía pasando, así que no se notó. **Lo que haya que explicar
+  de esa configuración va acá, no en el JSON.**
+  - `/assets/(.*)` va con `max-age=31536000, immutable` porque Vite le pone un hash de contenido al
+    nombre: ese archivo nunca cambia. Por defecto Vercel los sirve con `must-revalidate`, así que
+    el navegador preguntaba por cada archivo en cada carga (recibía 304, no lo volvía a bajar, pero
+    pagaba el viaje: ~615 ms por recarga).
+  - **`index.html` y `version.json` tienen que seguir revalidando** o nadie vería nunca una versión
+    nueva.
+- **Un despliegue que falla no se ve desde acá**: el sitio sigue sirviendo el último build bueno,
+  sin ningún síntoma salvo que la versión no sube. Si `package.json` dice una versión y
+  `https://tremubaq.vercel.app/version.json` dice otra, **el deploy está roto** — mirar
+  Deployments en Vercel, no el código.
 - Env vars de Vercel (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) se gestionan por API con
   un token personal. Ojo al pegar keys a mano: ya pasó que un salto de línea se convirtió en
   espacios en medio del JWT y lo invalidó (`401 Invalid API key`). En `.env` los valores van **entre
