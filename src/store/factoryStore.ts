@@ -3,6 +3,8 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import type { Attachment } from '@/components/ui/file-upload';
 import { notificarTareasAsignadas } from '@/services/emailNotifications';
+import { borrarArchivos } from '@/services/storageService';
+import { rutasDeProyecto, rutasHuerfanas } from '@/lib/adjuntos';
 
 export type ProjectState = 'planning' | 'in_progress' | 'cancelled' | 'done';
 
@@ -1108,15 +1110,36 @@ const deleteRow = async (id: string) => {
   if (error) console.error('Error deleting project:', error);
 };
 
+/**
+ * Borra del bucket los archivos que este cambio dejó sin dueño.
+ *
+ * Se hace acá, en el punto por el que pasan TODAS las mutaciones, y no en cada botón: así queda
+ * cubierto quitar un adjunto, borrar una tarea, borrar una imagen del entregable o que el wizard
+ * descarte una tarea vacía, sin tener que acordarse en cada sitio.
+ *
+ * Es a propósito **después** de aplicar el cambio y comparando contra TODAS las campañas: si la
+ * ruta sigue referenciada en cualquier otro lado (una imagen copiada de un entregable a otro), no
+ * se toca. Y es fire-and-forget: el usuario ya guardó, un fallo al borrar no puede frenarlo.
+ */
+const limpiarArchivosHuerfanos = (antes: string[], get: any) => {
+  if (antes.length === 0) return;
+  const huerfanas = rutasHuerfanas(antes, (get() as FactoryStore).projects);
+  if (huerfanas.length > 0) void borrarArchivos(huerfanas);
+};
+
 const persistAfter = (
   set: any,
   get: any,
   projectId: string,
   updater: (s: FactoryStore) => Partial<FactoryStore>
 ) => {
+  const rutasAntes = rutasDeProyecto(
+    (get() as FactoryStore).projects.find((p) => p.id === projectId)
+  );
   set(updater);
   const project = (get() as FactoryStore).projects.find((p) => p.id === projectId);
   if (project) syncProject(project);
+  limpiarArchivosHuerfanos(rutasAntes, get);
 };
 
 export const useFactoryStore = create<FactoryStore>()((set, get) => ({
@@ -1220,11 +1243,16 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
     })),
 
   deleteProject: (id) => {
+    // Las rutas se leen ANTES de sacar la campaña del store: después ya no hay de dónde.
+    const rutasAntes = rutasDeProyecto(get().projects.find((p) => p.id === id));
     set((s) => ({
       projects: s.projects.filter((p) => p.id !== id),
       activeProjectId: s.activeProjectId === id ? null : s.activeProjectId,
     }));
     deleteRow(id);
+    // Borrar la campaña se lleva sus archivos. Antes se quedaban en el bucket para siempre, y
+    // como la lectura es pública seguían abriéndose con su URL aunque la campaña ya no existiera.
+    limpiarArchivosHuerfanos(rutasAntes, get);
   },
 
   addRoleGroup: (projectId, roleId, roleLabel) =>

@@ -55,6 +55,37 @@ export async function uploadFile(file: File, taskId?: string): Promise<UploadRes
   };
 }
 
+/**
+ * Borra varios archivos de una. **Nunca lanza**: se llama después de que el usuario ya guardó su
+ * cambio, así que un fallo de red o de permisos no puede romperle la acción — el peor caso es un
+ * archivo que se queda en el bucket, que es exactamente lo que pasaba siempre hasta ahora.
+ *
+ * Ojo con la policy de DELETE del bucket: exige `owner = auth.uid()` (o el rol 'mercadeo', que
+ * vive en una tabla vacía), así que **solo quien subió el archivo puede borrarlo**. Si otra
+ * persona quita el adjunto, storage lo ignora en silencio: por eso se comprueba el resultado y se
+ * deja constancia en consola en vez de dar por hecho que se borró.
+ */
+export async function borrarArchivos(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  try {
+    const { data, error } = await supabase.storage.from(BUCKET_NAME).remove(paths);
+    if (error) {
+      console.warn('No se pudieron borrar adjuntos del bucket:', error.message, paths);
+      return;
+    }
+    const borrados = (data ?? []).length;
+    if (borrados < paths.length) {
+      console.warn(
+        `Se pidió borrar ${paths.length} adjunto(s) y storage borró ${borrados}. ` +
+        'Lo normal es que los suba otra persona: la policy solo deja borrar los propios.',
+        paths
+      );
+    }
+  } catch (e) {
+    console.warn('Error inesperado al borrar adjuntos:', e);
+  }
+}
+
 export async function deleteFile(path: string): Promise<void> {
   const { error } = await supabase.storage
     .from(BUCKET_NAME)

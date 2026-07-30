@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { execSync } from "child_process";
 import { readFileSync } from "fs";
 import { componentTagger } from "lovable-tagger";
 
@@ -15,26 +14,31 @@ const APP_VERSION: string = JSON.parse(
   readFileSync(path.resolve(__dirname, "package.json"), "utf-8"),
 ).version;
 
-/**
- * Identificador único de este build. Vercel expone el SHA del commit; en local se saca de git;
- * si nada de eso existe (ej. un tarball sin .git) cae a la hora del build, que igual cambia
- * en cada compilación. NO es lo que se le muestra al usuario (para eso está APP_VERSION):
- * sirve para distinguir dos deploys con el mismo número de versión.
- */
-function resolveBuildId(): string {
-  const sha = process.env.VERCEL_GIT_COMMIT_SHA;
-  if (sha) return sha.slice(0, 7);
-  try {
-    return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] })
-      .toString()
-      .trim();
-  } catch {
-    return String(Date.now());
-  }
-}
-
-const BUILD_ID = resolveBuildId();
 const BUILD_TIME = new Date().toISOString();
+
+/**
+ * El identificador del build es **el hash de contenido del bundle**, no el SHA del commit.
+ *
+ * POR QUÉ: el aviso de "nueva versión" salta cuando el build del servidor no coincide con el que
+ * corre en la pestaña. Cuando el id era el SHA de git —y encima iba horneado dentro del bundle—
+ * **cualquier commit generaba un bundle distinto**, así que un cambio solo de documentación le
+ * sacaba a todo el equipo el aviso de una versión nueva que no existía. Pasó exactamente eso con
+ * dos commits de CLAUDE.md.
+ *
+ * Con el hash de contenido, dos builds del mismo código dan el mismo id y no se avisa nada; en
+ * cuanto cambia una línea de código el nombre del bundle cambia y el aviso vuelve a salir.
+ *
+ * Ojo: para que esto funcione, `__BUILD_ID__` y `__BUILD_TIME__` **ya no se inyectan en el
+ * bundle** — si estuvieran dentro, el contenido cambiaría en cada compilación y volveríamos al
+ * mismo problema. La pestaña averigua su propio id leyendo el nombre de su archivo con
+ * `import.meta.url` (ver src/lib/version.ts).
+ */
+function hashDelBundle(bundle: Record<string, { type: string; isEntry?: boolean; fileName: string }>): string {
+  const entrada = Object.values(bundle).find((c) => c.type === "chunk" && c.isEntry);
+  // `assets/index-DQTgJBmR.js` → `DQTgJBmR`, el hash de contenido que le pone Vite.
+  const m = entrada?.fileName.match(/-([A-Za-z0-9_-]+)\.js$/);
+  return m?.[1] ?? BUILD_TIME;
+}
 
 /**
  * Escribe version.json junto al bundle. El navegador lo consulta con cache: 'no-store' para
@@ -48,14 +52,18 @@ const BUILD_TIME = new Date().toISOString();
 function versionFilePlugin() {
   return {
     name: "tremu-version-file",
-    generateBundle(this: { emitFile: (f: { type: "asset"; fileName: string; source: string }) => void }) {
+    generateBundle(
+      this: { emitFile: (f: { type: "asset"; fileName: string; source: string }) => void },
+      _opciones: unknown,
+      bundle: Record<string, { type: string; isEntry?: boolean; fileName: string }>,
+    ) {
       this.emitFile({
         type: "asset",
         fileName: "version.json",
         source: JSON.stringify({
           version: APP_VERSION,
           buildTime: BUILD_TIME,
-          buildId: BUILD_ID,
+          buildId: hashDelBundle(bundle),
           // Compatibilidad con pestañas que quedaron abiertas con el bundle anterior, que leía
           // `builtAt`. Se puede quitar unos deploys después de este.
           builtAt: BUILD_TIME,
@@ -72,9 +80,9 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
   },
   define: {
+    // Solo la versión: es lo único que se le muestra al usuario y solo cambia cuando cambia de
+    // verdad. Ni el build id ni la hora entran acá a propósito — ver `hashDelBundle`.
     __APP_VERSION__: JSON.stringify(APP_VERSION),
-    __BUILD_TIME__: JSON.stringify(BUILD_TIME),
-    __BUILD_ID__: JSON.stringify(BUILD_ID),
   },
   plugins: [react(), mode === "development" && componentTagger(), versionFilePlugin()].filter(Boolean),
   resolve: {

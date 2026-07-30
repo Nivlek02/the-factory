@@ -4,8 +4,12 @@
  * La fuente de verdad es `version` en package.json: vite.config.ts la hornea en el bundle
  * (`__APP_VERSION__`) y la publica en /version.json. Acá NO se escribe ningún número a mano.
  *
- * El `buildId`/`buildTime` sirven para distinguir dos deploys con la misma versión (lo normal
- * acá: se despliega varias veces sin subir el número). Al usuario solo se le muestra el SemVer.
+ * El `buildId` distingue dos deploys con la misma versión (lo normal acá: se despliega varias
+ * veces sin subir el número). Al usuario solo se le muestra el SemVer.
+ *
+ * **El `buildId` es el hash de contenido del bundle, no el commit.** Cuando era el SHA de git, un
+ * commit que solo tocaba documentación cambiaba el id y le sacaba a todo el equipo el aviso de
+ * "nueva versión disponible" sin que hubiera ninguna. Ver `hashDelBundle` en vite.config.ts.
  */
 
 /** Info que publica cada build en /version.json. */
@@ -23,11 +27,28 @@ const fallback = (value: string | undefined, alt: string) =>
 export const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? fallback(__APP_VERSION__, '0.0.0') : '0.0.0';
 
-export const BUILD_TIME: string =
-  typeof __BUILD_TIME__ !== 'undefined' ? fallback(__BUILD_TIME__, '') : '';
+/** La pestaña no sabe a qué hora se compiló: esa marca solo vive en version.json (ver abajo). */
+export const BUILD_TIME = '';
 
-export const BUILD_ID: string =
-  typeof __BUILD_ID__ !== 'undefined' ? fallback(__BUILD_ID__, 'dev') : 'dev';
+/**
+ * Identidad del bundle que está corriendo AHORA, sacada del nombre de su propio archivo
+ * (`/assets/index-DQTgJBmR.js` → `DQTgJBmR`), que es el hash de contenido que le pone Vite.
+ *
+ * POR QUÉ ASÍ y no con una constante inyectada: antes el id era el SHA del commit horneado en el
+ * bundle, así que **un commit que solo tocaba documentación cambiaba el bundle** y le sacaba a
+ * todo el equipo el aviso de "nueva versión disponible" sin que hubiera ninguna. Leyéndolo del
+ * nombre del archivo, dos builds del mismo código dan el mismo id y no se avisa nada.
+ *
+ * Fuera de un bundle (dev, o una prueba en node) no hay hash que leer y queda vacío: ahí
+ * `isNewerVersion` se limita a comparar el número de versión, que es justo lo que se quiere.
+ */
+export const BUILD_ID: string = (() => {
+  try {
+    return /-([A-Za-z0-9_-]+)\.js(?:[?#]|$)/.exec(import.meta.url)?.[1] ?? '';
+  } catch {
+    return '';
+  }
+})();
 
 /** Lo que corre en esta pestaña, para comparar contra lo que publica el servidor. */
 export const RUNNING_VERSION: VersionInfo = {

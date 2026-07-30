@@ -12,6 +12,7 @@ import { ResizableImage } from './resizable-image';
 import FontSize from 'tiptap-fontsize-extension';
 import { CustomBulletList, type BulletListStyle } from './custom-bullet-list';
 import { getShortUrlLabel } from '@/lib/urlUtils';
+import { esUrlHttp } from '@/lib/urlSegura';
 import { uploadFile } from '@/services/storageService';
 import { toast } from 'sonner';
 import { useRef } from 'react';
@@ -82,6 +83,28 @@ const bulletStyles: { value: BulletListStyle; label: string; symbol: string }[] 
   { value: 'dash', label: '– Guion', symbol: '–' },
   { value: 'arrow', label: '→ Flecha', symbol: '→' },
 ];
+
+/**
+ * Quita de una URL pegada todo lo que no se ve: saltos, tabs, espacios y los caracteres de ancho
+ * cero que meten Word y OneDrive al copiar (y que parten el enlace por la mitad).
+ *
+ * El escape de espacio en blanco ya cubre el espacio duro y el BOM, pero NO los de ancho
+ * cero: esos hay que nombrarlos aparte. Van con escapes unicode y como alternancia, no
+ * dentro de un [...]: con el caracter literal eslint avisa por espacio irregular, y con el
+ * ZWJ dentro de una clase avisa por no-misleading-character-class.
+ */
+const limpiarInvisibles = (s: string): string =>
+  s.replace(/\s|\u200B|\u200C|\u200D/g, '');
+
+/** Texto → HTML seguro. El pegado arma marcado a mano, así que lo que no es un enlace tiene que
+ *  entrar escapado o el `<` de un texto cualquiera se interpreta como una etiqueta. */
+const escaparHtml = (s: string): string =>
+  s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 const RichTextEditor = ({ content, onChange, placeholder = 'Escribe aquí...', className }: RichTextEditorProps) => {
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -183,7 +206,14 @@ const RichTextEditor = ({ content, onChange, placeholder = 'Escribe aquí...', c
 
           const links = tempDiv.querySelectorAll('a[href]');
           links.forEach(link => {
-            const href = (link.getAttribute('href') || '').replace(/[\r\n\t\u00A0\u200B\u200C\u200D\uFEFF\s]/g, '');
+            const href = limpiarInvisibles(link.getAttribute('href') || '');
+            // Un `href` pegado desde HTML puede traer cualquier esquema. DOMPurify ya lo frena al
+            // pintarlo, pero mejor ni guardarlo: si no es http/https se queda el texto sin enlace,
+            // que es la misma regla que aplica el resto de la app (src/lib/urlSegura.ts).
+            if (!esUrlHttp(href)) {
+              link.replaceWith(document.createTextNode(link.textContent || ''));
+              return;
+            }
             link.setAttribute('href', href);
             link.setAttribute('target', '_blank');
             link.setAttribute('rel', 'noopener noreferrer');
@@ -204,16 +234,27 @@ const RichTextEditor = ({ content, onChange, placeholder = 'Escribe aquí...', c
         const urls = textToCheck.match(urlRegex);
 
         if (urls && urls.length > 0) {
-          let result = textToCheck;
-          const normalizedUrls = urls.map(u => u.replace(/[\r\n\t\u00A0\u200B\u200C\u200D\uFEFF]/g, '').replace(/\s+/g, ''));
-          
-          for (let i = 0; i < urls.length; i++) {
-            const original = urls[i];
-            const clean = normalizedUrls[i];
-            const label = getShortUrlLabel(clean);
-            result = result.replace(original, `<a href="${clean}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+          // El texto se recorre por tramos y **cada tramo que no es URL se escapa**. Antes se
+          // insertaba tal cual como HTML: pegar algo como `if (a<b) mira https://x.com` met\u00EDa
+          // `<b) mira ` como markup y se perd\u00EDa parte del texto. (No llegaba a ser un XSS \u2014el
+          // esquema de TipTap descarta lo que no conoce y DOMPurify limpia en la lectura\u2014 pero
+          // corromp\u00EDa el contenido.) De paso se arregla que el `replace` anterior solo cambiaba
+          // la PRIMERA aparici\u00F3n de cada URL repetida.
+          let result = '';
+          let desde = 0;
+          for (const m of textToCheck.matchAll(urlRegex)) {
+            const original = m[0];
+            const indice = m.index ?? 0;
+            result += escaparHtml(textToCheck.slice(desde, indice));
+            const clean = limpiarInvisibles(original);
+            // Solo se vuelve enlace lo que de verdad es http/https (ver src/lib/urlSegura.ts);
+            // cualquier otra cosa se queda como texto.
+            result += esUrlHttp(clean)
+              ? `<a href="${escaparHtml(clean)}" target="_blank" rel="noopener noreferrer">${escaparHtml(getShortUrlLabel(clean))}</a>`
+              : escaparHtml(original);
+            desde = indice + original.length;
           }
-
+          result += escaparHtml(textToCheck.slice(desde));
           result = result.replace(/\n/g, '<br>');
 
           editor?.commands.insertContent(result, {

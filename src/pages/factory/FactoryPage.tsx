@@ -84,6 +84,34 @@ const STATE_META: Record<string, { label: string; cls: string }> = {
   done:        { label: 'Finalizado',   cls: 'bg-state-done-bg text-state-done' },
 };
 
+/**
+ * Grupos de la lista de campañas. Se pueden contraer para dejar la vista limpia cuando hay muchas
+ * campañas viejas: lo normal es querer ver "En proceso" y no las 20 finalizadas.
+ *
+ * `id` es la clave con la que se recuerda cuáles quedaron cerrados, así que **no se cambia**
+ * aunque cambie la etiqueta: quien tenga grupos cerrados los perdería.
+ */
+const GRUPOS_ESTADO: { id: string; label: string; states: FactoryProject['state'][] }[] = [
+  { id: 'planning', label: 'En planeación', states: ['planning'] },
+  { id: 'in_progress', label: 'En proceso', states: ['in_progress'] },
+  { id: 'cancelled', label: 'Cancelados', states: ['cancelled'] },
+  { id: 'done', label: 'Finalizados', states: ['done'] },
+];
+
+/** Qué grupos dejó cerrados esta persona. En `localStorage` para que siga así al volver: si se
+ *  reabrieran solos en cada carga, contraerlos no serviría de nada. */
+const GRUPOS_KEY = 'factory-grupos-cerrados';
+
+const leerGruposCerrados = (): string[] => {
+  try {
+    const raw = localStorage.getItem(GRUPOS_KEY);
+    const v = raw ? JSON.parse(raw) : null;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+};
+
 const TASK_STATUS_META: Record<string, { label: string; cls: string }> = {
   pending:     { label: 'Pendiente',   cls: 'bg-muted text-muted-foreground' },
   in_progress: { label: 'En proceso',  cls: 'bg-state-progress-bg text-state-progress' },
@@ -778,6 +806,18 @@ const FactoryPage = () => {
   const [stateFilter, setStateFilter] = useState<'all' | FactoryProject['state']>('all');
   const [strategistFilter, setStrategistFilter] = useState<string>('all');
   const [projectsCollapsed, setProjectsCollapsed] = useState(false);
+  const [gruposCerrados, setGruposCerrados] = useState<string[]>(leerGruposCerrados);
+
+  /** Buscando o filtrando por estado no tiene sentido esconder resultados: los grupos se abren. */
+  const buscando = query.trim().length > 0 || stateFilter !== 'all';
+
+  const alternarGrupo = (id: string) => {
+    setGruposCerrados((prev) => {
+      const next = prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id];
+      try { localStorage.setItem(GRUPOS_KEY, JSON.stringify(next)); } catch { /* incógnito */ }
+      return next;
+    });
+  };
 
   // Solo las estrategas que realmente tienen campañas: filtrar por alguien sin campañas
   // vaciaría la lista y no sirve de nada. Sale del dato de las campañas, no del equipo.
@@ -948,20 +988,27 @@ const FactoryPage = () => {
                   </p>
                 </div>
               )}
-              {[
-                { label: 'En planeación', states: ['planning'] },
-                { label: 'En proceso', states: ['in_progress'] },
-                { label: 'Cancelados', states: ['cancelled'] },
-                { label: 'Finalizados', states: ['done'] },
-              ].map((group) => {
+              {GRUPOS_ESTADO.map((group) => {
                 const groupProjects = filteredProjects.filter((p) => group.states.includes(p.state));
                 if (groupProjects.length === 0) return null;
+                // Con una búsqueda o un filtro activo los grupos se abren solos: esconder una
+                // coincidencia detrás de un grupo cerrado haría creer que la campaña no existe.
+                const abierto = buscando || !gruposCerrados.includes(group.id);
                 return (
-                  <div key={group.label}>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2 py-1">
-                      {group.label}
-                    </p>
-                    <div className="space-y-0.5">
+                  <div key={group.id}>
+                    <button
+                      type="button"
+                      onClick={() => alternarGrupo(group.id)}
+                      disabled={buscando}
+                      aria-expanded={abierto}
+                      className="w-full flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors disabled:hover:bg-transparent"
+                      title={buscando ? 'Con una búsqueda activa los grupos se muestran abiertos' : abierto ? 'Contraer' : 'Desplegar'}
+                    >
+                      <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${abierto ? 'rotate-90' : ''}`} />
+                      <span className="truncate">{group.label}</span>
+                      <span className="ml-auto tabular-nums text-muted-foreground/70">{groupProjects.length}</span>
+                    </button>
+                    <div className={`space-y-0.5 ${abierto ? '' : 'hidden'}`}>
                       {groupProjects.map((p) => {
                         const isActive = p.id === activeProjectId;
                         const progress = projectProgress(p);

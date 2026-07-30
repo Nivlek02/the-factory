@@ -25,6 +25,30 @@ en ningún otro archivo.
 
 ---
 
+## [1.13.0] — 2026-07-30
+
+### Nuevo
+
+- **Los grupos de la lista de campañas se pueden contraer.** Cada estado (En planeación, En
+  proceso, Cancelados, Finalizados) tiene ahora su flecha y su contador: se pliegan para dejar a
+  la vista solo lo que estás trabajando, y **se quedan como los dejes** la próxima vez que entres.
+  Al buscar o filtrar por estado se abren solos, para que ninguna coincidencia quede escondida.
+
+### Arreglado
+
+- **El aviso de "nueva versión disponible" ya no aparece sin motivo.** Salía en cada despliegue
+  aunque la app fuera idéntica —bastaba un cambio en la documentación—, porque el identificador del
+  build era el commit. Ahora es el contenido real de la aplicación: si no cambió nada, no hay
+  aviso.
+- **Borrar de verdad borra los archivos.** Quitar un adjunto, eliminar una tarea o eliminar una
+  campaña dejaba el archivo en el servidor **para siempre**, y como los adjuntos son de lectura
+  pública, seguía abriéndose con su enlace aunque la campaña ya no existiera. Ahora se borra,
+  salvo que el mismo archivo siga usado en otra tarea o campaña.
+- **Pegar texto en el editor ya no se come parte de lo pegado.** Si el texto traía una URL y algún
+  `<` o `>` (por ejemplo un fragmento de código), lo que venía después se interpretaba como
+  etiqueta y desaparecía. Además, un enlace pegado que no sea `http`/`https` se queda como texto
+  y no como enlace.
+
 ## [1.12.0] — 2026-07-30
 
 ### Nuevo

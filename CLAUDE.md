@@ -519,6 +519,14 @@ build).
 
 - El aviso **también salta cuando cambia solo el build con el mismo número** (que es el caso normal
   acá), y entonces **no imprime el número** para no confundir.
+- **El `buildId` es el hash de contenido del bundle** (`assets/index-XXXX.js`), no el SHA del
+  commit, y **ni el id ni la hora del build se inyectan ya en el bundle**. Con el SHA horneado
+  dentro, *cualquier* commit —incluido uno que solo tocara este archivo— producía un bundle
+  distinto y le sacaba a todo el equipo el aviso de una versión nueva que no existía. Pasó, y el
+  usuario lo reportó. Hoy dos builds del mismo código dan el mismo id y no se avisa nada.
+  La pestaña averigua su propio id leyendo `import.meta.url` (el nombre de su archivo).
+  **Si alguna vez vuelve a inyectarse algo variable por build (`define`), el aviso vuelve a
+  mentir.** Un cambio que solo toque `index.css` tampoco dispara el aviso: el id sale del JS.
 - `applyUpdate()` limpia `caches` y actualiza los service workers antes de recargar: un
   `location.reload()` pelado dejaba al usuario viendo lo mismo y el aviso en bucle.
 - `version.json` va con `Cache-Control: no-cache, must-revalidate`. Si el CDN lo cachea, **el aviso
@@ -782,6 +790,34 @@ contra producción**. Lo que sigue son decisiones y tareas de cuenta, no desplie
   **estilos en línea** de `BitlyLinkTool` y los diagramas (`'unsafe-inline'` en `style-src`).
   Hacerlo primero en `Content-Security-Policy-Report-Only`, que no bloquea nada y solo reporta en
   consola, y recién después pasarlo a bloquear.
+
+### En lista de espera — revisión de seguridad del 2026-07-30
+
+Se revisó el sistema entero contra producción (RLS, storage, functions, bundle, dependencias).
+**No hay nada crítico**: sin sesión, las tablas devuelven 0 filas y los INSERT dan 42501; el bucket
+no se puede listar ni escribir; las functions protegidas dan 401 y las borradas siguen en 404; en
+el bundle no viaja ningún secreto (el único JWT es la anon, `role: anon`). Lo que quedó pendiente,
+por decisión del usuario:
+
+- [ ] **Cerrar la ventana de activación.** Verificado el 2026-07-30: sigue **abierta hasta el
+      2026-08-08**. Mientras lo esté, cualquiera con el link y el correo de un compañero (que son
+      predecibles: `nombre@camarabaq.org.co`) puede tomar una cuenta que todavía no se activó. Es
+      **el riesgo más alto que tiene el sistema hoy**, y se cierra con un UPDATE (ver "Login y
+      activación").
+- [ ] **`notificar-correo` deja mandar texto arbitrario a cualquier compañero.** Cualquiera con
+      cuenta puede disparar un correo con la identidad de Tremu, desde el Gmail institucional, con
+      el texto de "tareas" y "nota" que quiera — el HTML se escapa (no hay XSS), pero el cliente de
+      correo autolinkea cualquier URL que se ponga ahí. Phishing interno. Se cerraría exigiendo que
+      las tareas existan de verdad en esa campaña.
+- [ ] **Cabeceras de seguridad y CSP** — ver "Decidido, no hacer". Sigue postergado; producción hoy
+      solo trae el HSTS que pone Vercel. **Ojo al retomarlo: cualquier cambio en `vercel.json` hay
+      que verificarlo con el deploy real** (ver la trampa del `"//"`).
+- [ ] `npm audit`: 6 avisos, **ninguno explotable acá** y comprobado uno por uno.
+      `brace-expansion` (alta, DoS) entra por `tailwind → sucrase → glob`, es de build y **no viaja
+      al bundle**. Las 3 de `react-router` son *open redirect* y necesitan que la app navegue a un
+      destino que elija el usuario: los 14 puntos de navegación del proyecto son literales fijos.
+      La de hidratación SSR no aplica (esto es una SPA). Subir a react-router 7 sigue sin ser
+      urgente.
 
 ### Deuda técnica y verificaciones
 - [ ] **`react-router` 6.30.x tiene un aviso moderado** que solo se cierra subiendo a **7.x**
