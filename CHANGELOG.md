@@ -25,6 +25,17 @@ en ningún otro archivo.
 
 ---
 
+## [1.10.1] — 2026-07-29
+
+### Cambiado
+
+- **La fecha de entrega de la tarea ahora se ajusta con un calendario.** Se abre desde el botón con
+  la fecha, dentro de la tarea, y sirve igual para ponerla que para reprogramarla. Se quitó la
+  opción de dejar la tarea sin fecha: **toda tarea debe tener fecha de entrega**, y a la que le
+  falte ahora se le ve señalada en ámbar.
+
+---
+
 ## [1.10.0] — 2026-07-29
 
 ### Agregado

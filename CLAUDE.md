@@ -120,6 +120,34 @@ así que cubre lo que ya está guardado sin migrar nada. `htmlAText` (`campaignM
 
 ---
 
+## Dónde vive cada cosa
+
+Verificado contra la base el 2026-07-29 (sondeando la API tabla por tabla). **No hay ninguna
+funcionalidad sin su lugar de guardado**, pero conviene tener claro el mapa porque casi todo lo de
+las campañas está en un solo blob y no en tablas por entidad:
+
+| Qué | Dónde |
+|---|---|
+| Campañas y **todo** su contenido: nodos del flujo, **tareas** (`fabricaBriefs`), **comentarios** e historial de aprobación, canales, loops, etapas, ELMR, motor, métricas, códigos y números | `factory_projects.data` (**un JSONB**) |
+| Equipo, roles y quién tiene acceso | `usuarios_roles` |
+| Ventana de autoactivación | `activacion_config` |
+| Archivos (adjuntos del asistente y de entregables, imágenes del editor) | Storage, bucket `task-attachments` |
+| Versión de la app | `version.json` del build (ninguna tabla) |
+| Eventos/webinars y el acortador+QR | n8n (fuera de Supabase) |
+| Borrador del asistente | `localStorage` del navegador |
+| Catálogo de roles (`rolesStore`) | `localStorage` del navegador |
+
+**Ojo con las dos últimas: no están en la base.** El borrador no viaja entre computadores (ya
+documentado). El catálogo de roles vive en `localStorage` con `persist` (`factory-roles-store`,
+`version: 3`): hoy da igual porque los valores por defecto están en el código y ya nadie los edita
+desde la UI, pero si algún día se vuelven a editar, cada persona vería los suyos.
+
+**Tablas huérfanas** (existen, sin lectores ni escritores): `app_version`, `profiles` y
+`user_roles`. Las dos primeras se pueden borrar sin más. **`user_roles` NO**: la función
+`public.has_role()` la consulta, y esa función se usa en la policy de DELETE del bucket
+`task-attachments` — si se borra la tabla, **nadie podrá borrar adjuntos**. Hay que reescribir esa
+policy primero.
+
 ## Datos de las campañas
 
 Todo vive en el blob **`factory_projects.data` (JSONB)**: nodos del flujo, entregables, canales,
@@ -418,14 +446,9 @@ build).
   `src/types/index.ts` y la function `send-notification`. Era UI huérfana —no estaba en el menú, solo
   se llegaba escribiendo la URL— y arrastraba su propio sistema de correo. `/inicio` y `/board/:id`
   **redirigen a `/`** en vez de dar 404, por si alguien las tiene en un marcador.
-  **Las tablas `tasks` y `task_comments` NO se borraron**: pueden tener datos y eso no se puede
-  deshacer. Quedan huérfanas, sin ningún lector ni escritor. Para borrarlas, una vez confirmado que
-  no hay nada que rescatar:
-  ```sql
-  -- Mirar primero: select count(*) from public.tasks;  select count(*) from public.task_comments;
-  drop table if exists public.task_comments;
-  drop table if exists public.tasks;
-  ```
+  Las tablas `tasks` y `task_comments` se borran con la migración `20260729020000`, que **solo lo
+  hace si están vacías** — si tienen filas, falla a propósito sin tocar nada (puede ser historial y
+  eso no se deshace).
   `storageService.ts` **se queda** aunque el bucket se llame `task-attachments`: lo usan el editor de
   texto, los adjuntos de entregable y los del asistente.
 
@@ -563,8 +586,9 @@ contra producción**. Lo que sigue son decisiones y tareas de cuenta, no desplie
 - [ ] **Recordatorios por fecha por correo** — no puede salir del navegador: necesita un cron
       (pg_cron o Vercel Cron) que recorra `factory_projects` y junte las tareas rojas por persona.
       La regla ya existe en `src/lib/urgencia.ts`.
-- [ ] **Borrar las tablas `tasks` y `task_comments`** cuando se confirme que no hay nada que
-      rescatar (el código del kanban ya se fue; el SQL está en "Otros detalles que muerden").
+- [ ] **Aplicar `20260729020000_borrar-tablas-del-kanban.sql`** (`supabase db push --linked`). Borra
+      `tasks`/`task_comments` **solo si están vacías**; si tienen filas falla sin tocar nada y hay
+      que revisarlas a mano.
 - [ ] Confirmar a mano el **round-trip de "Editar proyecto"** del ecosistema cíclico (etapas, ELMR,
       motor, `etapaId`/`siguienteEtapaId`): se creó y se vio en la misma sesión, no se reabrió.
 - [ ] Probar **quitar un canal ya guardado** (desmarcar BTL/KAM/Call Center en "Editar proyecto") y

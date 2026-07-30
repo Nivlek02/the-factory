@@ -22,12 +22,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { es } from 'date-fns/locale';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Plus, MessageSquare, FileText, Image as ImageIcon, History, Calendar, CalendarClock, Trash2 } from 'lucide-react';
-import { calcularUrgencia, formatFechaCorta } from '@/lib/urgencia';
+import { Plus, MessageSquare, FileText, Image as ImageIcon, History, Calendar as CalendarIcon, CalendarClock, Trash2 } from 'lucide-react';
+import { calcularUrgencia, formatFechaCorta, formatFechaLarga } from '@/lib/urgencia';
 import { notificarEnRevision, notificarAprobada, notificarCorreccion } from '@/services/emailNotifications';
 import { cn } from '@/lib/utils';
 import RichTextEditor from '@/components/ui/rich-text-editor';
@@ -207,69 +210,90 @@ export const FechaAccionChip = ({
   );
 };
 
-/** Fecha de la acción, editable. Mismo patrón de picker que el Plan de canales:
- *  input[type=date] oculto + showPicker() al hacer clic en el texto. */
-const FechaAccionEditor = ({
+/** 'YYYY-MM-DD' ↔ Date local. `new Date('2026-07-20')` se interpreta como UTC y en Colombia
+ *  (UTC-5) devolvería el día anterior — el mismo motivo por el que existe `parseISOLocal` en
+ *  `lib/urgencia`. Y al revés: `toISOString()` sobre una fecha local del calendario también
+ *  correría el día, así que se arma a mano. */
+const aISO = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const deISO = (iso?: string | null): Date | undefined => {
+  const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : undefined;
+};
+
+/**
+ * Fecha de entrega de la tarea, con calendario para reprogramarla.
+ *
+ * **Toda tarea debe tener fecha de entrega**, así que acá no hay forma de dejarla sin fecha: el
+ * enlace que lo hacía se quitó (se leía como "quitar la tarea" y era justo lo contrario de lo que
+ * se quiere). Si una tarea no la tiene —creada a mano, o de antes de que existiera el campo— se
+ * señala en ámbar para que se note que falta.
+ *
+ * Usa Popover + Calendar (los mismos de los filtros de Reportes) en vez del `input[type=date]`
+ * oculto con `showPicker()`: ese depende del picker nativo del navegador, que en algunos ni se abre
+ * al hacer clic en un texto.
+ */
+const FechaEntregaEditor = ({
   fecha, readOnly, onChange,
 }: {
   fecha?: string | null;
   readOnly?: boolean;
-  onChange: (v: string | null) => void;
+  onChange: (v: string) => void;
 }) => {
+  const [abierto, setAbierto] = useState(false);
   const urgencia = calcularUrgencia(fecha);
 
+  const chipUrgencia = urgencia && (
+    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${urgencia.className}`}>
+      {urgencia.etiqueta}
+    </span>
+  );
+
   if (readOnly) {
-    return fecha ? (
+    return (
       <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
         <CalendarClock className="h-3.5 w-3.5" />
-        {formatFechaCorta(fecha)}
-        {urgencia && (
-          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${urgencia.className}`}>
-            {urgencia.etiqueta}
-          </span>
-        )}
+        {fecha ? formatFechaCorta(fecha) : <span className="text-state-review">Sin fecha de entrega</span>}
+        {chipUrgencia}
       </span>
-    ) : (
-      <span className="text-xs text-muted-foreground/60">Sin fecha</span>
     );
   }
 
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span
-        className="relative inline-flex items-center gap-1.5 cursor-pointer group"
-        onClick={(e) => {
-          const input = e.currentTarget.querySelector('input[type="date"]') as HTMLInputElement;
-          input?.showPicker();
-        }}
-      >
-        <CalendarClock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs group-hover:underline">
-          {fecha ? formatFechaCorta(fecha) : <span className="text-muted-foreground/60">Poner fecha</span>}
-        </span>
-        <input
-          type="date"
-          value={fecha ?? ''}
-          onChange={(e) => onChange(e.target.value || null)}
-          className="w-0 h-0 opacity-0 absolute -z-10"
-        />
-      </span>
-      {urgencia && (
-        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${urgencia.className}`}>
-          {urgencia.etiqueta}
-        </span>
-      )}
-      {fecha && (
-        // Antes decía "quitar", que se leía como "quitar la tarea" — y lo que hace es dejarla sin
-        // fecha. Borrar la tarea es el botón del pie del diálogo.
-        <button
-          onClick={() => onChange(null)}
-          title="Dejar la tarea sin fecha"
-          className="text-[10px] text-muted-foreground hover:text-foreground underline"
-        >
-          sin fecha
-        </button>
-      )}
+      <Popover open={abierto} onOpenChange={setAbierto}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(
+              'h-7 px-2 text-xs font-normal',
+              !fecha && 'text-state-review border-state-review/40'
+            )}
+            title={fecha ? 'Reprogramar la fecha de entrega' : 'Poner la fecha de entrega'}
+          >
+            <CalendarClock className="h-3.5 w-3.5" />
+            {fecha ? formatFechaLarga(fecha) : 'Poner fecha de entrega'}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            locale={es}
+            defaultMonth={deISO(fecha)}
+            selected={deISO(fecha)}
+            onSelect={(d) => {
+              // `onSelect` manda `undefined` al hacer clic sobre el día ya elegido (Radix lo trata
+              // como "deseleccionar"). Acá eso no aplica: quedarse sin fecha no es una opción.
+              if (!d) return;
+              onChange(aISO(d));
+              setAbierto(false);
+            }}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
+      {chipUrgencia}
     </span>
   );
 };
@@ -476,7 +500,7 @@ const BriefDialog = ({
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-xs text-muted-foreground">Rol: {brief.roleLabel}</p>
             <span className="text-xs text-muted-foreground">·</span>
-            <FechaAccionEditor
+            <FechaEntregaEditor
               fecha={brief.fechaAccion}
               readOnly={!isEditable}
               onChange={(v) => updateFabricaBrief(project.id, brief.id, { fechaAccion: v })}
@@ -1019,7 +1043,7 @@ const DoneDateEditDialog = ({
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs flex items-center gap-1"><Calendar className="h-3 w-3" /> Fecha</Label>
+            <Label className="text-xs flex items-center gap-1"><CalendarIcon className="h-3 w-3" /> Fecha</Label>
             <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="text-sm" />
           </div>
         </div>
