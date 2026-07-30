@@ -25,6 +25,20 @@ en ningún otro archivo.
 
 ---
 
+## [1.10.2] — 2026-07-29
+
+### Corregido
+
+- **Cambiar la fecha dentro de la tarea no se veía hasta salir y volver a entrar.** El cambio sí se
+  guardaba, pero la ventana seguía mostrando la fecha anterior, así que parecía que el clic no había
+  hecho nada. Ahora se actualiza al instante (y con ello cualquier otro dato de la tarea).
+
+### Cambiado
+
+- **Un clic fuera de la tarea ya no la cierra**, igual que en el asistente de campaña. Se perdía lo
+  escrito en el entregable y el comentario de corrección, que no se autoguardan. Se cierra con la X,
+  con Escape o con los botones.
+
 ## [1.10.1] — 2026-07-29
 
 ### Cambiado

@@ -364,7 +364,7 @@ const BriefGroup = ({
 // ───────────────────────────────────────────────────────────────────────────
 
 const BriefDialog = ({
-  project, brief, nodeId, hasApprovalStage, urlOnly, queue, onClose, onAdvance,
+  project: projectProp, brief: briefProp, nodeId, hasApprovalStage, urlOnly, queue, onClose, onAdvance,
 }: {
   project: FactoryProject;
   brief: FabricaBriefItem;
@@ -382,7 +382,17 @@ const BriefDialog = ({
   onClose: () => void;
   onAdvance?: (next: FabricaBriefItem) => void;
 }) => {
-  const { updateFabricaBrief, deleteFabricaBrief } = useFactoryStore();
+  const { updateFabricaBrief, deleteFabricaBrief, projects } = useFactoryStore();
+
+  // La campaña y la tarea se releen del store EN VIVO. Lo que llega por props es una instantánea
+  // del momento en que se abrió el diálogo (`setOpenBrief(brief)`), así que al cambiar algo —la
+  // fecha de entrega, por ejemplo— el dato se guardaba pero la pantalla seguía mostrando el valor
+  // viejo: parecía que el clic no hacía nada, y al cerrar y volver a abrir aparecía el cambio.
+  // Se cae a las props si no se encuentra (la tarea se acabó de borrar, o el llamador pasa una
+  // campaña que no está en el store).
+  const project = projects.find((p) => p.id === projectProp.id) ?? projectProp;
+  const brief = (project.fabricaBriefs ?? []).find((b) => b.id === briefProp.id) ?? briefProp;
+
   const status = getBriefStatus(brief);
   const isEditable = status === 'pending';
   const isReviewable = status === 'in_review';
@@ -490,7 +500,14 @@ const BriefDialog = ({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent
+        className="sm:max-w-2xl max-h-[85vh] overflow-y-auto"
+        /* Un clic fuera no cierra la tarea: se pierde lo escrito en el editor y el comentario de
+           corrección, que no se autoguardan. Hay que frenar los DOS eventos — Radix dispara el
+           cierre por vías distintas según sea puntero o foco/táctil. Escape y la X siguen vivos. */
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap">
             {brief.codigo && <CodigoTarea codigo={brief.codigo} className="text-[11px]" />}
@@ -889,7 +906,14 @@ const DeliveryEditDialog = ({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        /* Un clic fuera no cierra la tarea: se pierde lo escrito en el editor y el comentario de
+           corrección, que no se autoguardan. Hay que frenar los DOS eventos — Radix dispara el
+           cierre por vías distintas según sea puntero o foco/táctil. Escape y la X siguen vivos. */
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{brief.tarea}</DialogTitle>
         </DialogHeader>
@@ -1022,7 +1046,14 @@ const DoneDateEditDialog = ({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        /* Un clic fuera no cierra la tarea: se pierde lo escrito en el editor y el comentario de
+           corrección, que no se autoguardan. Hay que frenar los DOS eventos — Radix dispara el
+           cierre por vías distintas según sea puntero o foco/táctil. Escape y la X siguen vivos. */
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{brief.tarea}</DialogTitle>
         </DialogHeader>
@@ -1167,7 +1198,14 @@ const PautaEditDialog = ({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent
+        className="sm:max-w-2xl max-h-[85vh] overflow-y-auto"
+        /* Un clic fuera no cierra la tarea: se pierde lo escrito en el editor y el comentario de
+           corrección, que no se autoguardan. Hay que frenar los DOS eventos — Radix dispara el
+           cierre por vías distintas según sea puntero o foco/táctil. Escape y la X siguen vivos. */
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{brief.tarea}</DialogTitle>
         </DialogHeader>
