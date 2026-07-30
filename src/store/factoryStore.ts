@@ -344,16 +344,16 @@ interface FactoryStore {
   removeRequirement: (projectId: string, roleId: string, reqId: string) => void;
   updateRequirement: (projectId: string, roleId: string, reqId: string, text: string) => void;
 
-  addTask: (projectId: string, task: Omit<ProjectTask, 'id' | 'createdAt'>) => void;
-  updateTask: (projectId: string, taskId: string, updates: Partial<Omit<ProjectTask, 'id' | 'createdAt'>>) => void;
-  deleteTask: (projectId: string, taskId: string) => void;
-
   addStrategyNode: (projectId: string, node: Omit<StrategyNode, 'id'>) => string;
   updateStrategyNode: (projectId: string, nodeId: string, updates: Partial<Omit<StrategyNode, 'id'>>) => void;
   deleteStrategyNode: (projectId: string, nodeId: string) => void;
 
   addFabricaBriefs: (projectId: string, briefs: Omit<FabricaBriefItem, 'id' | 'checked'>[]) => void;
   updateFabricaBrief: (projectId: string, briefId: string, updates: Partial<FabricaBriefItem>) => void;
+  /** Borra una tarea de la campaña. Es irreversible: se va con su entregable, sus adjuntos y su
+   *  historial de aprobación. Si otra tarea la tenía como `sourceBriefId`, esa referencia queda
+   *  colgando y la pestaña "Paso anterior" simplemente deja de aparecer (ya estaba previsto). */
+  deleteFabricaBrief: (projectId: string, briefId: string) => void;
 
   setActiveProject: (id: string | null) => void;
 }
@@ -1108,30 +1108,6 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       })),
     })),
 
-  addTask: (projectId, task) =>
-    persistAfter(set, get, projectId, (s) => ({
-      projects: patchProject(s.projects, projectId, (p) => ({
-        ...p,
-        tasks: [...p.tasks, { ...task, id: `task-${uid()}`, createdAt: new Date().toISOString() }],
-      })),
-    })),
-
-  updateTask: (projectId, taskId, updates) =>
-    persistAfter(set, get, projectId, (s) => ({
-      projects: patchProject(s.projects, projectId, (p) => ({
-        ...p,
-        tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, ...updates } : t)),
-      })),
-    })),
-
-  deleteTask: (projectId, taskId) =>
-    persistAfter(set, get, projectId, (s) => ({
-      projects: patchProject(s.projects, projectId, (p) => ({
-        ...p,
-        tasks: p.tasks.filter((t) => t.id !== taskId),
-      })),
-    })),
-
   addStrategyNode: (projectId, node) => {
     const id = `node-${uid()}`;
     persistAfter(set, get, projectId, (s) => ({
@@ -1188,6 +1164,14 @@ export const useFactoryStore = create<FactoryStore>()((set, get) => ({
       projects: patchProject(s.projects, projectId, (p) => ({
         ...p,
         fabricaBriefs: (p.fabricaBriefs ?? []).map((b) => (b.id === briefId ? { ...b, ...updates } : b)),
+      })),
+    })),
+
+  deleteFabricaBrief: (projectId, briefId) =>
+    persistAfter(set, get, projectId, (s) => ({
+      projects: patchProject(s.projects, projectId, (p) => ({
+        ...p,
+        fabricaBriefs: (p.fabricaBriefs ?? []).filter((b) => b.id !== briefId),
       })),
     })),
 

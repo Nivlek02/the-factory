@@ -84,11 +84,16 @@ donde decide permisos (`canManageUsers` en el front + la policy en la base; la b
 manda). `CARGO_POR_USUARIO` permite mostrar un cargo distinto por persona sin cambiar su rol real.
 
 ### Edge functions
-**Desplegadas (3):** `admin-usuarios`, `activar-acceso`, `notificar-correo`.
-**Muertas, en el repo, sin desplegar:** `create-initial-user`, `update-user-password`,
-`send-notification` — validan el rol contra `user_roles` (vacía), así que darían 403 siempre. **No
-conectarlas sin reescribirlas.** `admin-set-password` **se borró**: no validaba nada, recibía
-`{email, password}` y cambiaba la contraseña de cualquiera. **Si reaparece, no desplegarla.**
+**Son 3, todas desplegadas y todas en uso:** `admin-usuarios`, `activar-acceso`,
+`notificar-correo`. No hay ninguna función muerta en el repo.
+
+Se borraron cuatro, y conviene saber por qué para no resucitarlas:
+`create-initial-user` y `update-user-password` validaban el rol contra `user_roles` (vacía desde la
+migración del directorio), así que daban 403 siempre — las reemplazó `admin-usuarios`.
+`send-notification` era del kanban viejo (posteaba a un webhook de n8n) y recibía **las direcciones
+de correo desde el navegador**: un relay abierto esperando a ser desplegado. Y `admin-set-password`
+no validaba **nada**: recibía `{email, password}` y cambiaba la contraseña de cualquiera.
+**Si alguna reaparece en el repo, no desplegarla.**
 
 Las tres desplegadas usan service_role, que **bypassea toda RLS**, así que la autorización se hace
 a mano dentro de la función:
@@ -408,9 +413,21 @@ build).
   `crearlink` (POST, devuelve `{url, titulo, qrUrl}`) y `descargar-qr` (la URL ya viene armada del
   backend). La descarga del QR va por blob + `<a download>` porque el atributo `download` no se
   respeta en recursos cross-origin. Sus design tokens son **locales al componente** a propósito.
-- **El sistema de correo viejo sigue ahí, muerto y aparte**:
-  `src/services/notificationService.ts` + `supabase/functions/send-notification` (webhook n8n) son
-  del kanban viejo, no de las campañas. Si se conecta algo de correo, es a `notificar-correo`.
+- **El kanban viejo se eliminó** (2026-07-29, ~3.700 líneas): `BoardPage`, `Index` (`/inicio`),
+  `components/task/*`, `useSupabaseTasks`, `supabaseTaskService`, `notificationService`,
+  `src/types/index.ts` y la function `send-notification`. Era UI huérfana —no estaba en el menú, solo
+  se llegaba escribiendo la URL— y arrastraba su propio sistema de correo. `/inicio` y `/board/:id`
+  **redirigen a `/`** en vez de dar 404, por si alguien las tiene en un marcador.
+  **Las tablas `tasks` y `task_comments` NO se borraron**: pueden tener datos y eso no se puede
+  deshacer. Quedan huérfanas, sin ningún lector ni escritor. Para borrarlas, una vez confirmado que
+  no hay nada que rescatar:
+  ```sql
+  -- Mirar primero: select count(*) from public.tasks;  select count(*) from public.task_comments;
+  drop table if exists public.task_comments;
+  drop table if exists public.tasks;
+  ```
+  `storageService.ts` **se queda** aunque el bucket se llame `task-attachments`: lo usan el editor de
+  texto, los adjuntos de entregable y los del asistente.
 
 ---
 
@@ -439,6 +456,11 @@ build).
 ## Historial reciente
 
 Solo lo que sigue explicando el estado actual. Lo anterior está en el historial de git.
+
+- **2026-07-29 (v1.10.0)** — se eliminó el kanban viejo completo (~3.700 líneas, ver "Otros detalles
+  que muerden") y se agregó **"Eliminar tarea"** en el diálogo de la tarea: antes no había ninguna
+  forma de borrar una tarea, y el enlace `quitar` de la fecha se leía como si lo hiciera (solo
+  dejaba la tarea sin fecha — ahora dice "sin fecha"). Adjuntos hasta 50 MB.
 
 - **2026-07-29 (v1.9.2) — segunda pasada de revisión.** Se reacciona a la sesión perdida (antes la
   app se veía vacía en vez de mandarte al login); los adjuntos del asistente pasaron de base64 en el
@@ -541,8 +563,8 @@ contra producción**. Lo que sigue son decisiones y tareas de cuenta, no desplie
 - [ ] **Recordatorios por fecha por correo** — no puede salir del navegador: necesita un cron
       (pg_cron o Vercel Cron) que recorra `factory_projects` y junte las tareas rojas por persona.
       La regla ya existe en `src/lib/urgencia.ts`.
-- [ ] Decidir qué hacer con el correo viejo (`notificationService.ts` + `send-notification`): o se
-      borra, o se reescribe contra `notificar-correo`.
+- [ ] **Borrar las tablas `tasks` y `task_comments`** cuando se confirme que no hay nada que
+      rescatar (el código del kanban ya se fue; el SQL está en "Otros detalles que muerden").
 - [ ] Confirmar a mano el **round-trip de "Editar proyecto"** del ecosistema cíclico (etapas, ELMR,
       motor, `etapaId`/`siguienteEtapaId`): se creó y se vio en la misma sesión, no se reabrió.
 - [ ] Probar **quitar un canal ya guardado** (desmarcar BTL/KAM/Call Center en "Editar proyecto") y

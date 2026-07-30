@@ -25,6 +25,24 @@ en ningún otro archivo.
 
 ---
 
+## [1.10.0] — 2026-07-29
+
+### Agregado
+
+- **Ahora se puede eliminar una tarea.** No existía ninguna forma de borrar una tarea creada por
+  error o duplicada. El botón está dentro de la tarea, abajo a la izquierda, y pide confirmación
+  porque se va con su entregable, sus adjuntos y su historial de aprobación.
+
+### Cambiado
+
+- **El enlace `quitar` de la fecha ahora dice `sin fecha`.** Se leía como "quitar la tarea", pero lo
+  único que hacía era dejarla sin fecha. Borrar la tarea es el botón nuevo de arriba.
+- **Se eliminó el tablero kanban antiguo** (`/inicio` y `/board/…`). Ya no estaba en el menú y nadie
+  lo usaba; solo se llegaba escribiendo la dirección. Esas direcciones ahora llevan a Campañas. La
+  app quedó más liviana de descargar.
+
+---
+
 ## [1.9.3] — 2026-07-29
 
 ### Cambiado

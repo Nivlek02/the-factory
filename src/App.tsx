@@ -5,8 +5,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
-import Index from "./pages/Index";
-import BoardPage from "./pages/BoardPage";
 import ReportsPage from "./pages/ReportsPage";
 import SettingsPage from "./pages/SettingsPage";
 import WebinarsPage from "./pages/WebinarsPage";
@@ -51,9 +49,12 @@ const AppRoutes = () => {
       <Route path="/activar" element={<Navigate to="/" replace />} />
       <Route path="/" element={<FactoryPage />} />
       <Route path="/factory" element={<Navigate to="/" replace />} />
-      <Route path="/inicio" element={<Index />} />
+      {/* El kanban viejo (/inicio, /board/:id) se eliminó el 2026-07-29: era UI huérfana, no
+          estaba en el menú y arrastraba su propio sistema de correo. Las rutas se redirigen en vez
+          de dar 404 por si alguien las tiene en un marcador. */}
+      <Route path="/inicio" element={<Navigate to="/" replace />} />
+      <Route path="/board/:boardId" element={<Navigate to="/" replace />} />
       <Route path="/mis-tareas" element={<MisTareasPage />} />
-      <Route path="/board/:boardId" element={<BoardPage />} />
       <Route path="/reports" element={<ReportsPage />} />
       <Route path="/webinars" element={<WebinarsPage />} />
       <Route path="/herramientas" element={<HerramientasPage />} />

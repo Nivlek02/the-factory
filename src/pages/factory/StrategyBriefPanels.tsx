@@ -22,7 +22,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, MessageSquare, FileText, Image as ImageIcon, History, Calendar, CalendarClock } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Plus, MessageSquare, FileText, Image as ImageIcon, History, Calendar, CalendarClock, Trash2 } from 'lucide-react';
 import { calcularUrgencia, formatFechaCorta } from '@/lib/urgencia';
 import { notificarEnRevision, notificarAprobada, notificarCorreccion } from '@/services/emailNotifications';
 import { cn } from '@/lib/utils';
@@ -256,11 +260,14 @@ const FechaAccionEditor = ({
         </span>
       )}
       {fecha && (
+        // Antes decía "quitar", que se leía como "quitar la tarea" — y lo que hace es dejarla sin
+        // fecha. Borrar la tarea es el botón del pie del diálogo.
         <button
           onClick={() => onChange(null)}
+          title="Dejar la tarea sin fecha"
           className="text-[10px] text-muted-foreground hover:text-foreground underline"
         >
-          quitar
+          sin fecha
         </button>
       )}
     </span>
@@ -351,7 +358,7 @@ const BriefDialog = ({
   onClose: () => void;
   onAdvance?: (next: FabricaBriefItem) => void;
 }) => {
-  const { updateFabricaBrief } = useFactoryStore();
+  const { updateFabricaBrief, deleteFabricaBrief } = useFactoryStore();
   const status = getBriefStatus(brief);
   const isEditable = status === 'pending';
   const isReviewable = status === 'in_review';
@@ -433,6 +440,12 @@ const BriefDialog = ({
     // Las tareas que esto siembre en el siguiente nodo notifican solas desde addFabricaBriefs.
     activateNextStage(project, nodeId, brief);
     advanceOrClose();
+  };
+
+  const handleDelete = () => {
+    deleteFabricaBrief(project.id, brief.id);
+    // No se avanza al siguiente de la cola: la persona vino a borrar, no a revisar.
+    onClose();
   };
 
   const handleReject = () => {
@@ -598,7 +611,42 @@ const BriefDialog = ({
           </div>
         )}
 
-        <DialogFooter className="flex gap-2">
+        <DialogFooter className="flex gap-2 sm:justify-between">
+          {/* Eliminar va a la izquierda y separado de las acciones del flujo: es lo único
+              irreversible del diálogo. Disponible en cualquier estado — una tarea creada por error
+              o duplicada hay que poder borrarla igual si ya está aprobada. */}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-state-blocked hover:text-state-blocked hover:bg-state-blocked-bg/40 sm:mr-auto"
+              >
+                <Trash2 className="h-4 w-4" />
+                Eliminar tarea
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar esta tarea?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Se va <span className="font-medium text-foreground">«{brief.tarea}»</span> con su
+                  entregable, sus adjuntos y su historial de aprobación. No se puede deshacer.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  className="bg-state-blocked text-white hover:bg-state-blocked/90"
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <div className="flex gap-2">
           {isEditable && (
             <>
               <Button variant="outline" onClick={onClose}>Cancelar</Button>
@@ -626,6 +674,7 @@ const BriefDialog = ({
           {status === 'completed' && (
             <Button variant="outline" onClick={onClose}>Cerrar</Button>
           )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -153,74 +153,6 @@ const NoSelection = ({ onNew }: { onNew: () => void }) => (
   </div>
 );
 
-// ─── Task Card ────────────────────────────────────────────────────────────────
-
-const TaskCard = ({
-  task,
-  allMembers,
-  onStatusChange,
-  onDelete,
-}: {
-  task: ProjectTask;
-  allMembers: Array<{ id: string; name: string; roleLabel: string }>;
-  onStatusChange: (status: string) => void;
-  onDelete: () => void;
-}) => {
-  return (
-    <div className="group bg-card rounded-lg border border-border/60 p-3 hover:border-factory/30 hover:shadow-sm transition-all">
-      <div className="flex items-start justify-between gap-2 mb-1.5">
-        <p className="text-xs font-medium leading-snug flex-1">{task.title}</p>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0">
-              <MoreVertical className="h-3 w-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {TASK_STATUSES.map((s) => (
-              <DropdownMenuItem key={s.value} onClick={() => onStatusChange(s.value)}>
-                {s.label}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuItem className="text-destructive" onClick={onDelete}>
-              <Trash2 className="h-3.5 w-3.5 mr-2" />
-              Eliminar
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {task.description && (
-        <p className="text-[10px] text-muted-foreground mb-2 line-clamp-2">{task.description}</p>
-      )}
-
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          {task.assignedMemberName && (
-            <div className="flex items-center gap-1">
-              <div className="w-4 h-4 rounded-full bg-factory/30 flex items-center justify-center text-[8px] font-bold text-factory">
-                {task.assignedMemberName.charAt(0).toUpperCase()}
-              </div>
-              <span className="text-[10px] text-muted-foreground">{task.assignedMemberName}</span>
-              {task.assignedRoleLabel && (
-                <span className="text-[9px] text-muted-foreground">({task.assignedRoleLabel})</span>
-              )}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          {task.priority === 'high' && (
-            <Badge variant="outline" className="text-[9px] px-1 h-3.5 border-priority-p0 text-priority-p0">Alta</Badge>
-          )}
-          {task.priority === 'medium' && (
-            <Badge variant="outline" className="text-[9px] px-1 h-3.5 border-priority-p1 text-priority-p1">Media</Badge>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 const OverviewTab = ({ project }: { project: FactoryProject }) => {
@@ -689,7 +621,7 @@ const TABS = [
 
 const ProjectWorkspace = ({ project }: { project: FactoryProject }) => {
   const [activeTab, setActiveTab] = useState<'flujo' | 'metrics' | 'loop' | 'overview' | 'equipo'>('flujo');
-  const { addTask, updateTask, deleteTask, deleteProject, setActiveProject } = useFactoryStore();
+  const { deleteProject, setActiveProject } = useFactoryStore();
 
   const [editWizardOpen, setEditWizardOpen] = useState(false);
 
@@ -1029,7 +961,6 @@ const FactoryPage = () => {
                       {groupProjects.map((p) => {
                         const isActive = p.id === activeProjectId;
                         const progress = projectProgress(p);
-                        const pending = p.tasks.filter((t) => t.status !== 'completed').length;
                         const stateDot =
                           p.state === 'done' ? 'state-done' :
                           p.state === 'in_progress' ? 'state-progress' :
@@ -1068,9 +999,6 @@ const FactoryPage = () => {
                                 <div className="h-full bg-factory rounded-full" style={{ width: `${progress}%` }} />
                               </div>
                               <span className="text-[10px] text-muted-foreground tabular-nums">{progress}%</span>
-                              {pending > 0 && (
-                                <span className="text-[10px] text-muted-foreground tabular-nums">· {pending}p</span>
-                              )}
                             </div>
                           </button>
                         );

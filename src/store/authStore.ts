@@ -51,7 +51,6 @@ interface AuthStore {
   createUserAccess: (rowId: string, password: string) => Promise<Result>;
   /** Si el usuario en sesión puede gestionar el equipo (Estratega o Soporte). */
   canManageUsers: () => boolean;
-  canAccessBoard: (boardId: string) => boolean;
 }
 
 /**
@@ -288,10 +287,6 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     const rol = get().currentUser?.role;
     return !!rol && ROLES_GESTORES.includes(rol);
   },
-
-  canAccessBoard: (_boardId) => {
-    return true;
-  },
 }));
 
 /** Traduce los errores crudos de Postgres a algo que le sirva a quien está en la UI. */
@@ -301,6 +296,3 @@ function describeError(message: string): string {
   if (message.includes('usuarios_roles_rol_check')) return 'Ese rol no es válido.';
   return message;
 }
-
-// Legacy export for notification service
-export const USERS: AppUser[] = [];
