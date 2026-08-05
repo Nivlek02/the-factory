@@ -25,6 +25,16 @@ en ningún otro archivo.
 
 ---
 
+## [1.13.1] — 2026-08-05
+
+### Arreglado
+
+- **El asistente de campaña ya no se corta en pantallas pequeñas.** La ventana era de ancho fijo,
+  así que en portátiles y monitores chicos los campos anchos —el plan de canales, los loops— se
+  apretaban y parte de la información quedaba fuera. Ahora la ventana aprovecha el ancho que haya
+  (hasta 1200 px) sin desbordarse nunca, y en el primer paso las fechas y los responsables se
+  apilan en vez de encogerse.
+
 ## [1.13.0] — 2026-07-30
 
 ### Nuevo

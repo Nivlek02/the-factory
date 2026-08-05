@@ -1206,7 +1206,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           Radix dispara el cierre por dos vías distintas (`pointerDownOutside` para el clic y
           `interactOutside` para foco/táctil), así que hay que frenar las dos. */}
       <DialogContent
-        className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+        /* Ancho: `min(96vw, 1200px)` en vez de un `sm:max-w-3xl` fijo (768px). Los pasos del
+           asistente tienen filas anchas (plan de canales, loops) que en pantallas chicas se
+           cortaban. Con `min()` el diálogo aprovecha el ancho que haya y nunca se desborda,
+           así que no hace falta escalonar breakpoints. */
+        className="max-w-[min(96vw,1200px)] max-h-[90vh] overflow-hidden flex flex-col"
         onPointerDownOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
       >
@@ -1261,7 +1265,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   placeholder="Objetivo, alcance, contexto…"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <Label>Cliente / Área</Label>
                   <Input
@@ -1302,7 +1306,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="space-y-1.5">
                   <Label>Estratega</Label>
                   <Select
