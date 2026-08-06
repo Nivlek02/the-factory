@@ -1119,6 +1119,12 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
             const reactivacionNegativos = etapa.tipo === 'reactivacion'
               ? (project.motor?.reactivacionNegativos ?? [])
               : [];
+            // Y las acciones que se disparan con cada uno ("No abre → WhatsApp"). Son toques de
+            // esta etapa con `detonante`; si la campaña no tiene ninguna (o es anterior a esta
+            // funcionalidad) el recuadro sigue mostrando solo los negativos, como antes.
+            const reactivacionAcciones = etapa.tipo === 'reactivacion'
+              ? toquesRows.filter((c) => (c.detonante ?? '').trim())
+              : [];
             return (
               <div
                 key={etapa.id}
@@ -1226,7 +1232,20 @@ const EcosystemCycleDiagram = ({ project }: { project: FactoryProject }) => {
                     <p className="text-[9px] text-muted-foreground mt-1">Sin desenlace</p>
                   )
                 ) : etapa.tipo === 'reactivacion' ? (
-                  reactivacionNegativos.length > 0 ? (
+                  reactivacionAcciones.length > 0 ? (
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      {reactivacionAcciones.map((a) => (
+                        <span
+                          key={a.id}
+                          className="text-[8px] font-medium leading-tight rounded px-1 py-0.5 truncate"
+                          style={{ backgroundColor: `${meta.color}1a`, color: meta.color }}
+                          title={`${a.detonante} → ${a.canal}`}
+                        >
+                          {a.detonante} → {a.canal}
+                        </span>
+                      ))}
+                    </div>
+                  ) : reactivacionNegativos.length > 0 ? (
                     <div className="mt-1.5 flex flex-col gap-1">
                       {reactivacionNegativos.map((n) => (
                         <span

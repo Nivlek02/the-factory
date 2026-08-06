@@ -118,14 +118,17 @@ const formatDisplay = (dateStr: string) => {
   return `${parseInt(match[3], 10)} de ${MESES_CORTO[m - 1]}`;
 };
 
-/** Canales disponibles en el Plan de canales, cada uno con su ícono. */
+/** Canales disponibles en el Plan de canales, cada uno con su ícono.
+ *
+ *  Facebook e Instagram se compraron siempre juntos desde el mismo administrador, así que son un
+ *  solo canal: **Meta Ads**. TikTok se llama **TikTok Ads** por lo mismo — lo que se planea acá es
+ *  la pauta, no el perfil orgánico. */
 const CHANNELS: { id: string; icon: LucideIcon }[] = [
   { id: 'Correo', icon: Mail },
   { id: 'WhatsApp', icon: MessageCircle },
   { id: 'SMS', icon: Smartphone },
-  { id: 'Facebook', icon: Facebook },
-  { id: 'Instagram', icon: Instagram },
-  { id: 'TikTok', icon: Music },
+  { id: 'Meta Ads', icon: Facebook },
+  { id: 'TikTok Ads', icon: Music },
   { id: 'Google Ads', icon: Search },
   { id: 'Call Center', icon: Phone },
   { id: 'BTL', icon: Store },
@@ -133,6 +136,51 @@ const CHANNELS: { id: string; icon: LucideIcon }[] = [
   { id: 'Relacionamiento', icon: Handshake },
   { id: 'Video', icon: Video },
 ];
+
+/**
+ * Canales que ya no se ofrecen pero que las campañas viejas todavía tienen guardados.
+ *
+ * NO se migran los datos: se siguen aceptando tal cual. Un Radix Select con un `value` que no
+ * corresponde a ningún `SelectItem` **se pinta vacío**, así que sin esta lista un toque guardado
+ * como 'Facebook' se vería sin canal y el primer cambio que alguien hiciera en esa fila lo
+ * borraría. Se ofrecen solo en la fila que ya los trae (ver `CanalSelect`).
+ */
+const CANALES_LEGADOS: { id: string; icon: LucideIcon }[] = [
+  { id: 'Facebook', icon: Facebook },
+  { id: 'Instagram', icon: Instagram },
+  { id: 'TikTok', icon: Music },
+];
+
+const iconoDeCanal = (canal: string): LucideIcon =>
+  (CHANNELS.find((c) => c.id === canal) ?? CANALES_LEGADOS.find((c) => c.id === canal))?.icon ?? Mail;
+
+/** Selector de canal — compartido por el Plan de canales y por las acciones de Reactivación.
+ *  Conserva el valor legado de la fila como una opción más para no borrarlo en silencio. */
+const CanalSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => {
+  const legado = value && !CHANNELS.some((c) => c.id === value)
+    ? CANALES_LEGADOS.find((c) => c.id === value) ?? { id: value, icon: Mail }
+    : null;
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="h-8 w-full min-w-0 gap-1.5 border-none bg-transparent px-1 text-xs font-medium shadow-none focus:ring-0 focus:ring-offset-0 md:h-auto">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {/* El valor legado va sin ninguna anotación al lado: Radix copia los hijos del item
+            seleccionado dentro del trigger, así que un "(nombre anterior)" acá se leería como
+            parte del nombre del canal en la fila cerrada. */}
+        {[...CHANNELS, ...(legado ? [legado] : [])].map(({ id, icon: Icon }) => (
+          <SelectItem key={id} value={id} className="text-xs">
+            <span className="flex items-center gap-2">
+              <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              {id}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+};
 
 /** Las 6 etapas del ecosistema cíclico de convocatoria/conversión/reactivación — ver
  *  EtapaCiclo en factoryStore.ts. `initEtapas()` siembra estos defaults; nombre/objetivo
@@ -157,7 +205,7 @@ const ETAPA_TIPO_META: Record<EtapaTipo, { icon: LucideIcon; color: string }> = 
   reactivacion: { icon: RefreshCw, color: 'hsl(var(--team-design))' },
 };
 
-type WizardCanalRow = { id: string; canal: string; dia: string; hora: string; copy: string; segmento: string; etapaId?: string; interaccion?: string; interacciones?: string[] };
+type WizardCanalRow = { id: string; canal: string; dia: string; hora: string; copy: string; segmento: string; etapaId?: string; interaccion?: string; interacciones?: string[]; detonante?: string; origenToqueId?: string };
 type WizardLoopRow = { id: string; disparador: string; reaccion: string; responsable: string; etapaId?: string; siguienteEtapaId?: string };
 
 /** Una fila del Plan de canales — reutilizada dentro de cada etapa y en "Sin etapa asignada"
@@ -177,26 +225,16 @@ const ToqueRow = ({
     style={{
       // Ángulo del toque es texto libre sin truncado (a diferencia de Segmento/Etapa, que ya
       // truncan con "…" + tooltip) — se le da el piso más generoso de todos los campos.
+      //
+      // El resto de anchos son de cuando el diálogo medía 768px fijos: con `min(96vw, 1200px)`
+      // sobraba espacio y Segmento seguía en 90px, o sea que "Turismo de Eventos y Negocios" se
+      // veía como "Turism…". Canal también: "Relacionamiento" no cabía en 128px.
       gridTemplateColumns: showEtapaPicker
-        ? 'minmax(104px, 128px) 75px 58px minmax(140px, 1fr) minmax(60px, 90px) minmax(60px, 90px) 20px'
-        : 'minmax(104px, 128px) 75px 58px minmax(140px, 1fr) minmax(60px, 90px) 20px',
+        ? 'minmax(128px, 160px) 85px 62px minmax(150px, 1fr) minmax(120px, 170px) minmax(110px, 150px) 20px'
+        : 'minmax(128px, 160px) 85px 62px minmax(150px, 1fr) minmax(130px, 190px) 20px',
     }}
   >
-    <Select value={row.canal} onValueChange={(v) => onUpdate('canal', v)}>
-      <SelectTrigger className="h-8 w-full min-w-0 gap-1.5 border-none bg-transparent px-1 text-xs font-medium shadow-none focus:ring-0 focus:ring-offset-0 md:h-auto">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {CHANNELS.map(({ id, icon: Icon }) => (
-          <SelectItem key={id} value={id} className="text-xs">
-            <span className="flex items-center gap-2">
-              <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              {id}
-            </span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <CanalSelect value={row.canal} onChange={(v) => onUpdate('canal', v)} />
 
     <div className="flex items-center gap-3 md:contents">
       <div
@@ -295,7 +333,7 @@ const InteraccionRow = ({
   row: WizardCanalRow;
   onUpdate: (values: string[]) => void;
 }) => {
-  const Icon = CHANNELS.find((c) => c.id === row.canal)?.icon ?? Mail;
+  const Icon = iconoDeCanal(row.canal);
   const selected = interaccionesDe(row);
   const [customInput, setCustomInput] = useState('');
   const opciones = opcionesDeCanal(row.canal);
@@ -315,17 +353,23 @@ const InteraccionRow = ({
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-2 sm:flex-row sm:items-center">
-      <span className="flex items-center gap-1.5 min-w-0 shrink-0 sm:w-[150px] text-xs font-medium">
+    <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-2 sm:flex-row sm:items-center sm:gap-3">
+      {/* El canal NO se trunca: es lo que identifica la fila. El ángulo del toque iba dentro del
+          mismo ancho fijo de 150px, así que se comía el nombre del canal ("Relacionami… · Últi…").
+          Ahora el canal se muestra entero y solo el ángulo cede espacio. */}
+      <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium sm:w-[260px] sm:shrink-0">
         <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <span className="truncate">{row.canal}</span>
-        {row.copy.trim() && (
-          <span className="text-[10px] text-muted-foreground truncate font-normal hidden sm:inline" title={row.copy}>
-            · {row.copy}
+        <span className="whitespace-nowrap">{row.canal}</span>
+        {(row.dia || row.copy.trim()) && (
+          <span
+            className="min-w-0 flex-1 truncate text-[10px] font-normal text-muted-foreground"
+            title={[formatDisplay(row.dia), row.copy.trim()].filter(Boolean).join(' · ')}
+          >
+            · {[formatDisplay(row.dia), row.copy.trim()].filter(Boolean).join(' · ')}
           </span>
         )}
       </span>
-      <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+      <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto sm:justify-end">
         {opciones.map((op) => {
           const active = selected.includes(op);
           return (
@@ -375,6 +419,81 @@ const VALIDACION_SEGMENTOS = ['Renovado', 'No renovado', 'No inscrito en cámara
 
 /** Negativos de la interacción en la etapa de Reactivación. Multi-selección + personalizado. */
 const REACTIVACION_NEGATIVOS = ['No abre', 'No hace clic', 'No visita'] as const;
+
+/**
+ * Una acción de reactivación: "quien **no abre** el correo del 5 de julio → se le manda un
+ * WhatsApp".
+ *
+ * Es un toque más del Plan de canales (misma `WizardCanalRow`, guardado en `project.canales`) con
+ * dos datos extra: `detonante` —el negativo que la dispara— y `origenToqueId` —el toque de
+ * Atracción al que responde—. Por eso **genera las mismas tareas que cualquier toque**, con los
+ * mismos roles: `buildFabricaBriefs` recorre todos los canales sin mirar la etapa, y solo le suma
+ * "Reactivación: {detonante}" al nombre para que no se confunda con la tarea del toque original.
+ */
+const ReactivacionRow = ({
+  row, detonantes, onUpdate, onRemove,
+}: {
+  row: WizardCanalRow;
+  detonantes: string[];
+  onUpdate: (field: string, value: string) => void;
+  onRemove: () => void;
+}) => {
+  // Un detonante escrito antes de que se quitara de la lista se conserva como opción propia: si
+  // no, el select se pintaría vacío y el primer cambio en la fila lo borraría.
+  const opciones = row.detonante && !detonantes.includes(row.detonante)
+    ? [...detonantes, row.detonante]
+    : detonantes;
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background p-2 md:grid md:items-center md:gap-2"
+      style={{ gridTemplateColumns: 'minmax(130px, 180px) 14px minmax(128px, 160px) 85px minmax(140px, 1fr) 20px' }}
+    >
+      <select
+        value={row.detonante ?? ''}
+        onChange={(e) => onUpdate('detonante', e.target.value)}
+        className="w-full min-w-0 cursor-pointer truncate border-none bg-transparent text-xs outline-none"
+        title="Qué comportamiento dispara esta acción"
+      >
+        <option value="">Detonante…</option>
+        {opciones.map((d) => (
+          <option key={d} value={d}>{d}</option>
+        ))}
+      </select>
+      <span className="hidden text-xs text-muted-foreground md:inline">→</span>
+      <CanalSelect value={row.canal} onChange={(v) => onUpdate('canal', v)} />
+      <div
+        className="relative flex cursor-pointer items-center gap-1.5"
+        onClick={(e) => {
+          const input = e.currentTarget.querySelector('input[type="date"]') as HTMLInputElement;
+          input?.showPicker();
+        }}
+      >
+        <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate text-xs text-foreground">
+          {row.dia ? formatDisplay(row.dia) : <span className="text-muted-foreground/60">Fecha</span>}
+        </span>
+        <input
+          type="date"
+          value={row.dia}
+          onChange={(e) => onUpdate('dia', e.target.value)}
+          className="absolute -z-10 h-0 w-0 opacity-0"
+        />
+      </div>
+      <input
+        placeholder="Ángulo del toque…"
+        value={row.copy}
+        onChange={(e) => onUpdate('copy', e.target.value)}
+        className="w-full min-w-0 border-none bg-transparent text-xs outline-none"
+      />
+      <button
+        onClick={onRemove}
+        className="self-end text-muted-foreground transition-colors hover:text-destructive md:self-auto"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+};
 
 /** Una fila de Loops de comportamiento — reutilizada dentro de cada etapa y en "Sin etapa
  *  asignada". `onUpdate('siguienteEtapaId', etapaId)` es el selector "Lleva a →" que cierra o
@@ -790,6 +909,27 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
   const addCanalRow = (etapaId?: string) => {
     setCanalesRows((prev) => [...prev, { id: uid(), canal: 'Correo', dia: '', hora: '', copy: '', segmento: 'todos', etapaId }]);
   };
+  /** Acción de reactivación: un toque más, pero atado a un toque de Atracción (`origenToqueId`) y
+   *  a un detonante. Nace sin segmento: la audiencia ya la define el detonante ("los que no
+   *  abrieron ese correo"), y repetir "Segmento General" en el nombre de la tarea sería ruido. */
+  const addReactivacionRow = (etapaId: string, origenToqueId: string) => {
+    setCanalesRows((prev) => [
+      ...prev,
+      { id: uid(), canal: 'Correo', dia: '', hora: '', copy: '', segmento: '', etapaId, origenToqueId, detonante: '' },
+    ]);
+  };
+  /** Igual que `updateCanalRow`, pero elegir un detonante también lo marca arriba como negativo de
+   *  la interacción: son la misma cosa dicha dos veces (el chip dice "esta audiencia me importa" y
+   *  la acción dice qué se hace con ella), y tenerlas separadas dejaba la etapa resumida en
+   *  "0 negativos · 2 acciones" y el diagrama del ciclo sin nada que pintar. */
+  const updateReactivacionRow = (id: string, field: string, value: string) => {
+    updateCanalRow(id, field, value);
+    if (field !== 'detonante' || !value) return;
+    setMotor((m) => {
+      const cur = m.reactivacionNegativos ?? [];
+      return cur.includes(value) ? m : { ...m, reactivacionNegativos: [...cur, value] };
+    });
+  };
   const removeCanalRow = (id: string) => setCanalesRows((prev) => prev.filter((r) => r.id !== id));
   const updateCanalRow = (id: string, field: string, value: string) =>
     setCanalesRows((prev) =>
@@ -922,7 +1062,24 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       fechaCanalActual = row.dia || null;
       const fecha = row.dia ? formatFecha(row.dia) : '';
       const segmento = row.segmento ? SEGMENTOS_LABEL[row.segmento] ?? row.segmento : '';
-      const ref = [fecha, segmento].filter(Boolean).join(' — ');
+      /**
+       * Marca de las acciones de reactivación. Va **detrás de un ` — `**, nunca pegada al canal:
+       * `canalDeEnvio`/`canalDePauta`/`canalDeMetricas` (src/lib/metricas.ts) cortan el canal por
+       * prefijo hasta el primer separador, así que "Configurar envío por Correo [Reactivación…]"
+       * le dejaría al dashboard un canal llamado "Correo [Reactivación…]" y las métricas de esos
+       * envíos desaparecerían del tablero.
+       *
+       * Además es lo que hace único el nombre de la tarea: sin la marca, la reactivación por
+       * Correo y el correo original que la dispara se llamarían igual y `fusionarBriefs` no
+       * podría distinguirlas al reguardar la campaña.
+       */
+      const detonante = (row.detonante ?? '').trim();
+      const marcaReactivacion = detonante ? `Reactivación: ${detonante}` : '';
+      const ref = [fecha, segmento, marcaReactivacion].filter(Boolean).join(' — ');
+      /** Lo que va detrás del canal en las tareas que llevan el ángulo del toque en vez de la
+       *  referencia (copys, guiones, piezas). */
+      const detalle = [marcaReactivacion, row.copy.trim()].filter(Boolean).join(' — ');
+      const sufijo = detalle ? ` — ${detalle}` : '';
 
       switch (row.canal) {
         case 'Correo':
@@ -935,19 +1092,23 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           addItem('gestor_canales', 'Gestor de canales',
             `Configurar envío por ${row.canal}${ref ? ` — ${ref}` : ''}`);
           addItem('copy', 'Copywriter',
-            `Redactar copy para ${row.canal}${row.copy ? ` — ${row.copy}` : ''}`);
+            `Redactar copy para ${row.canal}${sufijo}`);
           const copyRole = roles.find((r) => r.id === 'copy');
           if (copyRole) {
             addRoleTareasFiltered(copyRole.id, copyRole.label, copyRole.tareas);
           }
           break;
         }
+        // Meta Ads y TikTok Ads son los nombres de hoy; Facebook/Instagram/TikTok siguen acá
+        // porque las campañas guardadas antes del cambio los conservan.
+        case 'Meta Ads':
+        case 'TikTok Ads':
+        case 'Google Ads':
         case 'Facebook':
         case 'Instagram':
-        case 'TikTok':
-        case 'Google Ads': {
+        case 'TikTok': {
           addItem('trafficker', 'Trafficker',
-            `Configurar campaña en ${row.canal}${row.copy ? ` — ${row.copy}` : ''}`);
+            `Configurar campaña en ${row.canal}${sufijo}`);
           const traffickerRole = roles.find((r) => r.id === 'trafficker');
           if (traffickerRole) {
             addRoleTareasFiltered(traffickerRole.id, traffickerRole.label, traffickerRole.tareas);
@@ -958,7 +1119,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           // La tarea de registro de Estratega ("¿se hizo? sí/no + fecha") se activa sola al
           // aprobar el guion — ver activateNextStage en StrategyBriefPanels — no se siembra aquí.
           addItem('copy', 'Copywriter',
-            `Redactar guion para Call Center${row.copy ? ` — ${row.copy}` : ''}`);
+            `Redactar guion para Call Center${sufijo}`);
           const copyRole = roles.find((r) => r.id === 'copy');
           if (copyRole) {
             addRoleTareasFiltered(copyRole.id, copyRole.label, copyRole.tareas);
@@ -970,7 +1131,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           // video (Videógrafo) se activa sola al aprobarse el guion, en el nodo "Producción de
           // video" — ver AUTO_ADVANCE/`activateNextStage` en StrategyBriefPanels.
           addItem('copy', 'Copywriter',
-            `Redactar guion de video${row.copy ? ` — ${row.copy}` : ''}`);
+            `Redactar guion de video${sufijo}`);
           const copyRole = roles.find((r) => r.id === 'copy');
           if (copyRole) {
             addRoleTareasFiltered(copyRole.id, copyRole.label, copyRole.tareas);
@@ -981,7 +1142,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
           addItem('estratega', 'Estratega',
             `Coordinar activación BTL${ref ? ` — ${ref}` : ''}`);
           addItem('diseno', 'Diseñador',
-            `Diseñar piezas BTL${row.copy ? ` — ${row.copy}` : ''}`);
+            `Diseñar piezas BTL${sufijo}`);
           break;
         }
         case 'KAM': {
@@ -1052,10 +1213,13 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
       Correo:      ['gestor_canales', 'copy'],
       WhatsApp:    ['gestor_canales', 'copy'],
       SMS:         ['gestor_canales', 'copy'],
+      'Meta Ads':   ['trafficker'],
+      'TikTok Ads': ['trafficker'],
+      'Google Ads': ['trafficker'],
+      // Nombres anteriores de esos canales — siguen mapeados por las campañas ya guardadas.
       Facebook:    ['trafficker'],
       Instagram:   ['trafficker'],
       TikTok:      ['trafficker'],
-      'Google Ads': ['trafficker'],
       'Call Center': ['copy'],
       // El guion lo escribe Copy; la producción la hace el Videógrafo (su tarea nace al aprobar).
       Video: ['copy', 'videografo'],
@@ -1073,6 +1237,37 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
     canalesRows.flatMap((c) => roles.filter((r) => canalInvolvesRole(c.canal, r.id)).map((r) => r.id))
   );
   const involvedRoles = involvedRoleIds.size > 0 ? roles.filter((r) => involvedRoleIds.has(r.id)) : roles;
+
+  /** Compara etiquetas de segmento ignorando mayúsculas, tildes y el plural: el segmento de
+   *  audiencia se llama "Renovados" y el de validación "Renovado" — son el mismo y ofrecer los dos
+   *  solo confunde. */
+  const mismaEtiqueta = (s: string) =>
+    s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/s$/, '');
+
+  /**
+   * Chips de la etapa de Validación: los 3 de siempre (Renovado / No renovado / No inscrito en
+   * cámara) **más los segmentos elegidos en "Audiencia y Narrativa"**. Se valida contra el CRM la
+   * audiencia con la que se está trabajando, así que tenerla que reescribir a mano acá era pura
+   * repetición.
+   */
+  const opcionesValidacion = useMemo(() => {
+    const out: string[] = [...VALIDACION_SEGMENTOS];
+    const vistos = new Set(out.map(mismaEtiqueta));
+    for (const segId of audiencia.segmentos) {
+      const label = SEGMENTOS_LABEL[segId] ?? segId;
+      if (vistos.has(mismaEtiqueta(label))) continue;
+      vistos.add(mismaEtiqueta(label));
+      out.push(label);
+    }
+    return out;
+  }, [audiencia.segmentos]);
+
+  /** Detonantes que ofrece cada acción de reactivación: los negativos estándar más los que se
+   *  hayan agregado a mano arriba, en esa misma etapa. */
+  const opcionesDetonante = useMemo(
+    () => Array.from(new Set<string>([...REACTIVACION_NEGATIVOS, ...(motor.reactivacionNegativos ?? [])])),
+    [motor.reactivacionNegativos],
+  );
 
   // Rebuild when canales, loops, requerimientos or formularioConfig change
   useEffect(() => {
@@ -1729,6 +1924,12 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                         ? canalesRows.filter((r) => r.etapaId === atraccionEtapa.id)
                         : [];
                       const interaccionesSet = atraccionToques.filter((t) => interaccionesDe(t).length > 0);
+                      // Acciones de reactivación: toques de ESTA etapa atados a un toque de
+                      // Atracción. Las huérfanas (su origen ya no existe) se muestran aparte para
+                      // que no queden invisibles generando tareas.
+                      const reactivacionRows = isReactivacion ? toques.filter((r) => r.origenToqueId) : [];
+                      const idsAtraccion = new Set(atraccionToques.map((t) => t.id));
+                      const reactivacionHuerfanas = reactivacionRows.filter((r) => !idsAtraccion.has(r.origenToqueId!));
                       const capturaReqs = requerimientos.filter((r) => r === 'landing' || r === 'formulario');
                       // Atracción solo lleva Plan de canales (sin loops). Las etapas especiales
                       // tienen su propia UI. Loops quedó fuera de todas las etapas.
@@ -1776,7 +1977,7 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                     ) : isDesenlace ? (
                                       `${validacionSegs.filter((s) => (motor.desenlaces?.[s] ?? '').trim()).length}/${validacionSegs.length} ${validacionSegs.length === 1 ? 'rama' : 'ramas'}`
                                     ) : isReactivacion ? (
-                                      `${(motor.reactivacionNegativos ?? []).length} ${(motor.reactivacionNegativos ?? []).length === 1 ? 'negativo' : 'negativos'}`
+                                      `${(motor.reactivacionNegativos ?? []).length} ${(motor.reactivacionNegativos ?? []).length === 1 ? 'negativo' : 'negativos'} · ${reactivacionRows.length} ${reactivacionRows.length === 1 ? 'acción' : 'acciones'}`
                                     ) : (
                                       <>
                                         {toques.length} {toques.length === 1 ? 'toque' : 'toques'}
@@ -1911,9 +2112,10 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                 <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Validación de segmento</Label>
                                 <p className="text-[11px] text-muted-foreground italic">
                                   Selecciona los segmentos a validar contra el CRM/fuente externa (puedes elegir varios o agregar uno personalizado).
+                                  {audiencia.segmentos.length > 0 && ' Además de los 3 de siempre, están los que elegiste en Audiencia y Narrativa.'}
                                 </p>
                                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                  {VALIDACION_SEGMENTOS.map((seg) => {
+                                  {opcionesValidacion.map((seg) => {
                                     const active = (motor.validacionSegmentos ?? []).includes(seg);
                                     return (
                                       <button
@@ -1928,8 +2130,11 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                       </button>
                                     );
                                   })}
+                                  {/* Solo lo escrito a mano: un segmento que ya viene de Audiencia
+                                      y Narrativa saldría dos veces si se filtrara únicamente
+                                      contra los 3 fijos. */}
                                   {(motor.validacionSegmentos ?? [])
-                                    .filter((v) => !VALIDACION_SEGMENTOS.includes(v as (typeof VALIDACION_SEGMENTOS)[number]))
+                                    .filter((v) => !opcionesValidacion.includes(v))
                                     .map((v) => (
                                       <button
                                         key={v}
@@ -2025,6 +2230,90 @@ const CreateProjectWizard = ({ open, onOpenChange, onCreated, editProject }: Pro
                                     onBlur={addReactivacionCustom}
                                     className="h-8 w-36 rounded-md border border-dashed border-input bg-background px-2 text-[11px] outline-none focus:ring-1 focus:ring-ring"
                                   />
+                                </div>
+
+                                {/* Acciones de reactivación: por cada canal de Atracción, qué se
+                                    manda y ante qué detonante. Cada fila es un toque más del Plan
+                                    de canales, así que genera sus tareas con los mismos roles. */}
+                                <div className="space-y-2 border-t border-border/40 pt-3">
+                                  <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                    Acción por canal de atracción
+                                  </Label>
+                                  {atraccionToques.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground italic">
+                                      Primero agrega acciones en el Plan de canales de <span className="font-medium">Atracción multicanal</span>.
+                                    </p>
+                                  ) : (
+                                    <>
+                                      <p className="text-[11px] text-muted-foreground italic">
+                                        Por cada canal, elige qué comportamiento detona la reactivación y qué se envía
+                                        en respuesta. Puedes poner varias acciones por canal, y cada una genera sus
+                                        tareas igual que un toque del Plan de canales.
+                                      </p>
+                                      <div className="space-y-2">
+                                        {atraccionToques.map((origen) => {
+                                          const OrigenIcon = iconoDeCanal(origen.canal);
+                                          const acciones = reactivacionRows.filter((r) => r.origenToqueId === origen.id);
+                                          const contexto = [formatDisplay(origen.dia), origen.copy.trim()].filter(Boolean).join(' · ');
+                                          return (
+                                            <div key={origen.id} className="rounded-lg border border-border/60 bg-card/50 p-2 space-y-2">
+                                              <div className="flex items-center gap-1.5">
+                                                <OrigenIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                <span className="text-xs font-medium whitespace-nowrap">{origen.canal}</span>
+                                                {contexto && (
+                                                  <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground" title={contexto}>
+                                                    · {contexto}
+                                                  </span>
+                                                )}
+                                                <button
+                                                  type="button"
+                                                  onClick={() => addReactivacionRow(etapa.id, origen.id)}
+                                                  className="ml-auto inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                                                >
+                                                  <Plus className="h-3.5 w-3.5" /> Agregar acción
+                                                </button>
+                                              </div>
+                                              {acciones.length === 0 ? (
+                                                <p className="text-[11px] text-muted-foreground italic">Sin acciones de reactivación.</p>
+                                              ) : (
+                                                <div className="space-y-2">
+                                                  {acciones.map((r) => (
+                                                    <ReactivacionRow
+                                                      key={r.id}
+                                                      row={r}
+                                                      detonantes={opcionesDetonante}
+                                                      onUpdate={(field, value) => updateReactivacionRow(r.id, field, value)}
+                                                      onRemove={() => removeCanalRow(r.id)}
+                                                    />
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {/* Acciones cuyo toque de origen ya no existe. No se borran solas
+                                      —pueden tener trabajo hecho y sus tareas siguen vivas—, pero
+                                      sin este bloque quedarían invisibles y sin forma de quitarlas. */}
+                                  {reactivacionHuerfanas.length > 0 && (
+                                    <div className="rounded-lg border border-dashed border-border/60 p-2 space-y-2">
+                                      <p className="text-[11px] text-muted-foreground italic">
+                                        Acciones cuyo canal de origen ya no está en Atracción — vuelve a asignarlas o quítalas.
+                                      </p>
+                                      {reactivacionHuerfanas.map((r) => (
+                                        <ReactivacionRow
+                                          key={r.id}
+                                          row={r}
+                                          detonantes={opcionesDetonante}
+                                          onUpdate={(field, value) => updateReactivacionRow(r.id, field, value)}
+                                          onRemove={() => removeCanalRow(r.id)}
+                                        />
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             ) : (

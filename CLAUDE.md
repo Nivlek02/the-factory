@@ -265,6 +265,38 @@ guardado vive en `escribirProyecto` (aparte, para que el `finally` cubra los `re
 `hydrate` **se salta las campañas en vuelo** —ni su fila ni su `revisionConocida`—, que si no el
 guardado siguiente veía un falso conflicto.
 
+### Canales: renombrar uno toca 4 sitios y NUNCA se migra lo guardado
+Facebook + Instagram se unificaron en **Meta Ads** y TikTok pasó a **TikTok Ads** (v1.14.0). El
+canal es un **string suelto dentro del blob**, así que renombrarlo no migra nada: las campañas
+viejas siguen diciendo 'Facebook'. Los 4 sitios que hay que tocar —y en los que hay que **dejar el
+nombre viejo**— son `CHANNELS` + `canalInvolvesRole` + el `switch` de `buildFabricaBriefs`
+(wizard) y `CANAL_SINGLE_NODE` + `CANAL_CATEGORIAS` (store). Si se le quita el nombre viejo a
+`CANAL_SINGLE_NODE`, la campaña vieja **pierde su nodo de Pauta** al volver a guardarse.
+
+Y el selector: **un Radix Select con un `value` que no corresponde a ningún `SelectItem` se pinta
+vacío**, así que el nombre viejo tiene que ofrecerse como opción en la fila que ya lo trae
+(`CanalSelect`, lista `CANALES_LEGADOS`) o el primer cambio en esa fila lo borra en silencio.
+Ojo también: **Radix copia los hijos del item seleccionado dentro del trigger**, así que una
+anotación al lado del nombre ("(nombre anterior)") se lee como parte del canal en la fila cerrada.
+
+### Reactivación: sus acciones son toques del Plan de canales
+Una acción de reactivación ("quien **no abre** el correo → se le manda un WhatsApp") es una
+`CanalRow` más, guardada en `project.canales` con la etapa de Reactivación y dos campos extra:
+`detonante` y `origenToqueId`. Por eso **genera sus tareas sin código nuevo**: `buildFabricaBriefs`
+recorre todos los canales sin mirar la etapa, y `syncCanalNodes` le crea su nodo igual que a
+cualquier otro.
+
+**La marca "Reactivación: {detonante}" va detrás de un ` — `, nunca pegada al canal.**
+`canalDeEnvio`/`canalDePauta`/`canalDeMetricas` (`src/lib/metricas.ts`) cortan el canal por prefijo
+hasta el primer separador: con `Configurar envío por Correo [Reactivación: No abre]` el dashboard
+vería un canal llamado "Correo [Reactivación…]" y **esos envíos desaparecerían de las métricas**.
+La marca es además lo que hace único el nombre de la tarea — sin ella, la reactivación por Correo y
+el correo que la dispara se llaman igual y `fusionarBriefs` no puede emparejarlas.
+
+Si se borra el toque de origen, sus acciones quedan huérfanas: **no se borran solas** (pueden tener
+trabajo hecho y sus tareas siguen vivas), se listan aparte en la etapa para poder quitarlas — si
+no, quedarían invisibles generando tareas, que es justo lo que pasó con `limpiarNodosMuertos`.
+
 ### Números y códigos
 - `FactoryProject.numero` (`#7`) = **máx + 1, no `length + 1`**: borrar la campaña del medio no
   recicla su número. Se calcula en el cliente, así que dos campañas creadas a la vez podían

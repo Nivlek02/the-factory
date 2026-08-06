@@ -41,6 +41,14 @@ export interface CanalRow {
    *  (plural) permite varias. Al leer, usar `interaccion` como fallback si `interacciones` falta. */
   interaccion?: string;
   interacciones?: string[];
+  /** Reactivación: el negativo de la interacción que dispara esta acción ('No abre', 'No hace
+   *  clic'…). Solo lo llevan los toques de la etapa de Reactivación, y es lo que distingue su
+   *  tarea de la del toque original en el Plan de canales. Opcional. */
+  detonante?: string;
+  /** Reactivación: id del toque de Atracción al que responde esta acción. Si el toque de origen
+   *  se borra, la fila queda huérfana y el wizard la muestra aparte (no se borra sola: podría
+   *  tener trabajo hecho). Opcional. */
+  origenToqueId?: string;
 }
 
 /** Categorías de canales del Plan de canales. Agrupan los canales sueltos para mostrarlos
@@ -54,7 +62,9 @@ export interface CanalCategoria {
 
 export const CANAL_CATEGORIAS: CanalCategoria[] = [
   { id: 'directos', label: 'Canales directos', canales: ['Correo', 'WhatsApp', 'SMS'] },
-  { id: 'pauta', label: 'Pauta digital', canales: ['Facebook', 'Instagram', 'Google Ads', 'TikTok'] },
+  // 'Facebook', 'Instagram' y 'TikTok' ya no se ofrecen (hoy son 'Meta Ads' y 'TikTok Ads'), pero
+  // se quedan acá: las campañas guardadas antes del cambio los tienen y dejarían de contarse.
+  { id: 'pauta', label: 'Pauta digital', canales: ['Meta Ads', 'TikTok Ads', 'Google Ads', 'Facebook', 'Instagram', 'TikTok'] },
   { id: 'relacionamiento', label: 'Relacionamiento', canales: ['Call Center', 'BTL', 'KAM', 'Relacionamiento'] },
   // Video es su propia categoría: no es un canal de envío ni de pauta, es una pieza que se produce
   // (guion → grabación/edición) y después se usa en los demás canales.
@@ -531,19 +541,25 @@ const syncRequerimientoNodes = (nodes: StrategyNode[], requerimientos: string[])
 
 /** Nodos de una sola etapa que dependen de los canales elegidos en el Plan de canales (a
  *  diferencia de landing/formulario, que dependen de los checkboxes de Requerimiento). Varios
- *  canales pueden apuntar al mismo nodo (Facebook/Instagram/TikTok/Google Ads → Pauta). */
+ *  canales pueden apuntar al mismo nodo (Meta Ads/TikTok Ads/Google Ads → Pauta).
+ *
+ *  'Facebook', 'Instagram' y 'TikTok' son los nombres viejos de esos canales (hoy 'Meta Ads' y
+ *  'TikTok Ads'): siguen mapeados para que una campaña guardada antes del cambio no se quede sin
+ *  su nodo de Pauta al volver a guardarse. */
 const CANAL_SINGLE_NODE: Record<string, { stageType: StrategyStageType; label: string; roleLabel: string }> = {
+  'Meta Ads': { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
+  'TikTok Ads': { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
+  'Google Ads': { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
   Facebook: { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
   Instagram: { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
   TikTok: { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
-  'Google Ads': { stageType: 'pauta', label: 'Pauta en redes sociales', roleLabel: 'Trafficker' },
   BTL: { stageType: 'btl', label: 'BTL', roleLabel: 'Estratega' },
   KAM: { stageType: 'kam', label: 'KAM', roleLabel: 'Estratega' },
   Relacionamiento: { stageType: 'relacionamiento', label: 'Relacionamiento', roleLabel: 'Estratega' },
 };
 
 /** Sincroniza los nodos del flujo de trabajo que dependen de los canales del Plan de canales:
- *  Facebook/Instagram/TikTok/Google Ads → "Pauta en redes sociales" (Trafficker), BTL/KAM/
+ *  Meta Ads/TikTok Ads/Google Ads → "Pauta en redes sociales" (Trafficker), BTL/KAM/
  *  Relacionamiento → su propio nodo (Estratega), y "Call Center" → un nodo de registro (Estratega,
  *  hecho sí/no + fecha) que cuelga directo del nodo Copys: el copywriter redacta el guion como una
  *  tarea más dentro de Copys y, al aprobarse, se activa el registro en Call Center (ver

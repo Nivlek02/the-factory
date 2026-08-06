@@ -25,6 +25,35 @@ en ningún otro archivo.
 
 ---
 
+## [1.14.0] — 2026-08-06
+
+### Nuevo
+
+- **Reactivación y remarketing ahora se planea de verdad.** La etapa traía solo los negativos de
+  la interacción ("No abre", "No hace clic"…) y ahí se acababa. Ahora muestra los canales que
+  elegiste en Atracción y, por cada uno, puedes agregar **varias acciones**: qué comportamiento la
+  detona y qué se envía en respuesta, con su fecha y su ángulo. Cada acción **crea sus tareas con
+  los roles que le corresponden**, igual que un toque del Plan de canales, y se distingue de la
+  tarea original porque lleva el detonante en el nombre ("Redactar copy para Correo — Reactivación:
+  No abre"). El diagrama del ciclo pinta esas acciones como "No abre → WhatsApp".
+- **La validación de segmentos ya no se escribe dos veces.** La etapa de Validación ofrece, además
+  de los 3 de siempre (Renovado · No renovado · No inscrito en cámara), **los segmentos que
+  elegiste en "Audiencia y Narrativa"**. Si un segmento ya estaba en los 3 fijos no se repite.
+
+### Cambiado
+
+- **Facebook e Instagram son un solo canal: "Meta Ads"**, y TikTok pasa a llamarse **"TikTok
+  Ads"** — es la pauta lo que se planea, no el perfil orgánico. Las campañas que ya tenían
+  Facebook, Instagram o TikTok **no se tocan**: siguen viéndose y funcionando con su nombre
+  anterior, y solo cambian si alguien elige el nuevo a mano.
+
+### Arreglado
+
+- **Los campos del asistente aprovechan el ancho que ganó la ventana.** El selector de segmento
+  seguía tan angosto que "Turismo de Eventos y Negocios" se leía "Turism…", y el canal no alcanzaba
+  para "Relacionamiento". En la etapa de Interacción, el ángulo del toque le comía el espacio al
+  nombre del canal; ahora el canal se ve completo y solo el ángulo se recorta.
+
 ## [1.13.1] — 2026-08-05
 
 ### Arreglado
