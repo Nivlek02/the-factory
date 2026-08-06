@@ -417,8 +417,27 @@ const InteraccionRow = ({
 /** Segmentos de validación contra CRM en la etapa de Validación. Multi-selección + personalizado. */
 const VALIDACION_SEGMENTOS = ['Renovado', 'No renovado', 'No inscrito en cámara'] as const;
 
-/** Negativos de la interacción en la etapa de Reactivación. Multi-selección + personalizado. */
-const REACTIVACION_NEGATIVOS = ['No abre', 'No hace clic', 'No visita'] as const;
+/**
+ * Negativos de la interacción en la etapa de Reactivación: los detonantes que ofrece cada acción,
+ * y los chips de "a quién hay que reactivar". Multi-selección + personalizado.
+ *
+ * Van en orden de embudo (cuanto más abajo, más lejos llegó el contacto antes de caerse) y salen
+ * del objetivo que la propia etapa trae por defecto: *no abrió · abrió sin clic · clic sin
+ * conversión · comentó sin convertir*.
+ *
+ * **De acá no se saca ninguno**: los valores viejos ('No hace clic', 'No visita') están guardados
+ * en campañas y en el `detonante` de sus acciones — quitarlos los convertiría en personalizados,
+ * y una acción con un detonante que ya no se ofrece pierde su opción en el selector.
+ */
+const REACTIVACION_NEGATIVOS = [
+  'No abre',
+  'Abre pero no hace clic',
+  'No hace clic',
+  'Hace clic pero no convierte',
+  'No visita',
+  'Visita pero no se inscribe',
+  'Comenta pero no convierte',
+] as const;
 
 /**
  * Una acción de reactivación: "quien **no abre** el correo del 5 de julio → se le manda un

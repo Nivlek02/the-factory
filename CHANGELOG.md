@@ -25,6 +25,16 @@ en ningún otro archivo.
 
 ---
 
+## [1.14.1] — 2026-08-06
+
+### Cambiado
+
+- **Más detonantes de reactivación.** A "No abre", "No hace clic" y "No visita" se les suman
+  **"Abre pero no hace clic"**, **"Hace clic pero no convierte"**, **"Visita pero no se inscribe"**
+  y **"Comenta pero no convierte"** — los comportamientos que ya describía la etapa pero que había
+  que escribir a mano. Van en orden de embudo, del que se cayó primero al que llegó más lejos. Los
+  que ya estaban no se tocaron, así que nada de lo guardado cambia.
+
 ## [1.14.0] — 2026-08-06
 
 ### Nuevo
